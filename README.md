@@ -108,7 +108,7 @@ covadev/
 ### 1️⃣ Clone Repository
 
 ```bash
-git clone <REPO_URL>
+git clone <https://github.com/OHelmyy/COVADEV.git>
 cd covadev
 ```
 
