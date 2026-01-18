@@ -1,0 +1,95 @@
+<h1>{{ project.name }}</h1>
+<p>{{ project.description }}</p>
+
+<h2>Upload Files</h2>
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <label>BPMN XML:</label>
+  <input type="file" name="bpmn_file" /><br /><br />
+
+  <label>Code ZIP:</label>
+  <input type="file" name="code_zip" /><br /><br />
+
+  <button type="submit">Upload</button>
+</form>
+
+<h2>Analysis</h2>
+
+{% if project.versions.all %}
+  <form method="post" action="{% url 'projects:run_analysis' project.id %}">
+    {% csrf_token %}
+
+    <label>Select Version:</label>
+    <select name="version_id">
+      {% for v in project.versions.all %}
+        <option value="{{ v.id }}">
+          v{{ v.version_number }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <button type="submit">Run Analysis</button>
+  </form>
+
+  <h3>Latest Run (Latest Version)</h3>
+  {% if latest_run %}
+    <p>Status: <strong>{{ latest_run.status }}</strong></p>
+    <p>Started: {{ latest_run.started_at }}</p>
+    <p>Finished: {{ latest_run.finished_at }}</p>
+    {% if latest_run.error_message %}
+      <pre style="color:red;">{{ latest_run.error_message }}</pre>
+    {% endif %}
+  {% else %}
+    <p>No analysis runs yet.</p>
+  {% endif %}
+
+  <h3>Run History (Last 10)</h3>
+  {% if run_history %}
+    <ul>
+      {% for r in run_history %}
+        <li>
+          v{{ r.version.version_number }} —
+          <strong>{{ r.status }}</strong>
+          ({{ r.created_at }})
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No runs yet.</p>
+  {% endif %}
+{% else %}
+  <p>Upload BPMN + code ZIP to create versions before running analysis.</p>
+{% endif %}
+
+
+
+<h2>Versions</h2>
+<ul>
+  {% for v in project.versions.all %}
+    <li>Version {{ v.version_number }} ({{ v.created_at }})</li>
+  {% endfor %}
+</ul>
+
+<h3>Version Files</h3>
+
+<h3>Version Tasks</h3>
+{% for v in project.versions.all %}
+  <div style="margin-bottom:12px; border:1px solid #ddd; padding:10px;">
+    <p><strong>Version {{ v.version_number }}</strong></p>
+    <p>Tasks stored: {{ v.bpmn_tasks.count }}</p>
+    <a href="{% url 'projects:version_tasks' project.id v.id %}" target="_blank">
+      View tasks JSON
+    </a>
+  </div>
+{% endfor %}
+
+
+{% for v in project.versions.all %}
+  <div style="margin-bottom:12px; border:1px solid #ddd; padding:10px;">
+    <p><strong>Version {{ v.version_number }}</strong></p>
+    <p>Code files indexed: {{ v.code_files.count }}</p>
+    <a href="{% url 'projects:version_files' project.id v.id %}" target="_blank">
+      View files JSON
+    </a>
+  </div>
+{% endfor %}
