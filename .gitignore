@@ -1,0 +1,90 @@
+# ==============================
+# Python / Django
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env
+.env.*
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Django local settings
+local_settings.py
+
+# ==============================
+# Logs
+# ==============================
+*.log
+
+# ==============================
+# VS Code
+# ==============================
+.vscode/
+!.vscode/extensions.json
+
+# ==============================
+# OS files
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Testing / Coverage
+# ==============================
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# ==============================
+# Packaging / Build
+# ==============================
+build/
+dist/
+*.egg-info/
+
+# ==============================
+# Jupyter / ML (future-proof)
+# ==============================
+.ipynb_checkpoints/
+*.pkl
+*.joblib
+*.h5
+*.onnx
+
+# ==============================
+# Node / Frontend (if added later)
+# ==============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==============================
+# Environment & Secrets
+# ==============================
+*.env
+secrets/
+.envrc
+
+# ==============================
+# Cache / Temp
+# ==============================
+.cache/
+tmp/
+temp/
+
+# ==============================
+# IDEs
+# ==============================
+.idea/
+*.iml
