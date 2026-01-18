@@ -48,3 +48,40 @@ class BpmnTask(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.task_id})"
+
+
+class MatchResult(models.Model):
+    STATUS_CHOICES = (
+        ("MATCHED", "MATCHED"),
+        ("MISSING", "MISSING"),
+        ("EXTRA", "EXTRA"),
+    )
+
+    version = models.ForeignKey(
+        UploadVersion,
+        on_delete=models.CASCADE,
+        related_name="match_results",
+    )
+
+    # For matched/missing tasks
+    task = models.ForeignKey(
+        BpmnTask,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matches",
+    )
+
+    # code reference (MVP: store file path + symbol name if available)
+    code_ref = models.CharField(max_length=800, blank=True, default="")
+
+    similarity_score = models.FloatField(default=0.0)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-similarity_score", "-created_at"]
+
+    def __str__(self):
+        return f"{self.status} - {self.similarity_score}"

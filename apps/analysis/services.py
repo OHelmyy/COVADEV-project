@@ -66,3 +66,43 @@ def replace_bpmn_tasks(version, tasks):
         BpmnTask.objects.bulk_create(objs)
 
     return BpmnTask.objects.filter(version=version).count()
+
+
+from .models import MatchResult
+
+def replace_match_results(version, results):
+    """
+    Storage helper for Dev 2 (Serag) / Dev 3 (Mostafa).
+    results: list of dicts:
+      {
+        "status": "MATCHED|MISSING|EXTRA",
+        "task_id": "... optional ...",
+        "code_ref": "...",
+        "similarity_score": 0.82
+      }
+    """
+    MatchResult.objects.filter(version=version).delete()
+
+    # build task lookup
+    task_map = {t.task_id: t for t in version.bpmn_tasks.all()}
+
+    objs = []
+    for r in results:
+        status = str(r.get("status", "MATCHED")).upper().strip()
+        task_id = str(r.get("task_id", "")).strip()
+        task = task_map.get(task_id) if task_id else None
+
+        objs.append(
+            MatchResult(
+                version=version,
+                task=task,
+                code_ref=str(r.get("code_ref", "")).strip(),
+                similarity_score=float(r.get("similarity_score", 0.0) or 0.0),
+                status=status,
+            )
+        )
+
+    if objs:
+        MatchResult.objects.bulk_create(objs)
+
+    return MatchResult.objects.filter(version=version).count()
