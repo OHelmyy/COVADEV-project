@@ -1,10 +1,26 @@
-<h1>Create Project</h1>
+{% extends "base.html" %}
+{% block content %}
+  <div class="card" style="max-width:760px;">
+    <h2>Create Project</h2>
 
-<form method="post">
-  {% csrf_token %}
-  <input type="text" name="name" placeholder="Project name" required />
-  <br />
-  <textarea name="description" placeholder="Description"></textarea>
-  <br />
-  <button type="submit">Create</button>
-</form>
+    <form method="post">
+      {% csrf_token %}
+      <div style="margin-bottom:10px;">
+        <label class="muted">Name</label>
+        <input class="input" name="name" required />
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <label class="muted">Description</label>
+        <textarea class="input" name="description" style="min-height:90px;"></textarea>
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <label class="muted">Similarity threshold (0–1)</label>
+        <input class="input" name="similarity_threshold" value="0.6" />
+      </div>
+
+      <button class="btn" type="submit">Create</button>
+    </form>
+  </div>
+{% endblock %}

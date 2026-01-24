@@ -1,104 +1,196 @@
-<h1>{{ project.name }}</h1>
-<p>{{ project.description }}</p>
+{% extends "base.html" %}
+{% block content %}
 
-<h2>Upload Files</h2>
-<form method="post" enctype="multipart/form-data">
-  {% csrf_token %}
-  <label>BPMN XML:</label>
-  <input type="file" name="bpmn_file" /><br /><br />
+<!-- =========================
+     PROJECT HEADER
+========================= -->
+<div class="card">
+  <h2>{{ project.name }}</h2>
+  <div class="muted">{{ project.description|default:"No description" }}</div>
+  <div class="muted" style="margin-top:8px;">
+    Your role: <b>{{ membership.role }}</b>
+  </div>
+</div>
 
-  <label>Code ZIP:</label>
-  <input type="file" name="code_zip" /><br /><br />
+<!-- =========================
+     ACTIVE UPLOADS + QUICK STATS
+========================= -->
+<div class="card">
+  <h3>Current Uploads</h3>
 
-  <button type="submit">Upload</button>
-</form>
+  <div class="row" style="grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+    <div class="card">
+      <div class="muted">Active BPMN</div>
+      <div style="font-weight:800; margin-top:4px;">
+        {% if project.active_bpmn %}
+          {{ project.active_bpmn.original_name }}
+        {% else %}
+          <span class="muted">None uploaded yet</span>
+        {% endif %}
+      </div>
+      {% if project.active_bpmn and project.active_bpmn.uploaded_by %}
+        <div class="muted small" style="margin-top:6px;">
+          Uploaded by {{ project.active_bpmn.uploaded_by.username }} • {{ project.active_bpmn.created_at }}
+        </div>
+      {% endif %}
+    </div>
 
-<h2>Analysis</h2>
+    <div class="card">
+      <div class="muted">Active Code ZIP</div>
+      <div style="font-weight:800; margin-top:4px;">
+        {% if project.active_code %}
+          {{ project.active_code.original_name }}
+        {% else %}
+          <span class="muted">None uploaded yet</span>
+        {% endif %}
+      </div>
+      {% if project.active_code and project.active_code.uploaded_by %}
+        <div class="muted small" style="margin-top:6px;">
+          Uploaded by {{ project.active_code.uploaded_by.username }} • {{ project.active_code.created_at }}
+        </div>
+      {% endif %}
+    </div>
+  </div>
 
-{% if project.versions.all %}
-  <form method="post" action="{% url 'projects:run_analysis' project.id %}">
-    {% csrf_token %}
+  <div class="row" style="grid-template-columns: 1fr 1fr 1fr; margin-top:12px;">
+    <div class="card">
+      <div class="muted">Indexed files</div>
+      <div style="font-size:22px; font-weight:800;">{{ code_files_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">BPMN tasks</div>
+      <div style="font-size:22px; font-weight:800;">{{ tasks_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">Match results</div>
+      <div style="font-size:22px; font-weight:800;">{{ matches_count }}</div>
+    </div>
+  </div>
+</div>
 
-    <label>Select Version:</label>
-    <select name="version_id">
-      {% for v in project.versions.all %}
-        <option value="{{ v.id }}">
-          v{{ v.version_number }}
-        </option>
-      {% endfor %}
-    </select>
+<!-- =========================
+     UPLOAD + ANALYSIS TOOLS
+========================= -->
+<div class="card">
+  <h3>Tools</h3>
 
-    <button type="submit">Run Analysis</button>
-  </form>
+  <div class="row" style="margin-top:12px;">
+    <!-- BPMN Upload: Evaluator only -->
+    <div class="card">
+      <h4>Upload BPMN</h4>
 
-  <h2>Project Settings</h2>
-    <p>Similarity Threshold: <strong>{{ project.similarity_threshold }}</strong></p>
+      {% if membership.role == "EVALUATOR" %}
+        <form method="post" enctype="multipart/form-data" action="{% url 'projects:upload_bpmn' project.id %}">
+          {% csrf_token %}
+          <input class="input" type="file" name="bpmn_file" accept=".bpmn,.xml" required />
+          <button class="btn" type="submit" style="margin-top:10px;">Upload BPMN</button>
+        </form>
+        <div class="muted small" style="margin-top:8px;">
+          Evaluator-only (defines the requirement model).
+        </div>
+      {% else %}
+        <div class="muted">
+          Only the evaluator can upload BPMN.
+        </div>
+      {% endif %}
+    </div>
 
-    <form method="post" action="{% url 'projects:update_threshold' project.id %}">
-    {% csrf_token %}
-    <input type="text" name="similarity_threshold" value="{{ project.similarity_threshold }}" />
-    <button type="submit">Update</button>
+    <!-- Code ZIP Upload: Any member -->
+    <div class="card">
+      <h4>Upload Code ZIP</h4>
+      <form method="post" enctype="multipart/form-data" action="{% url 'projects:upload_code' project.id %}">
+        {% csrf_token %}
+        <input class="input" type="file" name="code_zip" accept=".zip" required />
+        <button class="btn" type="submit" style="margin-top:10px;">Upload &amp; Index</button>
+      </form>
+      <div class="muted small" style="margin-top:8px;">
+        Allowed for evaluator and developers.
+      </div>
+    </div>
+  </div>
+
+  <!-- Run analysis: Any member -->
+  <div class="card" style="margin-top:12px;">
+    <h4>Run Analysis</h4>
+    <form method="post" action="{% url 'projects:run_analysis' project.id %}">
+      {% csrf_token %}
+      <button class="btn" type="submit">Run analysis</button>
+    </form>
+    <div class="muted small" style="margin-top:8px;">
+      Runs analysis using the current active BPMN + active code.
+    </div>
+  </div>
+</div>
+
+<!-- =========================
+     PROJECT SETTINGS (Evaluator)
+========================= -->
+<div class="card">
+  <h3>Settings</h3>
+
+  <div class="muted">
+    Similarity threshold: <b>{{ project.similarity_threshold }}</b>
+  </div>
+
+  {% if membership.role == "EVALUATOR" %}
+    <form method="post" action="{% url 'projects:update_threshold' project.id %}" style="margin-top:10px;">
+      {% csrf_token %}
+      <input class="input" type="text" name="similarity_threshold" placeholder="e.g., 0.6" />
+      <button class="btn" type="submit" style="margin-top:10px;">Update threshold</button>
     </form>
 
-  <h3>Latest Run (Latest Version)</h3>
-  {% if latest_run %}
-    <p>Status: <strong>{{ latest_run.status }}</strong></p>
-    <p>Started: {{ latest_run.started_at }}</p>
-    <p>Finished: {{ latest_run.finished_at }}</p>
-    {% if latest_run.error_message %}
-      <pre style="color:red;">{{ latest_run.error_message }}</pre>
-    {% endif %}
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+      <a class="btn" href="{% url 'projects:members' project.id %}">Manage Members</a>
+      <a class="btn" href="{% url 'projects:upload_logs' project.id %}">Upload Logs</a>
+    </div>
   {% else %}
-    <p>No analysis runs yet.</p>
+    <div class="muted" style="margin-top:10px;">
+      Only evaluator can change settings and view upload logs.
+    </div>
   {% endif %}
+</div>
 
-  <h3>Run History (Last 10)</h3>
-  {% if run_history %}
-    <ul>
-      {% for r in run_history %}
-        <li>
-          v{{ r.version.version_number }} —
-          <strong>{{ r.status }}</strong>
-          ({{ r.created_at }})
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p>No runs yet.</p>
-  {% endif %}
-{% else %}
-  <p>Upload BPMN + code ZIP to create versions before running analysis.</p>
-{% endif %}
+<!-- =========================
+     RUNS HISTORY
+========================= -->
+<div class="card">
+  <h3>Analysis Runs (latest 10)</h3>
+  {% for r in runs %}
+    <div style="border-top:1px solid #1f2937; padding-top:10px; margin-top:10px;">
+      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div style="font-weight:800;">Run #{{ r.id }} — {{ r.status }}</div>
+          <div class="muted small">
+            Started: {{ r.started_at }} | Finished: {{ r.finished_at }}
+          </div>
+        </div>
+      </div>
 
-
-
-<h2>Versions</h2>
-<ul>
-  {% for v in project.versions.all %}
-    <li>Version {{ v.version_number }} ({{ v.created_at }})</li>
+      {% if r.error_message %}
+        <div class="muted" style="margin-top:6px;">Error: {{ r.error_message }}</div>
+      {% endif %}
+    </div>
+  {% empty %}
+    <div class="muted">No runs yet.</div>
   {% endfor %}
-</ul>
+</div>
 
-<h3>Version Files</h3>
+<!-- =========================
+     MEMBERS LIST
+========================= -->
+<div class="card">
+  <h3>Members</h3>
 
-<h3>Version Tasks</h3>
-{% for v in project.versions.all %}
-  <div style="margin-bottom:12px; border:1px solid #ddd; padding:10px;">
-    <p><strong>Version {{ v.version_number }}</strong></p>
-    <p>Tasks stored: {{ v.bpmn_tasks.count }}</p>
-    <a href="{% url 'projects:version_tasks' project.id v.id %}" target="_blank">
-      View tasks JSON
-    </a>
-  </div>
-{% endfor %}
+  {% for m in members %}
+    <div style="display:flex; justify-content:space-between; border-top:1px solid #1f2937; padding-top:10px; margin-top:10px;">
+      <div>
+        <div style="font-weight:800;">{{ m.user.username }}</div>
+        <div class="muted">{{ m.role }}</div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="muted">No members.</div>
+  {% endfor %}
+</div>
 
-
-{% for v in project.versions.all %}
-  <div style="margin-bottom:12px; border:1px solid #ddd; padding:10px;">
-    <p><strong>Version {{ v.version_number }}</strong></p>
-    <p>Code files indexed: {{ v.code_files.count }}</p>
-    <a href="{% url 'projects:version_files' project.id v.id %}" target="_blank">
-      View files JSON
-    </a>
-  </div>
-{% endfor %}
+{% endblock %}

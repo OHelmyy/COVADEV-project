@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Manage Members — {{ project.name }}</h2>
+    <p class="muted">Add developers by email. Users can be developer here and evaluator in another project.</p>
+  </div>
+
+  <div class="card">
+    <h3>Add Developer</h3>
+    <form method="post">
+      {% csrf_token %}
+      <input class="input" name="email" placeholder="developer@email.com" />
+      <button class="btn" type="submit" style="margin-top:10px;">Add</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Current Members</h3>
+    {% for m in members %}
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #1f2937; padding-top:10px; margin-top:10px;">
+        <div>
+          <div style="font-weight:700;">{{ m.user.username }}</div>
+          <div class="muted">{{ m.role }}</div>
+        </div>
+
+        {% if m.role != "EVALUATOR" %}
+          <form method="post" action="{% url 'projects:remove_member' project.id m.id %}">
+            {% csrf_token %}
+            <button class="btn" type="submit">Remove</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <a class="btn" href="{% url 'projects:detail' project.id %}">Back</a>
+{% endblock %}
