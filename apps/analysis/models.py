@@ -1,8 +1,13 @@
+# apps/analysis/models.py
 from django.db import models
-from apps.projects.models import UploadVersion
 
 
 class AnalysisRun(models.Model):
+    """
+    One analysis execution for a project.
+    We store status + timestamps + error to show history on the UI.
+    """
+
     STATUS_CHOICES = (
         ("PENDING", "PENDING"),
         ("RUNNING", "RUNNING"),
@@ -10,11 +15,13 @@ class AnalysisRun(models.Model):
         ("FAILED", "FAILED"),
     )
 
-    version = models.ForeignKey(
-        UploadVersion,
+    # Project-based (versioning removed)
+    project = models.ForeignKey(
+        "projects.Project",
         on_delete=models.CASCADE,
         related_name="analysis_runs",
     )
+
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="PENDING")
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -26,12 +33,17 @@ class AnalysisRun(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"Run({self.version}) - {self.status}"
+        return f"Run(Project={self.project_id}) - {self.status}"
 
 
 class BpmnTask(models.Model):
-    version = models.ForeignKey(
-        UploadVersion,
+    """
+    BPMN Task parsed from the currently active BPMN for a project.
+    Stored per project (versioning removed).
+    """
+
+    project = models.ForeignKey(
+        "projects.Project",
         on_delete=models.CASCADE,
         related_name="bpmn_tasks",
     )
@@ -43,7 +55,10 @@ class BpmnTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("version", "task_id")
+        # Task IDs are unique within the same project
+        constraints = [
+            models.UniqueConstraint(fields=["project", "task_id"], name="uniq_project_taskid")
+        ]
         ordering = ["name"]
 
     def __str__(self):
@@ -51,19 +66,24 @@ class BpmnTask(models.Model):
 
 
 class MatchResult(models.Model):
+    """
+    Output of matching BPMN tasks to code elements for a project.
+    Stored per project (versioning removed).
+    """
+
     STATUS_CHOICES = (
         ("MATCHED", "MATCHED"),
         ("MISSING", "MISSING"),
         ("EXTRA", "EXTRA"),
     )
 
-    version = models.ForeignKey(
-        UploadVersion,
+    project = models.ForeignKey(
+        "projects.Project",
         on_delete=models.CASCADE,
         related_name="match_results",
     )
 
-    # For matched/missing tasks
+    # For matched/missing tasks (nullable for EXTRA)
     task = models.ForeignKey(
         BpmnTask,
         on_delete=models.SET_NULL,
@@ -84,4 +104,4 @@ class MatchResult(models.Model):
         ordering = ["-similarity_score", "-created_at"]
 
     def __str__(self):
-        return f"{self.status} - {self.similarity_score}"
+        return f"{self.status} - {self.similarity_score:.2f} (Project={self.project_id})"
