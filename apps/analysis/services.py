@@ -1,19 +1,33 @@
+# apps/analysis/services.py
+
 from django.db import transaction
 from django.utils import timezone
-from .models import AnalysisRun
+
+from .models import AnalysisRun, BpmnTask, MatchResult
 
 
-def run_analysis_for_version(version):
+def run_analysis_for_project(project):
     """
-    MVP backbone:
+    MVP backbone (Project-based):
     - create AnalysisRun
     - set RUNNING
     - mark DONE (mock)
     Later: Serag/Mostafa plug real pipeline here.
+
+    Expected inputs (after removing versioning):
+    - project.active_bpmn : ProjectFile (BPMN) or None
+    - project.active_code : ProjectFile (CODE) or None
+    - project.code_files  : indexed CodeFile rows (project-based)
     """
+    # Basic validation (optional but very useful)
+    if not getattr(project, "active_bpmn", None):
+        raise ValueError("No active BPMN uploaded for this project.")
+    if not getattr(project, "active_code", None):
+        raise ValueError("No active Code ZIP uploaded for this project.")
+
     with transaction.atomic():
         run = AnalysisRun.objects.create(
-            version=version,
+            project=project,
             status="PENDING",
         )
         run.status = "RUNNING"
@@ -21,12 +35,14 @@ def run_analysis_for_version(version):
         run.save(update_fields=["status", "started_at"])
 
     try:
-        #serag w mostafa
+        # Serag w Mostafa
         # TODO: real pipeline goes here:
-        # - parse BPMN tasks
-        # - extract code elements
+        # - parse BPMN tasks from project.active_bpmn
+        # - extract code elements from project.code_files or stored folder
         # - match
         # - compute metrics
+        #
+        # In MVP mock: just mark done
         run.status = "DONE"
         run.finished_at = timezone.now()
         run.save(update_fields=["status", "finished_at"])
@@ -40,22 +56,19 @@ def run_analysis_for_version(version):
         return run
 
 
-from .models import BpmnTask
-
-
-def replace_bpmn_tasks(version, tasks):
+def replace_bpmn_tasks(project, tasks):
     """
-    Storage helper for Dev 2 (Serag).
+    Storage helper (Project-based) for Dev 2 (Serag).
     tasks: list of dicts:
       [{"task_id": "...", "name": "...", "description": "..."}]
     """
-    BpmnTask.objects.filter(version=version).delete()
+    BpmnTask.objects.filter(project=project).delete()
 
     objs = []
     for t in tasks:
         objs.append(
             BpmnTask(
-                version=version,
+                project=project,
                 task_id=str(t.get("task_id", "")).strip(),
                 name=str(t.get("name", "")).strip() or "Unnamed Task",
                 description=str(t.get("description", "")).strip(),
@@ -65,14 +78,12 @@ def replace_bpmn_tasks(version, tasks):
     if objs:
         BpmnTask.objects.bulk_create(objs)
 
-    return BpmnTask.objects.filter(version=version).count()
+    return BpmnTask.objects.filter(project=project).count()
 
 
-from .models import MatchResult
-
-def replace_match_results(version, results):
+def replace_match_results(project, results):
     """
-    Storage helper for Dev 2 (Serag) / Dev 3 (Mostafa).
+    Storage helper (Project-based) for Dev 2 (Serag) / Dev 3 (Mostafa).
     results: list of dicts:
       {
         "status": "MATCHED|MISSING|EXTRA",
@@ -81,10 +92,10 @@ def replace_match_results(version, results):
         "similarity_score": 0.82
       }
     """
-    MatchResult.objects.filter(version=version).delete()
+    MatchResult.objects.filter(project=project).delete()
 
-    # build task lookup
-    task_map = {t.task_id: t for t in version.bpmn_tasks.all()}
+    # build task lookup (project-based)
+    task_map = {t.task_id: t for t in project.bpmn_tasks.all()}
 
     objs = []
     for r in results:
@@ -94,7 +105,7 @@ def replace_match_results(version, results):
 
         objs.append(
             MatchResult(
-                version=version,
+                project=project,
                 task=task,
                 code_ref=str(r.get("code_ref", "")).strip(),
                 similarity_score=float(r.get("similarity_score", 0.0) or 0.0),
@@ -105,4 +116,4 @@ def replace_match_results(version, results):
     if objs:
         MatchResult.objects.bulk_create(objs)
 
-    return MatchResult.objects.filter(version=version).count()
+    return MatchResult.objects.filter(project=project).count()
