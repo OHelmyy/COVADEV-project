@@ -90,6 +90,7 @@ class ProjectFile(models.Model):
     stored_path = models.TextField()
 
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    extracted_dir = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -226,6 +226,7 @@ def upload_code_zip(request, project_id):
 # Any member can run analysis (as you requested)
 # ============================================================
 
+
 @login_required
 @require_POST
 def run_analysis(request, project_id):
@@ -244,8 +245,15 @@ def run_analysis(request, project_id):
         return redirect("projects:detail", project_id=project.id)
 
     try:
-        run_analysis_for_project(project)
-        messages.success(request, "Analysis started.")
+        run = run_analysis_for_project(project, matcher="greedy", top_k=3)
+
+        if run.status == "DONE":
+            messages.success(request, f"Analysis finished ✅ (Run #{run.id})")
+        elif run.status == "FAILED":
+            messages.error(request, f"Analysis failed ❌: {run.error_message}")
+        else:
+            messages.info(request, f"Analysis status: {run.status} (Run #{run.id})")
+
     except Exception as e:
         messages.error(request, f"Analysis failed: {e}")
 
