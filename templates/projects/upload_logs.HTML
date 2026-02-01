@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- =========================
+     UPLOAD LOGS HEADER
+========================= -->
+<div class="card">
+  <h2>Upload Logs</h2>
+  <div class="muted">
+    Project: <b>{{ project.name }}</b>
+  </div>
+</div>
+
+<!-- =========================
+     UPLOAD LOGS TABLE
+========================= -->
+<div class="card">
+  <h3>File Upload History</h3>
+
+  {% if logs %}
+    <table style="width:100%; border-collapse: collapse; margin-top:12px;">
+      <thead>
+        <tr style="border-bottom:1px solid #1f2937;">
+          <th style="text-align:left; padding:8px;">Type</th>
+          <th style="text-align:left; padding:8px;">File Name</th>
+          <th style="text-align:left; padding:8px;">Uploaded By</th>
+          <th style="text-align:left; padding:8px;">Uploaded At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in logs %}
+          <tr style="border-bottom:1px solid #1f2937;">
+            <td style="padding:8px; font-weight:700;">
+              {{ f.file_type }}
+            </td>
+            <td style="padding:8px;">
+              {{ f.original_name }}
+            </td>
+            <td style="padding:8px;">
+              {% if f.uploaded_by %}
+                {{ f.uploaded_by.username }}
+              {% else %}
+                <span class="muted">Unknown</span>
+              {% endif %}
+            </td>
+            <td style="padding:8px;">
+              {{ f.created_at }}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="muted" style="margin-top:10px;">
+      No uploads yet.
+    </div>
+  {% endif %}
+</div>
+
+<!-- =========================
+     BACK BUTTON
+========================= -->
+<div class="card">
+  <a class="btn" href="{% url 'projects:detail' project.id %}">
+    ← Back to Project
+  </a>
+</div>
+
+{% endblock %}

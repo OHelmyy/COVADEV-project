@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="page-head" style="display:flex; justify-content:space-between; align-items:center;">
+    <h2>Your Projects</h2>
+    <a class="btn" href="/projects/create/">+ Create Project</a>
+  </div>
+
+  {% for p in projects %}
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:700;">{{ p.name }}</div>
+          <div class="muted">{{ p.description|default:"No description" }}</div>
+        </div>
+        <a class="btn" href="/projects/{{ p.id }}/">Open</a>
+      </div>
+    </div>
+  {% empty %}
+    <div class="card muted">No projects yet. Create one.</div>
+  {% endfor %}
+{% endblock %}
