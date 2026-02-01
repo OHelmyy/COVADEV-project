@@ -130,9 +130,4 @@ LOGIN_REDIRECT_URL = "/projects/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
 
 LOGIN_URL = "/accounts/login/"
-# Media files (uploads)
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-]
+
