@@ -174,7 +174,46 @@
     <div class="muted">No runs yet.</div>
   {% endfor %}
 </div>
+<!-- =========================
+     ANALYSIS OUTPUT (Live)
+========================= -->
+<div class="card">
+  <h3>Live Analysis Output</h3>
 
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+    <button class="btn" type="button" id="runAnalysisBtn">
+      Run & Show Results
+    </button>
+
+    <div class="muted small" style="align-self:center;">
+      Uses active BPMN + active code and shows summary/details + extracted texts.
+    </div>
+  </div>
+
+  <div class="row" style="grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+    <div class="card">
+      <div class="muted">Summary</div>
+      <pre id="analysisSummary" style="margin-top:8px;">Waiting...</pre>
+    </div>
+
+    <div class="card">
+      <div class="muted">Details</div>
+      <pre id="analysisDetails" style="margin-top:8px;">Waiting...</pre>
+    </div>
+  </div>
+
+  <div class="row" style="grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+    <div class="card">
+      <div class="muted">BPMN tasks (extracted text preview)</div>
+      <pre id="analysisTasks" style="margin-top:8px;">Waiting...</pre>
+    </div>
+
+    <div class="card">
+      <div class="muted">Code items (extracted text preview)</div>
+      <pre id="analysisCode" style="margin-top:8px;">Waiting...</pre>
+    </div>
+  </div>
+</div>
 <!-- =========================
      MEMBERS LIST
 ========================= -->
@@ -192,5 +231,54 @@
     <div class="muted">No members.</div>
   {% endfor %}
 </div>
+
+
+<script>
+(function () {
+  const projectId = "{{ project.id }}";
+
+  const btn = document.getElementById("runAnalysisBtn");
+  const summaryEl = document.getElementById("analysisSummary");
+  const detailsEl = document.getElementById("analysisDetails");
+  const tasksEl = document.getElementById("analysisTasks");
+  const codeEl = document.getElementById("analysisCode");
+
+  function setAll(text) {
+    summaryEl.textContent = text;
+    detailsEl.textContent = text;
+    tasksEl.textContent = text;
+    codeEl.textContent = text;
+  }
+
+  async function runAndShow() {
+    setAll("Loading...");
+
+    try {
+      // Use the project threshold already displayed on the page
+      const threshold = "{{ project.similarity_threshold|default:'0.7' }}";
+      const url = `/api/analysis/${projectId}/run/?threshold=${encodeURIComponent(threshold)}&top_k=3`;
+
+      const res = await fetch(url);
+      const bodyText = await res.text();
+      if (!res.ok) throw new Error(`Run failed (${res.status}):\n${bodyText}`);
+
+      const data = JSON.parse(bodyText);
+
+      summaryEl.textContent = JSON.stringify(data.summary || {}, null, 2);
+      detailsEl.textContent = JSON.stringify(data.details || {}, null, 2);
+
+      const previews = data.previews || {};
+      tasksEl.textContent = JSON.stringify(previews.bpmn_tasks || [], null, 2);
+      codeEl.textContent = JSON.stringify(previews.code_items || [], null, 2);
+
+    } catch (err) {
+      setAll("ERROR:\n" + err.message);
+      console.error(err);
+    }
+  }
+
+  if (btn) btn.addEventListener("click", runAndShow);
+})();
+</script>
 
 {% endblock %}

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>COVADEV – Metrics Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 30px;
+      background: #f7f7f7;
+    }
+    h1 { color: #2c3e50; }
+    button {
+      padding: 10px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    pre {
+      background: #111;
+      color: #0f0;
+      padding: 15px;
+      overflow: auto;
+      border-radius: 6px;
+    }
+    .card {
+      background: white;
+      padding: 20px;
+      margin-top: 20px;
+      border-radius: 6px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>📊 COVADEV – Metrics Demo</h1>
+<p>Click the button to run BPMN → Code evaluation.</p>
+
+<button onclick="runMetrics()">Run Metrics</button>
+
+<div class="card">
+  <h3>Summary</h3>
+  <pre id="summary">Waiting...</pre>
+</div>
+
+<div class="card">
+  <h3>Details (Traceability)</h3>
+  <pre id="details">Waiting...</pre>
+</div>
+<script>
+async function runMetrics() {
+  const summaryEl = document.getElementById("summary");
+  const detailsEl = document.getElementById("details");
+
+  summaryEl.textContent = "Loading...";
+  detailsEl.textContent = "Loading...";
+
+  try {
+    const res = await fetch("/api/analysis/1/run/?threshold=0.7");
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Run failed: ${res.status}\n${text}`);
+
+    const data = JSON.parse(text);
+    summaryEl.textContent = JSON.stringify(data.summary, null, 2);
+    detailsEl.textContent = JSON.stringify(data.details, null, 2);
+
+  } catch (err) {
+    summaryEl.textContent = "ERROR:\n" + err.message;
+    detailsEl.textContent = "ERROR:\n" + err.message;
+    console.error(err);
+  }
+}
+
+</script>
+</body>
+</html>
