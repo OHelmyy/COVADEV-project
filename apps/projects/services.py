@@ -190,7 +190,8 @@ def save_code_zip_and_extract(project: Project, uploaded_zip, uploader):
         project=project,
         file_type="CODE",
         original_name=uploaded_zip.name,
-        stored_path=str(code_root),  # store folder path for MVP
+        stored_path=stored_zip_path,  
+        extracted_dir=str(code_root),  
         uploaded_by=uploader,
     )
 
