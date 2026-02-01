@@ -1,119 +1,67 @@
-# apps/analysis/services.py
 
-from django.db import transaction
-from django.utils import timezone
+from __future__ import annotations
+from typing import Dict, List
+from .metrics.evaluation import evaluate_traceability
+from .semantic.embedding_service import SemanticEmbeddingService
 
-from .models import AnalysisRun, BpmnTask, MatchResult
 
-
-def run_analysis_for_project(project):
+def compute_metrics_from_similarity_payload(payload: Dict) -> Dict:
     """
-    MVP backbone (Project-based):
-    - create AnalysisRun
-    - set RUNNING
-    - mark DONE (mock)
-    Later: Serag/Mostafa plug real pipeline here.
-
-    Expected inputs (after removing versioning):
-    - project.active_bpmn : ProjectFile (BPMN) or None
-    - project.active_code : ProjectFile (CODE) or None
-    - project.code_files  : indexed CodeFile rows (project-based)
+    This is the function your views need right now.
+    It consumes the POST payload from the dashboard.
     """
-    # Basic validation (optional but very useful)
-    if not getattr(project, "active_bpmn", None):
-        raise ValueError("No active BPMN uploaded for this project.")
-    if not getattr(project, "active_code", None):
-        raise ValueError("No active Code ZIP uploaded for this project.")
+    threshold = float(payload.get("threshold", 0.7))
+    bpmn_tasks = payload.get("bpmn_tasks", []) or []
+    code_items = payload.get("code_items", []) or []
+    matches = payload.get("matches", []) or []
 
-    with transaction.atomic():
-        run = AnalysisRun.objects.create(
-            project=project,
-            status="PENDING",
-        )
-        run.status = "RUNNING"
-        run.started_at = timezone.now()
-        run.save(update_fields=["status", "started_at"])
-
-    try:
-        # Serag w Mostafa
-        # TODO: real pipeline goes here:
-        # - parse BPMN tasks from project.active_bpmn
-        # - extract code elements from project.code_files or stored folder
-        # - match
-        # - compute metrics
-        #
-        # In MVP mock: just mark done
-        run.status = "DONE"
-        run.finished_at = timezone.now()
-        run.save(update_fields=["status", "finished_at"])
-        return run
-
-    except Exception as e:
-        run.status = "FAILED"
-        run.error_message = str(e)
-        run.finished_at = timezone.now()
-        run.save(update_fields=["status", "error_message", "finished_at"])
-        return run
-
-
-def replace_bpmn_tasks(project, tasks):
+    return evaluate_traceability(
+        bpmn_tasks=bpmn_tasks,
+        code_items=code_items,
+        matches=matches,
+        threshold=threshold,
+    )
+def run_semantic_pipeline_for_project(project_id: int, threshold: float = 0.7) -> Dict:
     """
-    Storage helper (Project-based) for Dev 2 (Serag).
-    tasks: list of dicts:
-      [{"task_id": "...", "name": "...", "description": "..."}]
+    End-to-end:
+    Serag extraction -> MiniLM-L6 similarity -> metrics
     """
-    BpmnTask.objects.filter(project=project).delete()
 
-    objs = []
-    for t in tasks:
-        objs.append(
-            BpmnTask(
-                project=project,
-                task_id=str(t.get("task_id", "")).strip(),
-                name=str(t.get("name", "")).strip() or "Unnamed Task",
-                description=str(t.get("description", "")).strip(),
-            )
-        )
+    # 1) ✅ SERAG extraction (update import path when he delivers)
+    """from .semantic.serag_pipeline import extract_project_text  # example module name
+    tasks, code_items = extract_project_text(project_id)"""
 
-    if objs:
-        BpmnTask.objects.bulk_create(objs)
+    # 2) Build texts
+    task_texts = [(t.get("text") or t.get("taskName") or "").strip() for t in tasks]
+    code_texts = [(c.get("text") or c.get("symbol") or "").strip() for c in code_items]
 
-    return BpmnTask.objects.filter(project=project).count()
+    # 3) If empty, return metrics safely (no crash)
+    if not tasks or not code_items:
+        payload = {"threshold": float(threshold), "bpmn_tasks": tasks, "code_items": code_items, "matches": []}
+        return compute_metrics_from_similarity_payload(payload)
+
+    # 4) MiniLM-L6 embeddings + cosine similarity
+    embedder = SemanticEmbeddingService()
+    sim_matrix = embedder.compute_similarity_matrix(task_texts, code_texts)
+
+    # 5) Convert matrix -> flat matches list
+    matches = []
+    for i, t in enumerate(tasks):
+        for j, c in enumerate(code_items):
+            matches.append({
+                "taskId": t["taskId"],
+                "codeId": c["codeId"],
+                "similarity": float(sim_matrix[i][j]),
+            })
+
+    # 6) Feed metrics
+    payload = {
+        "threshold": float(threshold),
+        "bpmn_tasks": tasks,
+        "code_items": code_items,
+        "matches": matches,
+    }
 
 
-def replace_match_results(project, results):
-    """
-    Storage helper (Project-based) for Dev 2 (Serag) / Dev 3 (Mostafa).
-    results: list of dicts:
-      {
-        "status": "MATCHED|MISSING|EXTRA",
-        "task_id": "... optional ...",
-        "code_ref": "...",
-        "similarity_score": 0.82
-      }
-    """
-    MatchResult.objects.filter(project=project).delete()
+    return compute_metrics_from_similarity_payload(payload)
 
-    # build task lookup (project-based)
-    task_map = {t.task_id: t for t in project.bpmn_tasks.all()}
-
-    objs = []
-    for r in results:
-        status = str(r.get("status", "MATCHED")).upper().strip()
-        task_id = str(r.get("task_id", "")).strip()
-        task = task_map.get(task_id) if task_id else None
-
-        objs.append(
-            MatchResult(
-                project=project,
-                task=task,
-                code_ref=str(r.get("code_ref", "")).strip(),
-                similarity_score=float(r.get("similarity_score", 0.0) or 0.0),
-                status=status,
-            )
-        )
-
-    if objs:
-        MatchResult.objects.bulk_create(objs)
-
-    return MatchResult.objects.filter(project=project).count()
