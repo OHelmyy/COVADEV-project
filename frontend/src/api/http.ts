@@ -53,3 +53,27 @@ export function apiUpload<T>(url: string, form: FormData) {
     body: form,
   });
 }
+
+
+export function apiPatch<T>(url: string, data: Record<string, any>) {
+  const body = new URLSearchParams();
+  Object.entries(data).forEach(([k, v]) => body.append(k, String(v ?? "")));
+
+  return request<T>(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-CSRFToken": csrf() || "",
+    },
+    body,
+  });
+}
+
+export function apiDelete<T>(url: string) {
+  return request<T>(url, {
+    method: "DELETE",
+    headers: {
+      "X-CSRFToken": csrf() || "",
+    },
+  });
+}
