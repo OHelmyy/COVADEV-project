@@ -1,3 +1,18 @@
+# apps/analysis/views.py
+#
+# ✅ Edited to work with Option 1 RBAC (Admin / Evaluator / Developer)
+# ✅ Protects ALL endpoints with login + project access checks
+# ✅ Does NOT change the pipeline logic (services.py stays the same)
+#
+# Key rules used here:
+# - Admin can access everything
+# - Evaluator can access projects where project.evaluator == user
+# - Developer can access projects where ProjectMembership exists
+#
+# IMPORTANT:
+# - The prototype upload endpoint is kept but locked to ADMIN only (recommended).
+#   If you don't need it, delete it entirely.
+
 from __future__ import annotations
 from django.contrib.auth.decorators import login_required
 from apps.projects.models import ProjectMembership, ProjectFile, Project
@@ -11,9 +26,13 @@ from pathlib import Path
 
 from django.conf import settings
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
+from django.contrib.auth.decorators import login_required
+
+from apps.accounts.rbac import is_admin, is_evaluator
+from apps.projects.models import Project, ProjectMembership
 
 from .bpmn.parser import extract_tasks
 from .code.extractor import extract_python_from_directory
@@ -22,6 +41,10 @@ from .semantic.similarity import compute_similarity, top_k_matches
 
 from .services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
 
+
+# ============================================================
+# Helpers
+# ============================================================
 
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
@@ -33,19 +56,60 @@ def _read_json(request) -> dict:
     return json.loads(request.body.decode("utf-8"))
 
 
-# -----------------------------
-# ✅ Prototype upload endpoint
-# -----------------------------
+def _can_open_project(project: Project, user) -> bool:
+    """
+    Option 1 access rule:
+      - Admin can open everything
+      - Evaluator can open projects where project.evaluator == user
+      - Developer can open if membership exists
+    """
+    if is_admin(user):
+        return True
+
+    if is_evaluator(user) and project.evaluator_id == user.id:
+        return True
+
+    return ProjectMembership.objects.filter(project=project, user=user).exists()
+
+
+def _require_project_access(request, project_id: int) -> Project:
+    """
+    Resolve project and enforce access. Returns Project or raises 403 JsonResponse.
+    """
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _can_open_project(project, request.user):
+        # raise a JsonResponse-style "forbidden"
+        # caller should return it
+        return None  # type: ignore
+
+    return project
+
+
+def _forbidden():
+    return JsonResponse({"detail": "Forbidden"}, status=403)
+
+
+# ============================================================
+# ✅ Prototype upload endpoint (LOCKED)
+# ============================================================
+
 @csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def run_analysis(request):
     """
-    Test endpoint for file upload pipeline.
+    ⚠️ Prototype endpoint for direct file upload pipeline.
+    Recommended: ADMIN only (so random users can't upload code/bpmn here).
+
     multipart/form-data:
       - bpmn_file
       - code_zip
       - top_k (optional)
     """
+    if not is_admin(request.user):
+        return _forbidden()
+
     bpmn_file = request.FILES.get("bpmn_file")
     code_zip = request.FILES.get("code_zip")
     top_k = int(request.POST.get("top_k", "3") or "3")
@@ -69,7 +133,8 @@ def run_analysis(request):
         zf.extractall(code_dir)
 
     try:
-        tasks = extract_tasks(bpmn_path)  # depends on your parser
+        # NOTE: if your parser expects bytes, adapt accordingly
+        tasks = extract_tasks(bpmn_path)  # your prototype uses path-based parser
         code_items = extract_python_from_directory(code_dir, project_root=code_dir)
 
         embedded = embed_pipeline(tasks=tasks, code_items=code_items, batch_size=32)
@@ -94,55 +159,135 @@ def run_analysis(request):
         return JsonResponse({"error": str(e), "trace": traceback.format_exc()}, status=500)
 
 
-# -----------------------------
-# ✅ Dashboard endpoint
-# -----------------------------
+# ============================================================
+# ✅ Dashboard page (UI)
+# ============================================================
+
+@login_required
 @require_GET
 def dashboard(request):
+    """
+    If this is a global dashboard page, keep it accessible to logged-in users.
+    Project-specific data should be loaded via the project endpoints below.
+    """
     return render(request, "analysis/dashboard.html")
 
 
-# -----------------------------
-# ✅ The endpoint your dashboard calls
-# -----------------------------
+# ============================================================
+# ✅ The endpoint your dashboard calls (PROJECT-BASED)
+# ============================================================
+
+@login_required
 @require_GET
 def run_project(request, project_id: int):
-    threshold = float(request.GET.get("threshold", 0.7))
+    """
+    Returns the UI-ready payload for a specific project.
+    This calls: run_semantic_pipeline_for_project(project_id, ...)
+
+    Access:
+      - Any user who can open the project (Admin, assigned evaluator, assigned developer)
+    """
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_open_project(project, request.user):
+        return _forbidden()
+
+    # default threshold to project threshold unless override is provided
+    threshold = float(request.GET.get("threshold", project.similarity_threshold or 0.7))
     top_k = int(request.GET.get("top_k", 3))
-    result = run_semantic_pipeline_for_project(project_id, threshold=threshold, top_k=top_k)
-    return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
+
+    try:
+        result = run_semantic_pipeline_for_project(project_id, threshold=threshold, top_k=top_k)
+        return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
+    except Exception as e:
+        return JsonResponse({"error": str(e), "trace": traceback.format_exc()}, status=500)
 
 
-# -----------------------------
-# ✅ Metrics-from-payload endpoint (optional)
-# -----------------------------
+# ============================================================
+# ✅ Metrics-from-payload endpoint (PROJECT-BASED)
+# ============================================================
+
 @csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def run_project_metrics(request, project_id: int):
+    """
+    Uses client payload (tasks/code/matches) to compute metrics.
+
+    Access:
+      - Any user who can open the project
+    """
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_open_project(project, request.user):
+        return _forbidden()
+
     payload = _read_json(request)
-    result = compute_metrics_from_similarity_payload(payload)
-    return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
+    try:
+        result = compute_metrics_from_similarity_payload(payload)
+        return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
+    except Exception as e:
+        return JsonResponse({"error": str(e), "trace": traceback.format_exc()}, status=500)
 
 
 @csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def metrics_summary(request, project_id: int):
+    """
+    Access:
+      - Any user who can open the project
+    """
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_open_project(project, request.user):
+        return _forbidden()
+
     payload = _read_json(request)
-    result = compute_metrics_from_similarity_payload(payload)
-    return JsonResponse(result["summary"], safe=True, json_dumps_params={"ensure_ascii": False})
+    try:
+        result = compute_metrics_from_similarity_payload(payload)
+        return JsonResponse(result["summary"], safe=True, json_dumps_params={"ensure_ascii": False})
+    except Exception as e:
+        return JsonResponse({"error": str(e), "trace": traceback.format_exc()}, status=500)
 
 
 @csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def metrics_details(request, project_id: int):
+    """
+    Access:
+      - Any user who can open the project
+    """
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_open_project(project, request.user):
+        return _forbidden()
+
     payload = _read_json(request)
-    result = compute_metrics_from_similarity_payload(payload)
-    return JsonResponse(result["details"], safe=True, json_dumps_params={"ensure_ascii": False})
+    try:
+        result = compute_metrics_from_similarity_payload(payload)
+        return JsonResponse(result["details"], safe=True, json_dumps_params={"ensure_ascii": False})
+    except Exception as e:
+        return JsonResponse({"error": str(e), "trace": traceback.format_exc()}, status=500)
 
 
 @csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def metrics_developers(request, project_id: int):
+    """
+    Placeholder for developer scoring.
+
+    IMPORTANT for your rules:
+      - Evaluator-only (and Admin) should be able to view/export developer dashboards.
+      - Developers should only see THEIR own dashboard.
+    For now, this endpoint returns "not wired".
+
+    We'll implement this after you add:
+      - DeveloperScore / DeveloperEvaluation models
+      - logic to compute scores per developer upload/run
+    """
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_open_project(project, request.user):
+        return _forbidden()
+
     return JsonResponse({"message": "developer scoring not wired yet"}, safe=True)
 @login_required
 @require_GET
