@@ -1,4 +1,7 @@
 from __future__ import annotations
+from django.contrib.auth.decorators import login_required
+from apps.projects.models import ProjectMembership, ProjectFile, Project
+from apps.analysis.models import AnalysisRun
 
 import json
 import traceback
@@ -141,3 +144,60 @@ def metrics_details(request, project_id: int):
 @require_http_methods(["POST"])
 def metrics_developers(request, project_id: int):
     return JsonResponse({"message": "developer scoring not wired yet"}, safe=True)
+@login_required
+@require_GET
+def dashboard_stats(request):
+    """
+    JSON endpoint for React DashboardPage:
+    GET /api/reports/dashboard/
+    Scoped to projects where the user is a member.
+    """
+
+    memberships = (
+        ProjectMembership.objects
+        .select_related("project")
+        .filter(user=request.user)
+    )
+    project_ids = [m.project_id for m in memberships]
+    unique_project_ids = list(set(project_ids))
+
+    total_projects = len(unique_project_ids)
+
+    # total uploads across user's projects
+    total_uploads = ProjectFile.objects.filter(project_id__in=unique_project_ids).count()
+
+    # analysis runs status across user's projects
+    analyses_done = AnalysisRun.objects.filter(project_id__in=unique_project_ids, status="DONE").count()
+    analyses_pending = AnalysisRun.objects.filter(project_id__in=unique_project_ids).exclude(status="DONE").count()
+
+    # recent projects list (max 10)
+    recent_projects_qs = (
+        Project.objects
+        .filter(id__in=unique_project_ids)
+        .order_by("-created_at")[:10]
+    )
+
+    recent_projects = []
+    for p in recent_projects_qs:
+        last_run = AnalysisRun.objects.filter(project=p).order_by("-created_at").first()
+        status = "done" if (last_run and last_run.status == "DONE") else "pending"
+        updated_at = (last_run.created_at if last_run else p.created_at)
+
+        recent_projects.append({
+            "id": str(p.id),
+            "name": p.name,
+            "status": status,
+            "updatedAt": updated_at.isoformat() if updated_at else "",
+        })
+
+    return JsonResponse(
+        {
+            "totalProjects": total_projects,
+            "totalUploads": total_uploads,
+            "analysesPending": analyses_pending,
+            "analysesDone": analyses_done,
+            "recentProjects": recent_projects,
+        },
+        safe=True,
+        json_dumps_params={"ensure_ascii": False},
+    )

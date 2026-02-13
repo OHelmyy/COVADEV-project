@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import StatCard from "../components/StatCard";
 import StatusMessage from "../components/StatusMessage";
 import { fetchDashboardStats } from "../api/dashboard";
-import type { DashboardStats, ProjectSummary } from "../api/types";
+import type { DashboardStats, DashboardProjectSummary } from "../api/types";
+
+
 
 
 type LoadState = "idle" | "loading" | "success" | "error";
@@ -29,7 +31,8 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const badgeStyle = (status: ProjectSummary["status"]) => ({
+  const badgeStyle = (status: DashboardProjectSummary["status"]) => ({
+
     padding: "4px 10px",
     borderRadius: 999,
     fontSize: 12,
@@ -87,7 +90,8 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.recentProjects.map((p: ProjectSummary) => (
+                {data.recentProjects.map((p: DashboardProjectSummary) => (
+
 
                     <tr key={p.id}>
                       <td style={{ padding: "10px 8px", borderBottom: "1px solid #f3f3f3" }}>{p.name}</td>

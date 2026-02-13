@@ -1,87 +1,6 @@
-import shutil
-import tempfile
-import zipfile
-from pathlib import Path
+# apps/api/projects_api.py
+from __future__ import annotations
 
-from rest_framework.decorators import api_view, parser_classes
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.response import Response
-from rest_framework import status
-
-from apps.analysis.semantic.analyze import analyze_project
-
-
-@api_view(["POST"])
-@parser_classes([MultiPartParser, FormParser])
-def analyze_view(request):
-    """
-    POST multipart/form-data:
-      - bpmn: BPMN XML file (.bpmn or .xml)
-      - code_zip: ZIP file containing code (python/react)
-
-    Optional form fields:
-      - threshold: float
-      - matcher: "greedy" | "best_per_task"
-      - top_k: int
-      - include_debug: "true" | "false"
-    """
-    bpmn_file = request.FILES.get("bpmn")
-    code_zip = request.FILES.get("code_zip")
-
-    if not bpmn_file or not code_zip:
-        return Response(
-            {"error": "Missing required files: bpmn and code_zip"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # Parse optional params
-    threshold = float(request.data.get("threshold", 0.55))
-    matcher = str(request.data.get("matcher", "greedy"))
-    top_k = int(request.data.get("top_k", 3))
-    include_debug = str(request.data.get("include_debug", "false")).lower() == "true"
-
-    # Temp workspace
-    tmp_dir = Path(tempfile.mkdtemp(prefix="covadev_"))
-
-    try:
-        # 1) Save + unzip code
-        zip_path = tmp_dir / "code.zip"
-        zip_path.write_bytes(code_zip.read())
-
-        code_root = tmp_dir / "code"
-        code_root.mkdir(parents=True, exist_ok=True)
-
-        with zipfile.ZipFile(zip_path, "r") as z:
-            z.extractall(code_root)
-
-        # 2) Run analysis
-        bpmn_bytes = bpmn_file.read()
-
-        result = analyze_project(
-            bpmn_input=bpmn_bytes,
-            code_root=code_root,
-            threshold=threshold,
-            matcher=matcher,
-            top_k=top_k,
-            include_debug=include_debug,
-        )
-
-        return Response(result, status=status.HTTP_200_OK)
-
-    except zipfile.BadZipFile:
-        return Response({"error": "Invalid ZIP file"}, status=status.HTTP_400_BAD_REQUEST)
-
-    except Exception as e:
-        # You can log e here
-        return Response(
-            {"error": "Analysis failed", "detail": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-    finally:
-        # 3) Cleanup temp directory
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-# apps/api/views/projects_api.py
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import JsonResponse
@@ -97,18 +16,20 @@ from apps.projects.services import save_bpmn_file, save_code_zip_and_extract
 # ---------------------------
 # Permissions helpers
 # ---------------------------
-
 def _get_membership(project: Project, user: User):
     return ProjectMembership.objects.filter(project=project, user=user).first()
 
+
 def _require_member(project: Project, user: User):
     return _get_membership(project, user)
+
 
 def _require_evaluator(project: Project, user: User):
     m = _get_membership(project, user)
     if not m or m.role != ProjectMembership.Role.EVALUATOR:
         return None
     return m
+
 
 def _latest_file(project: Project, file_type: str):
     return (
@@ -119,15 +40,30 @@ def _latest_file(project: Project, file_type: str):
         .first()
     )
 
+
+# ---------------------------
+# JSON helpers
+# ---------------------------
 def _json_project_summary(p: Project, membership: ProjectMembership | None = None):
     return {
         "id": p.id,
         "name": p.name,
         "description": p.description or "",
         "similarityThreshold": float(p.similarity_threshold),
-        "createdAt": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
         "membership": {"role": membership.role} if membership else None,
     }
+
+
+def _json_file_payload(f: ProjectFile | None):
+    if not f:
+        return None
+    return {
+        "id": f.id,
+        "originalName": f.original_name,
+        "createdAt": f.created_at.isoformat() if f.created_at else None,
+        "uploadedBy": f.uploaded_by.username if f.uploaded_by else None,
+    }
+
 
 def _json_project_detail(project: Project, membership: ProjectMembership):
     active_bpmn = project.active_bpmn
@@ -149,19 +85,8 @@ def _json_project_detail(project: Project, membership: ProjectMembership):
         .order_by("role", "user__username")
     )
 
-    def file_payload(f):
-        if not f:
-            return None
-        return {
-            "id": f.id,
-            "originalName": f.original_name,
-            "createdAt": f.created_at.isoformat() if f.created_at else None,
-            "uploadedBy": f.uploaded_by.username if f.uploaded_by else None,
-            "fileType": getattr(f, "file_type", None),
-        }
-
     return {
-        "project": _json_project_summary(project, membership)["__class__"] if False else {
+        "project": {
             "id": project.id,
             "name": project.name,
             "description": project.description or "",
@@ -169,10 +94,10 @@ def _json_project_detail(project: Project, membership: ProjectMembership):
         },
         "membership": {"role": membership.role},
         "activeUploads": {
-            "activeBpmn": file_payload(active_bpmn),
-            "activeCode": file_payload(active_code),
-            "latestBpmn": file_payload(latest_bpmn),
-            "latestCode": file_payload(latest_code),
+            "activeBpmn": _json_file_payload(active_bpmn),
+            "activeCode": _json_file_payload(active_code),
+            "latestBpmn": _json_file_payload(latest_bpmn),
+            "latestCode": _json_file_payload(latest_code),
         },
         "counts": {
             "codeFiles": code_files_count,
@@ -205,10 +130,10 @@ def _json_project_detail(project: Project, membership: ProjectMembership):
 # ---------------------------
 # Projects: list + create
 # ---------------------------
-
 @login_required
 @require_http_methods(["GET", "POST"])
 def api_projects_list_create(request):
+    # GET: list projects where current user is a member
     if request.method == "GET":
         memberships = (
             ProjectMembership.objects
@@ -219,7 +144,7 @@ def api_projects_list_create(request):
         data = [_json_project_summary(m.project, m) for m in memberships]
         return JsonResponse(data, safe=False)
 
-    # POST create
+    # POST: create project
     name = (request.POST.get("name") or "").strip()
     description = (request.POST.get("description") or "").strip()
     threshold = (request.POST.get("similarity_threshold") or "0.6").strip()
@@ -253,25 +178,22 @@ def api_projects_list_create(request):
 # ---------------------------
 # Project detail
 # ---------------------------
-
 @login_required
 @require_http_methods(["GET"])
-def api_project_detail(request, project_id):
+def api_project_detail(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
     membership = _require_member(project, request.user)
     if not membership:
         return JsonResponse({"detail": "Forbidden"}, status=403)
-
     return JsonResponse(_json_project_detail(project, membership))
 
 
 # ---------------------------
 # Members
 # ---------------------------
-
 @login_required
 @require_http_methods(["GET", "POST"])
-def api_project_members(request, project_id):
+def api_project_members(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not _require_evaluator(project, request.user):
@@ -310,7 +232,7 @@ def api_project_members(request, project_id):
 
 @login_required
 @require_POST
-def api_remove_member(request, project_id, membership_id):
+def api_remove_member(request, project_id: int, membership_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not _require_evaluator(project, request.user):
@@ -328,10 +250,9 @@ def api_remove_member(request, project_id, membership_id):
 # ---------------------------
 # Logs
 # ---------------------------
-
 @login_required
 @require_http_methods(["GET"])
-def api_project_logs(request, project_id):
+def api_project_logs(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not _require_evaluator(project, request.user):
@@ -362,10 +283,9 @@ def api_project_logs(request, project_id):
 # ---------------------------
 # Settings: threshold
 # ---------------------------
-
 @login_required
 @require_POST
-def api_update_threshold(request, project_id):
+def api_update_threshold(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not _require_evaluator(project, request.user):
@@ -386,10 +306,9 @@ def api_update_threshold(request, project_id):
 # ---------------------------
 # Uploads
 # ---------------------------
-
 @login_required
 @require_POST
-def api_upload_bpmn(request, project_id):
+def api_upload_bpmn(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not _require_evaluator(project, request.user):
@@ -408,7 +327,7 @@ def api_upload_bpmn(request, project_id):
 
 @login_required
 @require_POST
-def api_upload_code_zip(request, project_id):
+def api_upload_code_zip(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not _require_member(project, request.user):
@@ -428,10 +347,9 @@ def api_upload_code_zip(request, project_id):
 # ---------------------------
 # Run analysis
 # ---------------------------
-
 @login_required
 @require_POST
-def api_run_analysis(request, project_id):
+def api_run_analysis(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not _require_member(project, request.user):
@@ -457,11 +375,10 @@ def api_run_analysis(request, project_id):
 
 
 # ---------------------------
-# Data endpoints (same as your old JSON, but under /api/)
+# Data endpoints
 # ---------------------------
-
 @login_required
-def api_project_files(request, project_id):
+def api_project_files(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
     if not _require_member(project, request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
@@ -471,7 +388,7 @@ def api_project_files(request, project_id):
 
 
 @login_required
-def api_project_tasks(request, project_id):
+def api_project_tasks(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
     if not _require_member(project, request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
@@ -481,7 +398,7 @@ def api_project_tasks(request, project_id):
 
 
 @login_required
-def api_project_matches(request, project_id):
+def api_project_matches(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
     if not _require_member(project, request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)

@@ -1,31 +1,55 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-export class HttpError extends Error {
-  status: number;
-  body?: unknown;
-
-  constructor(message: string, status: number, body?: unknown) {
-    super(message);
-    this.status = status;
-    this.body = body;
-  }
+// frontend/src/api/http.ts
+function getCookie(name: string) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()!.split(";").shift();
+  return undefined;
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
+function csrf() {
+  return getCookie("csrftoken");
+}
+
+async function request<T>(url: string, options: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...options,
+    credentials: "include",
+    headers: {
+      ...(options.headers || {}),
+    },
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    let body: unknown = undefined;
-    try {
-      body = await res.json();
-    } catch {
-      // ignore
-    }
-    throw new HttpError(`GET ${path} failed`, res.status, body);
+    throw new Error(text || `HTTP ${res.status}`);
   }
+  return text ? JSON.parse(text) : (null as any);
+}
 
-  return (await res.json()) as T;
+export function apiGet<T>(url: string) {
+  return request<T>(url, { method: "GET" });
+}
+
+export function apiPost<T>(url: string, data: Record<string, any>) {
+  const body = new URLSearchParams();
+  Object.entries(data).forEach(([k, v]) => body.append(k, String(v ?? "")));
+
+  return request<T>(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-CSRFToken": csrf() || "",
+    },
+    body,
+  });
+}
+
+export function apiUpload<T>(url: string, form: FormData) {
+  return request<T>(url, {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": csrf() || "",
+    },
+    body: form,
+  });
 }
