@@ -1,10 +1,9 @@
 # apps/api/urls.py
-from django.urls import path
+from django.urls import include, path
 
 from apps.analysis import views as analysis_views
 from .projects_api import (
     api_projects_list_create,
-    api_project_detail,
     api_project_members,
     api_remove_member,
     api_project_logs,
@@ -15,15 +14,17 @@ from .projects_api import (
     api_project_files,
     api_project_tasks,
     api_project_matches,
+    api_project_detail_or_delete
+    
 )
 
 app_name = "api"
 
 urlpatterns = [
     # Projects
-    path("projects/", api_projects_list_create, name="projects_list_create"),
-    path("projects/<int:project_id>/", api_project_detail, name="project_detail"),
-
+    path("projects/<int:project_id>/", api_project_detail_or_delete),
+    path("projects/", api_projects_list_create),
+    
     # Members
     path("projects/<int:project_id>/members/", api_project_members, name="project_members"),
     path("projects/<int:project_id>/members/<int:membership_id>/remove/", api_remove_member, name="remove_member"),
@@ -46,4 +47,11 @@ urlpatterns = [
 
     # Dashboard
     path("reports/dashboard/", analysis_views.dashboard_stats, name="dashboard_stats"),
+
+    #auth
+    path("auth/", include("apps.api.auth_urls")),
+
+    #adminnn
+    path("admin/", include("apps.api.admin_users_urls")),
+
 ]

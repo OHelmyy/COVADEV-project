@@ -126,10 +126,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-LOGIN_REDIRECT_URL = "/projects/"
-LOGOUT_REDIRECT_URL = "/accounts/login/"
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "projects:list"
+LOGOUT_REDIRECT_URL = "accounts:login"
 
-LOGIN_URL = "/accounts/login/"
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
