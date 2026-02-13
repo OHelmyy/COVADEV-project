@@ -4,15 +4,16 @@ import { Link } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
 import { fetchProjects } from "../api/projects";
 import type { ProjectSummaryApi } from "../api/types";
-
+import { useAuth } from "../app/auth";
 
 type LoadState = "idle" | "loading" | "success" | "error";
 
 export default function ProjectsPage() {
   const [state, setState] = useState<LoadState>("idle");
   const [rows, setRows] = useState<ProjectSummaryApi[]>([]);
-
   const [errorText, setErrorText] = useState("");
+
+  const { user } = useAuth();
 
   async function load() {
     try {
@@ -31,18 +32,26 @@ export default function ProjectsPage() {
     load();
   }, []);
 
+  
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
+        {user?.role === "ADMIN" ? (
+        <div>
+          <h1 style={{ margin: 0 }}>All Projects</h1>
+        </div>
+        ) : 
         <div>
           <h1 style={{ margin: 0 }}>Your Projects</h1>
-          <p style={{ marginTop: 6, color: "#555" }}>Only projects you are a member of.</p>
-        </div>
-        <Link to="/projects/create" style={{ textDecoration: "none" }}>
-          <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-            + Create Project
-          </button>
-        </Link>
+        </div>}
+        {/* ✅ Only Admin can see Create Project */}
+        {user?.role === "ADMIN" ? (
+          <Link to="/projects/create" style={{ textDecoration: "none" }}>
+            <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+              + Create Project
+            </button>
+          </Link>
+        ) : null}
       </div>
 
       {state === "loading" || state === "idle" ? <StatusMessage title="Loading projects..." /> : null}
@@ -54,7 +63,7 @@ export default function ProjectsPage() {
       {state === "success" ? (
         <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff" }}>
           {rows.length === 0 ? (
-            <div style={{ padding: 16, color: "#777" }}>No projects yet. Create one.</div>
+            <div style={{ padding: 16, color: "#777" }}>No projects yet.</div>
           ) : (
             rows.map((p) => (
               <div
@@ -71,7 +80,6 @@ export default function ProjectsPage() {
                   <div style={{ fontWeight: 800 }}>{p.name}</div>
                   <div style={{ color: "#666", marginTop: 4 }}>{p.description || "No description"}</div>
                   <div style={{ color: "#888", marginTop: 6, fontSize: 13 }}>
-                    Role: <b>{p.membership?.role ?? "—"}</b> • Threshold: <b>{p.similarityThreshold}</b>
                   </div>
                 </div>
 
