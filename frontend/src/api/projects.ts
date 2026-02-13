@@ -1,5 +1,5 @@
 // frontend/src/api/projects.ts
-import { apiGet, apiPost, apiUpload } from "./http";
+import { apiGet, apiPost, apiUpload , apiDelete } from "./http";
 import type { ProjectDetailApi, ProjectSummaryApi } from "./types";
 
 export function fetchProjects() {
@@ -10,6 +10,10 @@ export function createProject(input: {
   name: string;
   description?: string;
   similarity_threshold: number;
+
+  // ✅ added for Admin create (backend expects these)
+  evaluatorEmail: string;
+  developerEmails?: string; // comma-separated
 }) {
   return apiPost<ProjectSummaryApi>("/api/projects/", input);
 }
@@ -33,10 +37,7 @@ export function addMember(projectId: number, email: string) {
 }
 
 export function removeMember(projectId: number, membershipId: number) {
-  return apiPost<{ ok: boolean }>(
-    `/api/projects/${projectId}/members/${membershipId}/remove/`,
-    {}
-  );
+  return apiPost<{ ok: boolean }>(`/api/projects/${projectId}/members/${membershipId}/remove/`, {});
 }
 
 export function uploadBpmn(projectId: number, file: File) {
@@ -93,4 +94,8 @@ export function fetchLogs(projectId: number) {
       createdAt: string;
     }>;
   }>(`/api/projects/${projectId}/logs/`);
+}
+
+export function deleteProject(projectId: number) {
+  return apiDelete<{ ok: true }>(`/api/projects/${projectId}/`);
 }
