@@ -6,21 +6,37 @@ from django.contrib.auth.models import User
 class Project(models.Model):
     """
     Main container for a validation project.
-    The evaluator creates it, then can add developers as project members.
 
-    Versioning removed:
-    - We keep only the current "active" BPMN and Code ZIP.
-    - Upload history is kept in ProjectFile (upload logs).
+    ✅ New rules:
+    - ONLY Admin creates projects (enforced in views / API).
+    - Admin assigns:
+        - evaluator (one user)
+        - developers (many users) via ProjectMembership rows
+
+    Notes:
+    - created_by remains useful as "created by admin".
+    - evaluator is stored on the project directly for fast filtering/permissions.
     """
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+
+    # Admin user who created the project
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_projects")
+
+    # The evaluator assigned by admin (one per project)
+    evaluator = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_evaluator_projects",
+    )
 
     similarity_threshold = models.FloatField(default=0.6)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # Active upload pointers (no versions)
+    # Active upload pointers (no versioning)
     active_bpmn = models.ForeignKey(
         "projects.ProjectFile",
         on_delete=models.SET_NULL,
@@ -42,18 +58,27 @@ class Project(models.Model):
 
 class ProjectMembership(models.Model):
     """
-    Project-level roles:
-    - Evaluator: manages members + BPMN + settings
-    - Developer: can upload code + run analysis (as you requested)
+    Developers assigned to a project.
+
+    ✅ Under your latest rules:
+    - evaluator is NOT stored as membership (it's Project.evaluator).
+    - membership rows represent developers added by admin (or evaluator if you allow later).
+    - Admin has system role; not required as membership.
+
+    Compatibility:
+    - We keep a 'role' field defaulting to DEVELOPER in case older code expects m.role.
+      Your API uses getattr(m, "role", "DEVELOPER") so either way works.
     """
 
     class Role(models.TextChoices):
-        EVALUATOR = "EVALUATOR", "Evaluator"
         DEVELOPER = "DEVELOPER", "Developer"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="memberships")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="project_memberships")
-    role = models.CharField(max_length=20, choices=Role.choices)
+
+    # Optional/compat field (safe default)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.DEVELOPER)
+
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -68,14 +93,12 @@ class ProjectMembership(models.Model):
 class ProjectFile(models.Model):
     """
     Upload log record.
-    Every upload creates a ProjectFile row so evaluator can audit:
+    Every upload creates a ProjectFile row for auditing:
     - who uploaded
     - what type
-    - file name
-    - where it was stored
-    - when it happened
-
-    project.active_bpmn / project.active_code point to the "current" files.
+    - original name
+    - stored path
+    - extracted_dir for code zips
     """
 
     FILE_TYPES = (
@@ -90,6 +113,8 @@ class ProjectFile(models.Model):
     stored_path = models.TextField()
 
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    # for CODE: absolute or relative folder path after extraction
     extracted_dir = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -109,9 +134,9 @@ class ProjectFile(models.Model):
 class CodeFile(models.Model):
     """
     Indexed file list extracted from the most recently uploaded Code ZIP.
-    We replace the index each time a new ZIP is uploaded.
+    Replaced each time a new ZIP is uploaded.
 
-    This powers:
+    Powers:
     - file browsing in UI
     - downstream analysis pipeline
     """
@@ -122,7 +147,6 @@ class CodeFile(models.Model):
     ext = models.CharField(max_length=30, blank=True, default="")
     size_bytes = models.BigIntegerField(default=0)
 
-    # who uploaded the ZIP that produced this index
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
     indexed_at = models.DateTimeField(auto_now=True)

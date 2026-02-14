@@ -1,19 +1,35 @@
 from django.shortcuts import render
 
+from django.urls import reverse
 from django.contrib.auth import login
 from django.contrib.auth.views import LoginView, LogoutView
 from django.shortcuts import redirect, render
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.views.decorators.http import require_http_methods
+from .models import UserProfile
+
 
 
 class UserLoginView(LoginView):
     template_name = "accounts/login.html"
 
+    def get_success_url(self):
+        user = self.request.user
+        role = getattr(getattr(user, "profile", None), "role", UserProfile.Role.DEVELOPER)
+
+        if role == UserProfile.Role.ADMIN:
+            return reverse("accounts:admin_user_list")
+
+        # evaluator + developer both go to role-filtered projects list
+        return reverse("projects:list")
+
+from django.contrib.auth.views import LogoutView
+from django.urls import reverse_lazy
 
 class UserLogoutView(LogoutView):
-    pass
+    next_page = reverse_lazy("accounts:login")
+
 
 
 @require_http_methods(["GET", "POST"])

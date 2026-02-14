@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    "rest_framework",
+"rest_framework",
+    'corsheaders',  
 
     'apps.accounts',
     'apps.projects',
@@ -123,14 +124,14 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = "/static/"
+STATIC_URL = 'static/'
 
-STATICFILES_DIRS = [
-    BASE_DIR / "static",
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "projects:list"
+LOGOUT_REDIRECT_URL = "accounts:login"
+
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
-
-LOGIN_REDIRECT_URL = "/projects/"
-LOGOUT_REDIRECT_URL = "/accounts/login/"
-
-LOGIN_URL = "/accounts/login/"
-
