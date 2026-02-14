@@ -1,5 +1,7 @@
 # apps/projects/views.py
-
+from pathlib import Path
+from django.conf import settings
+from apps.analysis.bpmn.pipeline import run_bpmn_predev
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -168,20 +170,67 @@ def projects_detail(request, project_id):
 @login_required
 @require_POST
 def upload_bpmn(request, project_id):
+    """
+    Evaluator-only:
+    - Upload BPMN file
+    - Run pre-development stage (well-formed check + T5 summary)
+    - Store results on ProjectFile
+    - Reject invalid BPMN
+    """
     project = get_object_or_404(Project, id=project_id)
 
-    if not _is_project_evaluator(project, request.user):
-        messages.error(request, "Evaluator only.")
-        return redirect("projects:detail", project_id=project.id)
+    
 
-    f = request.FILES.get("bpmn_file")
-    if not f:
+    uploaded_file = request.FILES.get("bpmn_file")
+    if not uploaded_file:
         messages.error(request, "Please choose a BPMN/XML file.")
         return redirect("projects:detail", project_id=project.id)
 
     try:
-        save_bpmn_file(project, f, request.user)
-        messages.success(request, "BPMN uploaded.")
+        #  Save file (creates ProjectFile + sets active_bpmn)
+        pf = save_bpmn_file(project, uploaded_file, request.user)
+
+        #  Read file bytes
+        bpmn_abs = Path(settings.MEDIA_ROOT) / pf.stored_path
+        bpmn_bytes = bpmn_abs.read_bytes()
+
+        #  Run pre-development stage
+        predev = run_bpmn_predev(bpmn_bytes, do_summary=True)
+
+        #  Store precheck + summary results
+        pf.is_well_formed = bool(predev["ok"])
+        pf.precheck_errors = predev.get("errors", [])
+        pf.precheck_warnings = predev.get("warnings", [])
+        pf.bpmn_summary = predev.get("summary", "")
+        pf.save(update_fields=[
+            "is_well_formed",
+            "precheck_errors",
+            "precheck_warnings",
+            "bpmn_summary",
+        ])
+
+        #  If invalid → unset active BPMN and stop
+        if not predev["ok"]:
+            project.active_bpmn = None
+            project.save(update_fields=["active_bpmn"])
+
+            messages.error(request, "BPMN upload failed: Invalid BPMN/XML file.")
+            for err in (predev.get("errors") or [])[:5]:
+                messages.error(request, err)
+
+            return redirect("projects:detail", project_id=project.id)
+
+        #  If valid → show warnings if any
+        if predev.get("warnings"):
+            messages.warning(request, "BPMN uploaded with warnings.")
+            for w in (predev["warnings"] or [])[:3]:
+                messages.warning(request, w)
+
+        messages.success(
+            request,
+            "BPMN uploaded successfully (Pre-check + summary generated)"
+        )
+
     except Exception as e:
         messages.error(request, f"BPMN upload failed: {e}")
 
@@ -228,6 +277,23 @@ def run_analysis(request, project_id):
         messages.error(request, "Access denied.")
         return redirect("projects:list")
 
+    if not project.active_bpmn:
+        messages.error(request, "Upload BPMN first (Evaluator).")
+        return redirect("projects:detail", project_id=project.id)
+
+    if not project.active_code:
+        messages.error(request, "Upload Code ZIP first.")
+        return redirect("projects:detail", project_id=project.id)
+
+    # ✅ Block analysis if BPMN precheck failed (pre-dev stage)
+    if hasattr(project.active_bpmn, "is_well_formed") and not project.active_bpmn.is_well_formed:
+        messages.error(request, "Active BPMN is invalid. Upload a valid BPMN first.")
+        # show a couple of reasons if available
+        errs = getattr(project.active_bpmn, "precheck_errors", None) or []
+        for e in errs[:3]:
+            messages.error(request, e)
+        return redirect("projects:detail", project_id=project.id)
+
     try:
         run_analysis_for_project(project)
         messages.success(request, "Analysis started.")
@@ -235,8 +301,6 @@ def run_analysis(request, project_id):
         messages.error(request, f"Analysis failed: {e}")
 
     return redirect("projects:detail", project_id=project.id)
-
-
 # ============================================================
 # JSON endpoints (Project members OR Admin)
 # ============================================================

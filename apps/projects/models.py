@@ -118,6 +118,11 @@ class ProjectFile(models.Model):
     extracted_dir = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
+    #Pre-development outputs (mainly BPMN uploads)
+    is_well_formed = models.BooleanField(default=False)
+    precheck_errors = models.JSONField(default=list, blank=True)
+    precheck_warnings = models.JSONField(default=list, blank=True)
+    bpmn_summary = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["-created_at"]

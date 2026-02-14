@@ -38,7 +38,6 @@ from .bpmn.parser import extract_tasks
 from .code.extractor import extract_python_from_directory
 from .embeddings.pipeline import embed_pipeline
 from .semantic.similarity import compute_similarity, top_k_matches
-
 from .services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
 
 
@@ -195,11 +194,22 @@ def run_project(request, project_id: int):
     threshold = float(request.GET.get("threshold", project.similarity_threshold or 0.7))
     top_k = int(request.GET.get("top_k", 3))
 
+    result = run_semantic_pipeline_for_project(project_id, threshold=threshold, top_k=top_k)
+
+    # Attach pre-dev info stored on active_bpmn
     try:
-        result = run_semantic_pipeline_for_project(project_id, threshold=threshold, top_k=top_k)
-        return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
-    except Exception as e:
-        return JsonResponse({"error": str(e), "trace": traceback.format_exc()}, status=500)
+        from apps.projects.models import Project
+        project = Project.objects.select_related("active_bpmn").get(id=project_id)
+        ab = project.active_bpmn
+        result["bpmn_summary"] = (ab.bpmn_summary if ab else "") or ""
+        result["precheck_warnings"] = (ab.precheck_warnings if ab else []) or []
+        result["is_well_formed"] = bool(ab.is_well_formed) if ab else True
+    except Exception:
+        result["bpmn_summary"] = ""
+        result["precheck_warnings"] = []
+        result["is_well_formed"] = True
+
+    return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
 
 
 # ============================================================
