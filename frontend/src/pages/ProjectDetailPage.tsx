@@ -26,7 +26,7 @@ type MatchRow = {
   code_ref: string;
 };
 
-type TabKey = "overview" | "uploads" | "settings" | "results" | "runs" | "members";
+type TabKey = "overview"  | "uploads" | "bpmnCheck"| "settings" | "results" | "runs" | "members";
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams();
@@ -66,10 +66,15 @@ export default function ProjectDetailPage() {
   const tabs = useMemo(() => {
     const all: { key: TabKey; label: string; visible: boolean }[] = [
       { key: "overview", label: "Overview", visible: true },
+
+      // ✅ NEW: BPMN Check available for ALL roles
+      
       { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin }, // hide for admin
+      { key: "bpmnCheck", label: "BPMN Check", visible: true },
       { key: "settings", label: "Settings", visible: canUpdateThreshold || canManageMembers || canViewUploadLogs }, // evaluator only
       { key: "results", label: "Results", visible: true },
       { key: "runs", label: "Runs", visible: true },
+
       { key: "members", label: "Members", visible: true },
     ];
     return all.filter((t) => t.visible);
@@ -175,18 +180,26 @@ export default function ProjectDetailPage() {
 
   //delete function
   async function onDeleteProject() {
-  if (!window.confirm("Delete this project permanently? This cannot be undone.")) return;
+    if (!window.confirm("Delete this project permanently? This cannot be undone.")) return;
 
-  setActionMsg("Deleting project...");
-  try {
-    await deleteProject(id);
-    setActionMsg("");
-    // send admin back to projects list
-    window.location.href = "/projects";
-  } catch (e: any) {
-    setActionMsg(`Delete failed: ${e?.message ?? e}`);
+    setActionMsg("Deleting project...");
+    try {
+      await deleteProject(id);
+      setActionMsg("");
+      // send admin back to projects list
+      window.location.href = "/projects";
+    } catch (e: any) {
+      setActionMsg(`Delete failed: ${e?.message ?? e}`);
+    }
   }
-}
+
+  //time formating helpers
+  function fmtDate(iso?: string | null) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
+  }
+
   // Result groups
   const matched = useMemo(
     () => matches.filter((x) => x.task && !String(x.status).toLowerCase().includes("missing")),
@@ -228,6 +241,13 @@ export default function ProjectDetailPage() {
   if (state === "loading" || state === "idle") return <StatusMessage title="Loading project..." />;
   if (state === "error") return <StatusMessage title="Failed to load project" message={errorText} onRetry={load} />;
   if (!data) return null;
+
+  // BPMN Check payload (optional fields; won't crash if backend doesn't send them)
+  const bpmnMeta: any = (data as any)?.activeUploads?.activeBpmn ?? null;
+  const isWellFormed = Boolean(bpmnMeta?.isWellFormed);
+  const precheckWarnings: string[] = Array.isArray(bpmnMeta?.precheckWarnings) ? bpmnMeta.precheckWarnings : [];
+  const precheckErrors: string[] = Array.isArray(bpmnMeta?.precheckErrors) ? bpmnMeta.precheckErrors : [];
+  const bpmnSummary: string = typeof bpmnMeta?.bpmnSummary === "string" ? bpmnMeta.bpmnSummary : "";
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 14, alignItems: "start" }}>
@@ -317,6 +337,106 @@ export default function ProjectDetailPage() {
           </>
         ) : null}
 
+        {/* ✅ TAB: BPMN Check (available for all users) */}
+        {activeTab === "bpmnCheck" ? (
+          <Card>
+            <h3 style={{ marginTop: 0 }}>BPMN Check</h3>
+
+            {/* Current uploads summary (like your template) */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+              <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
+                <div style={{ color: "#777" }}>Active BPMN</div>
+                <div style={{ fontWeight: 800, marginTop: 4 }}>
+                  {data.activeUploads.activeBpmn?.originalName ?? <span style={{ color: "#888" }}>None uploaded yet</span>}
+                </div>
+                {data.activeUploads.activeBpmn?.uploadedBy ? (
+                  <div style={{ color: "#888", fontSize: 13, marginTop: 6 }}>
+                    Uploaded by {data.activeUploads.activeBpmn.uploadedBy}
+                    {data.activeUploads.activeBpmn.createdAt ? ` • ${fmtDate(data.activeUploads.activeBpmn.createdAt)}` : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
+                <div style={{ color: "#777" }}>Active Code ZIP</div>
+                <div style={{ fontWeight: 800, marginTop: 4 }}>
+                  {data.activeUploads.activeCode?.originalName ?? <span style={{ color: "#888" }}>None uploaded yet</span>}
+                </div>
+                {data.activeUploads.activeCode?.uploadedBy ? (
+                  <div style={{ color: "#888", fontSize: 13, marginTop: 6 }}>
+                    Uploaded by {data.activeUploads.activeCode.uploadedBy}
+                    {data.activeUploads.activeCode.createdAt ? ` • ${fmtDate(data.activeUploads.activeCode.createdAt)}` : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {/* quick stats row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 12 }}>
+              <Stat label="Indexed files" value={data.counts.codeFiles} />
+              <Stat label="BPMN tasks" value={data.counts.tasks} />
+              <Stat label="Match results" value={data.counts.matches} />
+            </div>
+
+            {/* Pre-development section (only if BPMN exists) */}
+            {data.activeUploads.activeBpmn ? (
+              <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12, marginTop: 12 }}>
+                <h3 style={{ marginTop: 0 }}>Pre-development</h3>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 12 }}>
+                  {/* Well-Formed Check */}
+                  <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
+                    <div style={{ color: "#777" }}>BPMN Well-Formed Check</div>
+
+                    {isWellFormed ? (
+                      <div style={{ marginTop: 8, fontWeight: 900 }}>✅ Valid BPMN/XML</div>
+                    ) : (
+                      <div style={{ marginTop: 8, fontWeight: 900 }}>❌ Invalid BPMN/XML</div>
+                    )}
+
+                    {precheckWarnings.length > 0 ? (
+                      <>
+                        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 800, color: "#777" }}>Warnings</div>
+                        <pre style={codeboxStyle}>{precheckWarnings.map((w) => `- ${w}`).join("\n")}</pre>
+                      </>
+                    ) : null}
+
+                    {precheckErrors.length > 0 ? (
+                      <>
+                        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 800, color: "#777" }}>Errors</div>
+                        <pre style={codeboxStyle}>{precheckErrors.map((e) => `- ${e}`).join("\n")}</pre>
+                      </>
+                    ) : null}
+
+                    {precheckWarnings.length === 0 && precheckErrors.length === 0 ? (
+                      <div style={{ color: "#888", marginTop: 10, fontSize: 13 }}>
+                        No warnings/errors returned (or backend doesn't expose them yet).
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* BPMN Summary */}
+                  <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
+                    <div style={{ color: "#777" }}>BPMN Summary (T5)</div>
+
+                    {bpmnSummary ? (
+                      <div style={{ marginTop: 10, fontWeight: 700, lineHeight: 1.6 }}>{bpmnSummary}</div>
+                    ) : (
+                      <div style={{ color: "#888", marginTop: 10 }}>No summary generated yet.</div>
+                    )}
+
+                    <div style={{ color: "#888", marginTop: 10, fontSize: 13 }}>
+                      Generated from extracted process/tasks (no manual descriptions required).
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ color: "#888", marginTop: 12 }}>Upload a BPMN file to see well-formed check, warnings, errors, and summary.</div>
+            )}
+          </Card>
+        ) : null}
+
         {/* TAB: Uploads & Tools (not admin) */}
         {activeTab === "uploads" ? (
           <Card>
@@ -369,10 +489,7 @@ export default function ProjectDetailPage() {
 
               {canRunAnalysis ? (
                 <>
-                  <button
-                    onClick={onRunAnalysis}
-                    style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                  >
+                  <button onClick={onRunAnalysis} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
                     Run analysis
                   </button>
                   <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>Runs analysis using current active uploads.</div>
@@ -412,17 +529,13 @@ export default function ProjectDetailPage() {
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
                   {canManageMembers ? (
                     <Link to={`/projects/${id}/members`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Manage Members
-                      </button>
+                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Manage Members</button>
                     </Link>
                   ) : null}
 
                   {canViewUploadLogs ? (
                     <Link to={`/projects/${id}/logs`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Upload Logs
-                      </button>
+                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Upload Logs</button>
                     </Link>
                   ) : null}
                 </div>
@@ -653,3 +766,16 @@ function SectionTable(props: { title: string; emptyText: string; table: React.Re
 
 const th: React.CSSProperties = { padding: "10px 8px", borderBottom: "1px solid #eee" };
 const td: React.CSSProperties = { padding: "10px 8px", borderBottom: "1px solid #f3f3f3" };
+
+// ✅ NEW: code box styling (like your template)
+const codeboxStyle: React.CSSProperties = {
+  marginTop: 8,
+  maxHeight: 160,
+  overflow: "auto",
+  whiteSpace: "pre-wrap",
+  background: "#0b0f1a",
+  color: "#e5e7eb",
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #111827",
+};

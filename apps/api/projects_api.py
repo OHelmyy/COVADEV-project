@@ -84,13 +84,28 @@ def _json_project_summary(p: Project, user: User):
 def _json_file_payload(f: ProjectFile | None):
     if not f:
         return None
-    return {
+
+    payload = {
         "id": f.id,
         "originalName": f.original_name,
         "createdAt": f.created_at.isoformat() if f.created_at else None,
         "uploadedBy": f.uploaded_by.username if f.uploaded_by else None,
+        "fileType": getattr(f, "file_type", None),
     }
 
+    # ✅ BPMN pre-check fields (only if they exist on the model)
+    # Your template references:
+    # - is_well_formed
+    # - precheck_warnings
+    # - precheck_errors
+    # - bpmn_summary
+    if getattr(f, "file_type", None) == "BPMN":
+        payload["isWellFormed"] = bool(getattr(f, "is_well_formed", False))
+        payload["precheckWarnings"] = getattr(f, "precheck_warnings", []) or []
+        payload["precheckErrors"] = getattr(f, "precheck_errors", []) or []
+        payload["bpmnSummary"] = getattr(f, "bpmn_summary", "") or ""
+
+    return payload
 
 def _json_project_detail(project: Project, user: User):
     active_bpmn = project.active_bpmn
