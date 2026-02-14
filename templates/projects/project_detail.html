@@ -84,7 +84,51 @@
     </div>
   </div>
 </div>
+{% if project.active_bpmn %}
+  <div class="section card">
+    <h3>Pre-development</h3>
 
+    <div class="row" style="grid-template-columns: 1fr 1fr; gap:16px; margin-top:12px;">
+      <div class="card">
+        <div class="muted">BPMN Well-Formed Check</div>
+
+        {% if project.active_bpmn.is_well_formed %}
+          <div style="margin-top:8px; font-weight:900;">✅ Valid BPMN/XML</div>
+        {% else %}
+          <div style="margin-top:8px; font-weight:900;">❌ Invalid BPMN/XML</div>
+        {% endif %}
+
+        {% if project.active_bpmn.precheck_warnings and project.active_bpmn.precheck_warnings|length > 0 %}
+          <div class="small muted" style="margin-top:10px;">Warnings</div>
+          <pre class="codebox" style="margin-top:8px; max-height:160px; overflow:auto;">{% for w in project.active_bpmn.precheck_warnings %}- {{ w }}
+{% endfor %}</pre>
+        {% endif %}
+
+        {% if project.active_bpmn.precheck_errors and project.active_bpmn.precheck_errors|length > 0 %}
+          <div class="small muted" style="margin-top:10px;">Errors</div>
+          <pre class="codebox" style="margin-top:8px; max-height:160px; overflow:auto;">{% for e in project.active_bpmn.precheck_errors %}- {{ e }}
+{% endfor %}</pre>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="muted">BPMN Summary (T5)</div>
+
+        {% if project.active_bpmn.bpmn_summary %}
+          <div style="margin-top:10px; font-weight:700; line-height:1.6;">
+            {{ project.active_bpmn.bpmn_summary }}
+          </div>
+        {% else %}
+          <div class="muted" style="margin-top:10px;">No summary generated yet.</div>
+        {% endif %}
+
+        <div class="small muted" style="margin-top:10px;">
+          Generated from extracted process/tasks (no manual descriptions required).
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
 <!-- =========================
      TOOLS (Uploads + Run)
 ========================= -->
