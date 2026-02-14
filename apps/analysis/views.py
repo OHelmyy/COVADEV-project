@@ -212,9 +212,10 @@ def run_project(request, project_id: int):
     return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
 
 
-# -----------------------------
-# ✅ Metrics-from-payload endpoint (optional)
-# -----------------------------
+# ============================================================
+# ✅ Metrics-from-payload endpoint (PROJECT-BASED)
+# ============================================================
+
 @csrf_exempt
 @login_required
 @require_http_methods(["POST"])

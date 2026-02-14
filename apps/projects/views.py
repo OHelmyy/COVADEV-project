@@ -179,9 +179,7 @@ def upload_bpmn(request, project_id):
     """
     project = get_object_or_404(Project, id=project_id)
 
-    if not _is_project_evaluator(project, request.user):
-        messages.error(request, "Evaluator only.")
-        return redirect("projects:detail", project_id=project.id)
+    
 
     uploaded_file = request.FILES.get("bpmn_file")
     if not uploaded_file:

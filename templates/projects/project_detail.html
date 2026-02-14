@@ -123,20 +123,15 @@
     <div class="card">
       <h4>Upload BPMN</h4>
 
-      {% if membership.role == "EVALUATOR" %}
+      
         <form method="post" enctype="multipart/form-data" action="{% url 'projects:upload_bpmn' project.id %}">
           {% csrf_token %}
           <input class="input" type="file" name="bpmn_file" accept=".bpmn,.xml" required />
           <button class="btn" type="submit" style="margin-top:10px;">Upload BPMN</button>
         </form>
-        <div class="muted small" style="margin-top:8px;">
-          Evaluator-only (defines the requirement model).
-        </div>
-      {% else %}
-        <div class="muted">
-          Only the evaluator can upload BPMN.
-        </div>
-      {% endif %}
+        
+      
+      
     </div>
 
     <!-- Code ZIP Upload: Any member -->
