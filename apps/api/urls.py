@@ -1,6 +1,6 @@
 # apps/api/urls.py
 from django.urls import include, path
-
+from apps.api.projects_api import api_project_report
 from apps.analysis import views as analysis_views
 from .projects_api import (
     api_projects_list_create,
@@ -14,6 +14,7 @@ from .projects_api import (
     api_project_files,
     api_project_tasks,
     api_project_matches,
+    api_project_report,  
     api_project_detail_or_delete
     
 )
@@ -54,4 +55,7 @@ urlpatterns = [
     #adminnn
     path("admin/", include("apps.api.admin_users_urls")),
 
+
+  path("projects/<int:project_id>/report/", api_project_report, name="project_report"),
+    
 ]
