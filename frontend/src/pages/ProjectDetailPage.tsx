@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
+import ConfirmModal from "../components/ConfirmModal";
 import {
   fetchProjectDetail,
   runAnalysis,
@@ -26,7 +27,20 @@ type MatchRow = {
   code_ref: string;
 };
 
-type TabKey = "overview" | "uploads" | "settings" | "results" | "runs" | "members";
+type TabKey = "overview" | "uploads" | "settings" | "results" | "runs" | "members" | "report";
+
+// ----- Report types (backend: /api/projects/:id/report/) -----
+type TraceRow = {
+  taskId: string;
+  taskName: string;
+  bestMatch: string;
+  similarity: number;
+  developer: string;
+  note?: string;
+};
+type MissingTask = { taskId: string; taskName: string; reason: string };
+type ExtraCode = { id: string; file: string; symbol: string; developer: string; reason: string };
+type ReportPayload = { traceability: TraceRow[]; missingTasks: MissingTask[]; extraCode: ExtraCode[] };
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams();
@@ -41,6 +55,10 @@ export default function ProjectDetailPage() {
 
   const [thresholdInput, setThresholdInput] = useState("");
   const [actionMsg, setActionMsg] = useState<string>("");
+
+  // ✅ Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
 
   // Results state
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -62,18 +80,22 @@ export default function ProjectDetailPage() {
   const canManageMembers = isEvaluator; // evaluator only
   const canViewUploadLogs = isEvaluator; // evaluator only
 
+  // ✅ Report tab visibility (Admin + Evaluator only)
+  const canViewReport = isAdmin || isEvaluator;
+
   // Tabs (filtered by role)
   const tabs = useMemo(() => {
     const all: { key: TabKey; label: string; visible: boolean }[] = [
       { key: "overview", label: "Overview", visible: true },
       { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin }, // hide for admin
-      { key: "settings", label: "Settings", visible: canUpdateThreshold || canManageMembers || canViewUploadLogs }, // evaluator only
+      { key: "settings", label: "Settings", visible: canUpdateThreshold || canManageMembers || canViewUploadLogs },
       { key: "results", label: "Results", visible: true },
+      { key: "report", label: "Report", visible: canViewReport }, // ✅ NEW TAB
       { key: "runs", label: "Runs", visible: true },
       { key: "members", label: "Members", visible: true },
     ];
     return all.filter((t) => t.visible);
-  }, [isAdmin, canUpdateThreshold, canManageMembers, canViewUploadLogs]);
+  }, [isAdmin, canUpdateThreshold, canManageMembers, canViewUploadLogs, canViewReport]);
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
@@ -173,20 +195,33 @@ export default function ProjectDetailPage() {
     }
   }
 
-  //delete function
-  async function onDeleteProject() {
-  if (!window.confirm("Delete this project permanently? This cannot be undone.")) return;
-
-  setActionMsg("Deleting project...");
-  try {
-    await deleteProject(id);
-    setActionMsg("");
-    // send admin back to projects list
-    window.location.href = "/projects";
-  } catch (e: any) {
-    setActionMsg(`Delete failed: ${e?.message ?? e}`);
+  // ✅ delete (open modal)
+  function onDeleteProject() {
+    setShowDeleteModal(true);
   }
-}
+
+  // ✅ delete (confirm)
+  async function confirmDeleteProject() {
+    if (deletingProject) return;
+
+    setDeletingProject(true);
+    setActionMsg("Deleting project...");
+
+    try {
+      await deleteProject(id);
+
+      // close modal before redirect
+      setShowDeleteModal(false);
+      setActionMsg("");
+
+      window.location.href = "/projects";
+    } catch (e: any) {
+      setActionMsg(`Delete failed: ${e?.message ?? e}`);
+      setDeletingProject(false);
+      setShowDeleteModal(false);
+    }
+  }
+
   // Result groups
   const matched = useMemo(
     () => matches.filter((x) => x.task && !String(x.status).toLowerCase().includes("missing")),
@@ -211,7 +246,10 @@ export default function ProjectDetailPage() {
     return Array.from(map.values());
   }, [tasks, matches, matched]);
 
-  const extra = useMemo(() => matches.filter((x) => !x.task || String(x.status).toLowerCase().includes("extra")), [matches]);
+  const extra = useMemo(
+    () => matches.filter((x) => !x.task || String(x.status).toLowerCase().includes("extra")),
+    [matches]
+  );
 
   const scoreAvg = useMemo(() => {
     if (matched.length === 0) return 0;
@@ -224,6 +262,62 @@ export default function ProjectDetailPage() {
     const matchedTaskIds = new Set(matched.map((x) => x.task?.task_id).filter(Boolean) as string[]);
     return (matchedTaskIds.size / tasks.length) * 100;
   }, [tasks, matched]);
+
+  // -----------------------------
+  // ✅ Report state + loader
+  // -----------------------------
+  const [reportState, setReportState] = useState<LoadState>("idle");
+  const [reportError, setReportError] = useState("");
+  const [report, setReport] = useState<ReportPayload>({ traceability: [], missingTasks: [], extraCode: [] });
+
+  async function loadReport() {
+    if (!Number.isFinite(id)) return;
+    setReportState("loading");
+    setReportError("");
+    try {
+      const r = await fetchProjectReport(id);
+      setReport({
+        traceability: r?.traceability ?? [],
+        missingTasks: r?.missingTasks ?? [],
+        extraCode: r?.extraCode ?? [],
+      });
+      setReportState("success");
+    } catch (e: any) {
+      setReportState("error");
+      setReportError(e?.message ?? "Failed to load report");
+    }
+  }
+
+  // Load report when tab opened (Admin/Evaluator only)
+  useEffect(() => {
+    if (activeTab !== "report") return;
+    if (!canViewReport) return;
+    if (reportState === "success") return;
+    loadReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const formatPercent = (x: number) => `${Math.round((Number(x) || 0) * 100)}%`;
+  const badge = (x: number) => {
+    const pct = (Number(x) || 0) * 100;
+    const bg = pct >= 80 ? "#eef5ff" : pct >= 70 ? "#fff5e6" : "#ffecec";
+    const fg = pct >= 80 ? "#094780" : pct >= 70 ? "#8a5a00" : "#a00000";
+    return (
+      <span
+        style={{
+          background: bg,
+          color: fg,
+          border: "1px solid #eee",
+          padding: "4px 10px",
+          borderRadius: 999,
+          fontWeight: 800,
+          fontSize: 12,
+        }}
+      >
+        {formatPercent(Number(x) || 0)}
+      </span>
+    );
+  };
 
   if (state === "loading" || state === "idle") return <StatusMessage title="Loading project..." />;
   if (state === "error") return <StatusMessage title="Failed to load project" message={errorText} onRetry={load} />;
@@ -316,7 +410,6 @@ export default function ProjectDetailPage() {
             ) : null}
           </>
         ) : null}
-
         {/* TAB: Uploads & Tools (not admin) */}
         {activeTab === "uploads" ? (
           <Card>
@@ -369,10 +462,7 @@ export default function ProjectDetailPage() {
 
               {canRunAnalysis ? (
                 <>
-                  <button
-                    onClick={onRunAnalysis}
-                    style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                  >
+                  <button onClick={onRunAnalysis} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
                     Run analysis
                   </button>
                   <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>Runs analysis using current active uploads.</div>
@@ -412,17 +502,13 @@ export default function ProjectDetailPage() {
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
                   {canManageMembers ? (
                     <Link to={`/projects/${id}/members`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Manage Members
-                      </button>
+                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Manage Members</button>
                     </Link>
                   ) : null}
 
                   {canViewUploadLogs ? (
                     <Link to={`/projects/${id}/logs`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Upload Logs
-                      </button>
+                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Upload Logs</button>
                     </Link>
                   ) : null}
                 </div>
@@ -438,11 +524,7 @@ export default function ProjectDetailPage() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <h3 style={{ marginTop: 0 }}>Analysis Output</h3>
-              <button
-                onClick={loadResults}
-                style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                disabled={resultsLoading}
-              >
+              <button onClick={loadResults} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }} disabled={resultsLoading}>
                 {resultsLoading ? "Refreshing..." : "Refresh results"}
               </button>
             </div>
@@ -461,7 +543,6 @@ export default function ProjectDetailPage() {
               <MiniStat label="Avg Similarity (matched)" value={scoreAvg.toFixed(3)} />
             </div>
 
-            {/* Matched */}
             <SectionTable
               title="Matched"
               emptyText="No matched results yet."
@@ -496,7 +577,6 @@ export default function ProjectDetailPage() {
               }
             />
 
-            {/* Missing */}
             <SectionTable
               title="Missing"
               emptyText="No missing tasks."
@@ -525,7 +605,6 @@ export default function ProjectDetailPage() {
               }
             />
 
-            {/* Extra */}
             <SectionTable
               title="Extra"
               emptyText="No extra results."
@@ -555,7 +634,6 @@ export default function ProjectDetailPage() {
               }
             />
 
-            {/* Indexed files preview */}
             <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12, marginTop: 12 }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Indexed Code Files (preview)</div>
               {files.length === 0 ? (
@@ -564,6 +642,142 @@ export default function ProjectDetailPage() {
                 <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(files.slice(0, 30), null, 2)}</pre>
               )}
             </div>
+          </Card>
+        ) : null}
+
+        {/* ✅ TAB: Report (Admin + Evaluator only) */}
+        {activeTab === "report" ? (
+          <Card>
+            {!canViewReport ? (
+              <div style={{ color: "#888" }}>You don't have permission to view this report.</div>
+            ) : reportState === "loading" || reportState === "idle" ? (
+              <StatusMessage title="Loading report..." message="Fetching report data from backend." />
+            ) : reportState === "error" ? (
+              <StatusMessage title="Failed to load report" message={reportError} onRetry={loadReport} />
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <h3 style={{ marginTop: 0, marginBottom: 6 }}>Project Report</h3>
+                    <div style={{ color: "#666" }}>Traceability + Missing/Extra summary for this project.</div>
+                  </div>
+
+                  <button
+                    onClick={loadReport}
+                    style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                  >
+                    Refresh report
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 12 }}>
+                  <Stat label="Traceability rows" value={report.traceability.length} />
+                  <Stat label="Missing tasks" value={report.missingTasks.length} />
+                  <Stat label="Extra code" value={report.extraCode.length} />
+                </div>
+
+                <SectionTable
+                  title="Task-level Traceability"
+                  emptyText="No traceability results."
+                  table={
+                    report.traceability.length ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ textAlign: "left" }}>
+                            <th style={th}>Task</th>
+                            <th style={th}>Best Match</th>
+                            <th style={th}>Similarity</th>
+                            <th style={th}>Developer</th>
+                            <th style={th}>Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.traceability.slice(0, 80).map((r, idx) => (
+                            <tr key={`${r.taskId}-${idx}`}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 800 }}>{r.taskName}</div>
+                                <div style={{ color: "#888", fontSize: 12 }}>{r.taskId}</div>
+                              </td>
+                              <td style={td}>
+                                <code style={{ fontSize: 12 }}>{r.bestMatch}</code>
+                              </td>
+                              <td style={td}>{badge(r.similarity)}</td>
+                              <td style={td}>{r.developer}</td>
+                              <td style={td}>{r.note ?? "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : null
+                  }
+                />
+
+                <SectionTable
+                  title="Missing Tasks"
+                  emptyText="No missing tasks."
+                  table={
+                    report.missingTasks.length ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ textAlign: "left" }}>
+                            <th style={th}>Task</th>
+                            <th style={th}>Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.missingTasks.slice(0, 80).map((m, idx) => (
+                            <tr key={`${m.taskId}-${idx}`}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 800 }}>{m.taskName}</div>
+                                <div style={{ color: "#888", fontSize: 12 }}>{m.taskId}</div>
+                              </td>
+                              <td style={td}>{m.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : null
+                  }
+                />
+
+                <SectionTable
+                  title="Extra Code"
+                  emptyText="No extra code detected."
+                  table={
+                    report.extraCode.length ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ textAlign: "left" }}>
+                            <th style={th}>ID</th>
+                            <th style={th}>File / Symbol</th>
+                            <th style={th}>Developer</th>
+                            <th style={th}>Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.extraCode.slice(0, 80).map((e, idx) => (
+                            <tr key={`${e.id}-${idx}`}>
+                              <td style={td}>
+
+                                <div style={{ fontWeight: 800 }}>{e.id}</div>
+                              </td>
+                              <td style={td}>
+                                <div style={{ fontFamily: "monospace", fontSize: 12 }}>{e.file}</div>
+                                <div style={{ fontFamily: "monospace", fontSize: 12, color: "#555", marginTop: 4 }}>
+                                  {e.symbol}
+                                </div>
+                              </td>
+                              <td style={td}>{e.developer}</td>
+                              <td style={td}>{e.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : null
+                  }
+                />
+              </>
+            )}
           </Card>
         ) : null}
 
@@ -606,8 +820,37 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
       </section>
+      <ConfirmModal
+          open={showDeleteModal}
+          title="Delete project?"
+          message={`Delete "${data.project.name}" permanently? This action cannot be undone.`}
+          confirmText={deletingProject ? "Deleting..." : "Delete"}
+          cancelText="Cancel"
+          danger
+          onCancel={() => {
+            if (deletingProject) return;
+            setShowDeleteModal(false);
+          }}
+          onConfirm={confirmDeleteProject}
+        />
+      
     </div>
   );
+}
+      
+// ✅ Local fetch for report (keeps your backend route: /api/projects/:id/report/)
+async function fetchProjectReport(projectId: number): Promise<ReportPayload> {
+  const res = await fetch(`/api/projects/${projectId}/report/`, {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Failed to load report (${res.status})`);
+  }
+  return (await res.json()) as ReportPayload;
 }
 
 /* ---------- small helpers (keep your style) ---------- */
