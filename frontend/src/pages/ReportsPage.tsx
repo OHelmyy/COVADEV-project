@@ -1,10 +1,17 @@
+// frontend/src/pages/ReportsPage.tsx
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
-import { useMemo, useState } from "react";
 import DataTable from "../components/DataTable";
 import FilterBar from "../components/FilterBar";
 import { exportToCsv, exportToHtml } from "../utils/exporters";
 import InfoTip from "../components/InfoTip";
 import EmptyState from "../components/EmptyState";
+import StatusMessage from "../components/StatusMessage";
+
+import { fetchProjectReport } from "../api/reports";
+import { fetchProjects } from "../api/projects";
+import type { ProjectSummaryApi } from "../api/types";
 
 type TraceRow = {
   taskId: string;
@@ -29,6 +36,14 @@ type ExtraCode = {
   reason: string;
 };
 
+type ReportPayload = {
+  traceability: TraceRow[];
+  missingTasks: MissingTask[];
+  extraCode: ExtraCode[];
+};
+
+type LoadState = "idle" | "loading" | "success" | "error";
+
 function toHtmlTable(headers: string[], rows: string[][]) {
   const thead = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>`;
   const tbody = rows
@@ -38,61 +53,135 @@ function toHtmlTable(headers: string[], rows: string[][]) {
 }
 
 export default function ReportsPage() {
-  // ✅ Mock traceability results (later from API)
-  const traceRows: TraceRow[] = [
-    {
-      taskId: "T01",
-      taskName: "Validate user registration",
-      bestMatch: "accounts/services.py → validate_registration()",
-      similarity: 0.87,
-      developer: "Serag",
-      note: "Strong match by keywords + comments",
-    },
-    {
-      taskId: "T02",
-      taskName: "Upload BPMN file",
-      bestMatch: "projects/views.py → upload_bpmn()",
-      similarity: 0.82,
-      developer: "Helmy",
-    },
-    {
-      taskId: "T03",
-      taskName: "Compute similarity scores",
-      bestMatch: "analysis/semantic/similarity.py → cosine_similarity_matrix()",
-      similarity: 0.66,
-      developer: "Mostafa",
-      note: "Below threshold (needs tuning)",
-    },
-  ];
+  // ✅ hooks must be inside component
+  const [searchParams] = useSearchParams();
+  const locked = searchParams.get("lock") === "1";
+  const lockedProjectId = Number(searchParams.get("projectId") || "");
 
-  // ✅ Mock missing tasks
-  const missingTasks: MissingTask[] = [
-    { taskId: "T04", taskName: "Generate evaluation report", reason: "No code matched above threshold" },
-    { taskId: "T05", taskName: "Export CSV results", reason: "Feature not implemented yet" },
-  ];
+  // -----------------------------
+  // Projects list (selector)
+  // -----------------------------
+  const [projectsState, setProjectsState] = useState<LoadState>("idle");
+  const [projectsError, setProjectsError] = useState("");
+  const [projects, setProjects] = useState<ProjectSummaryApi[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
 
-  // ✅ Mock extra code
-  const extraCode: ExtraCode[] = [
-    {
-      id: "E01",
-      file: "analysis/utils.py",
-      symbol: "debug_dump_all()",
-      developer: "Mostafa",
-      reason: "Unused helper (no BPMN task maps to it)",
-    },
-    {
-      id: "E02",
-      file: "projects/legacy_upload.py",
-      symbol: "legacy_upload_zip()",
-      developer: "Helmy",
-      reason: "Legacy code path not used",
-    },
-  ];
+  async function loadProjects() {
+    try {
+      setProjectsState("loading");
+      setProjectsError("");
 
-  // Day 4 UI controls
+      const res = await fetchProjects();
+      const list = res || [];
+      setProjects(list);
+
+      if (locked) {
+        const ok =
+          Number.isFinite(lockedProjectId) &&
+          list.some((p) => Number(p.id) === lockedProjectId);
+
+        if (!ok) {
+          setProjectsState("error");
+          setProjectsError("Invalid project in report link (project not found or no access).");
+          return;
+        }
+        setSelectedProjectId(lockedProjectId);
+      } else {
+        if (list.length && !selectedProjectId) {
+          setSelectedProjectId(Number(list[0].id));
+        }
+      }
+
+      setProjectsState("success");
+    } catch (e: any) {
+      setProjectsState("error");
+      setProjectsError(e?.message ?? "Failed to load projects");
+    }
+  }
+
+  useEffect(() => {
+    loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // -----------------------------
+  // Report data
+  // -----------------------------
+  const [reportState, setReportState] = useState<LoadState>("idle");
+  const [reportError, setReportError] = useState("");
+  const [report, setReport] = useState<ReportPayload>({
+    traceability: [],
+    missingTasks: [],
+    extraCode: [],
+  });
+
+  async function loadReport(projectId: number) {
+    try {
+      setReportState("loading");
+      setReportError("");
+
+      const res = (await fetchProjectReport(projectId)) as ReportPayload;
+
+      setReport({
+        traceability: res?.traceability ?? [],
+        missingTasks: res?.missingTasks ?? [],
+        extraCode: res?.extraCode ?? [],
+      });
+
+      setReportState("success");
+    } catch (e: any) {
+      setReportState("error");
+      setReportError(e?.message ?? "Failed to load report");
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    loadReport(selectedProjectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId]);
+
+  // -----------------------------
+  // UI controls
+  // -----------------------------
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"similarity_desc" | "similarity_asc" | "task_az">("similarity_desc");
   const [lowOnly, setLowOnly] = useState(false);
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const filteredTrace = useMemo(() => {
+    let rows = [...(report.traceability ?? [])];
+
+    if (lowOnly) rows = rows.filter((r) => (r.similarity ?? 0) < 0.7);
+
+    if (normalizedSearch.length > 0) {
+      rows = rows.filter((r) => {
+        const hay = `${r.taskId} ${r.taskName} ${r.bestMatch} ${r.developer} ${r.note ?? ""}`.toLowerCase();
+        return hay.includes(normalizedSearch);
+      });
+    }
+
+    if (sort === "similarity_desc") rows.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+    if (sort === "similarity_asc") rows.sort((a, b) => (a.similarity ?? 0) - (b.similarity ?? 0));
+    if (sort === "task_az") rows.sort((a, b) => (a.taskName ?? "").localeCompare(b.taskName ?? ""));
+
+    return rows;
+  }, [lowOnly, normalizedSearch, sort, report.traceability]);
+
+  const filteredMissing = useMemo(() => {
+    const rows = report.missingTasks ?? [];
+    if (!normalizedSearch) return rows;
+    return rows.filter((m) => `${m.taskId} ${m.taskName} ${m.reason}`.toLowerCase().includes(normalizedSearch));
+  }, [normalizedSearch, report.missingTasks]);
+
+  const filteredExtra = useMemo(() => {
+    const rows = report.extraCode ?? [];
+    if (!normalizedSearch) return rows;
+    return rows.filter((e) =>
+      `${e.id} ${e.file} ${e.symbol} ${e.developer} ${e.reason}`.toLowerCase().includes(normalizedSearch)
+    );
+  }, [normalizedSearch, report.extraCode]);
 
   const formatPercent = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -117,51 +206,87 @@ export default function ReportsPage() {
     );
   };
 
-  const normalizedSearch = search.trim().toLowerCase();
+  // -----------------------------
+  // Global states
+  // -----------------------------
+  if (projectsState === "loading" || projectsState === "idle") {
+    return <StatusMessage title="Loading projects..." message="Fetching your projects list." />;
+  }
+  if (projectsState === "error") {
+    return <StatusMessage title="Failed to load projects" message={projectsError} onRetry={loadProjects} />;
+  }
+  if (!projects.length) {
+    return <EmptyState title="No projects yet" description="Create a project first, then you will see its report here." />;
+  }
 
-  const filteredTrace = useMemo(() => {
-    let rows = [...traceRows];
+  if (!selectedProjectId) {
+    return <StatusMessage title="Select a project" message="Choose a project to view its report." />;
+  }
 
-    // filter low similarity
-    if (lowOnly) rows = rows.filter((r) => r.similarity < 0.7);
-
-    // search filter
-    if (normalizedSearch.length > 0) {
-      rows = rows.filter((r) => {
-        const hay = `${r.taskId} ${r.taskName} ${r.bestMatch} ${r.developer} ${r.note ?? ""}`.toLowerCase();
-        return hay.includes(normalizedSearch);
-      });
-    }
-
-    // sorting
-    if (sort === "similarity_desc") rows.sort((a, b) => b.similarity - a.similarity);
-    if (sort === "similarity_asc") rows.sort((a, b) => a.similarity - b.similarity);
-    if (sort === "task_az") rows.sort((a, b) => a.taskName.localeCompare(b.taskName));
-
-    return rows;
-  }, [lowOnly, normalizedSearch, sort]);
-
-  const filteredMissing = useMemo(() => {
-    if (!normalizedSearch) return missingTasks;
-    return missingTasks.filter((m) =>
-      `${m.taskId} ${m.taskName} ${m.reason}`.toLowerCase().includes(normalizedSearch)
+  if (reportState === "loading" || reportState === "idle") {
+    return <StatusMessage title="Loading report..." message="Fetching report data from backend." />;
+  }
+  if (reportState === "error") {
+    return (
+      <StatusMessage
+        title="Failed to load report"
+        message={reportError}
+        onRetry={() => loadReport(selectedProjectId)}
+      />
     );
-  }, [normalizedSearch]);
+  }
 
-  const filteredExtra = useMemo(() => {
-    if (!normalizedSearch) return extraCode;
-    return extraCode.filter((e) =>
-      `${e.id} ${e.file} ${e.symbol} ${e.developer} ${e.reason}`.toLowerCase().includes(normalizedSearch)
-    );
-  }, [normalizedSearch]);
+  const selectedProject = projects.find((p) => Number(p.id) === selectedProjectId);
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h1 style={{ margin: 0 }}>Reports</h1>
-        <p style={{ marginTop: 6, color: "#555" }}>
-          Traceability + Missing/Extra reports (mock data) with filtering, sorting, export, and UX polish.
-        </p>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Reports</h1>
+          <p style={{ marginTop: 6, color: "#555" }}>
+            {locked ? "Locked report view for selected project." : "Choose a project to view its report."}
+          </p>
+        </div>
+
+        {/* ✅ Selector hidden in locked mode */}
+        {!locked ? (
+          <div style={{ minWidth: 320 }}>
+            <div style={{ fontSize: 12, color: "#777", marginBottom: 6 }}>Project</div>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(Number(e.target.value))}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "#fff",
+                fontWeight: 700,
+              }}
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={Number(p.id)}>
+                  {p.name} (Role: {p.membership?.role ?? "—"})
+                </option>
+              ))}
+            </select>
+
+            <div style={{ marginTop: 6, fontSize: 12, color: "#888" }}>
+              Threshold: <b>{selectedProject?.similarityThreshold}</b>
+            </div>
+          </div>
+        ) : (
+          <div style={{ minWidth: 320, textAlign: "right" }}>
+            <div style={{ fontSize: 12, color: "#777" }}>Project</div>
+            <div style={{ fontWeight: 900, marginTop: 6 }}>{selectedProject?.name}</div>
+            <div style={{ marginTop: 6, fontSize: 12, color: "#888" }}>
+              Locked view • Threshold: <b>{selectedProject?.similarityThreshold}</b>
+            </div>
+          </div>
+        )}
       </div>
 
       <FilterBar
@@ -189,14 +314,7 @@ export default function ReportsPage() {
               }))
             );
           }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
+          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
         >
           Export Traceability CSV
         </button>
@@ -212,14 +330,7 @@ export default function ReportsPage() {
               }))
             );
           }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
+          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
         >
           Export Missing CSV
         </button>
@@ -237,14 +348,7 @@ export default function ReportsPage() {
               }))
             );
           }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
+          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
         >
           Export Extra CSV
         </button>
@@ -253,7 +357,7 @@ export default function ReportsPage() {
           onClick={() => {
             const body = `
               <h1>COVADEV Report Export</h1>
-              <p>Generated from the Reports page (mock data for now).</p>
+              <p>Project: <b>${selectedProject?.name ?? ""}</b></p>
 
               <h2>Traceability</h2>
               ${toHtmlTable(
@@ -262,36 +366,30 @@ export default function ReportsPage() {
                   r.taskId,
                   r.taskName,
                   r.bestMatch,
-                  `${Math.round(r.similarity * 100)}%`,
+                  `${Math.round((r.similarity ?? 0) * 100)}%`,
                   r.developer,
                   r.note ?? "",
                 ])
               )}
 
               <h2>Missing Tasks</h2>
-              ${toHtmlTable(
-                ["Task ID", "Task Name", "Reason"],
-                filteredMissing.map((m) => [m.taskId, m.taskName, m.reason])
-              )}
+              ${toHtmlTable(["Task ID", "Task Name", "Reason"], filteredMissing.map((m) => [m.taskId, m.taskName, m.reason]))}
 
               <h2>Extra Code</h2>
-              ${toHtmlTable(
-                ["ID", "File", "Symbol", "Developer", "Reason"],
-                filteredExtra.map((e) => [e.id, e.file, e.symbol, e.developer, e.reason])
-              )}
+              ${toHtmlTable(["ID", "File", "Symbol", "Developer", "Reason"], filteredExtra.map((e) => [e.id, e.file, e.symbol, e.developer, e.reason]))}
             `;
             exportToHtml("covadev_report.html", "COVADEV Report", body);
           }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
+          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
         >
           Export Full HTML
+        </button>
+
+        <button
+          onClick={() => selectedProjectId && loadReport(selectedProjectId)}
+          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
+        >
+          Refresh from Backend
         </button>
       </div>
 
@@ -327,8 +425,12 @@ export default function ReportsPage() {
                 width: "34%",
                 render: (r) => <span style={{ fontFamily: "monospace", fontSize: 13 }}>{r.bestMatch}</span>,
               },
-              { header: "Similarity", width: "12%", render: (r) => badge(r.similarity) },
-              { header: "Developer", width: "12%", render: (r) => <span style={{ fontWeight: 700 }}>{r.developer}</span> },
+              { header: "Similarity", width: "12%", render: (r) => badge(r.similarity ?? 0) },
+              {
+                header: "Developer",
+                width: "12%",
+                render: (r) => <span style={{ fontWeight: 700 }}>{r.developer}</span>,
+              },
               { header: "Notes", render: (r) => <span style={{ color: "#555" }}>{r.note ?? "-"}</span> },
             ]}
           />
@@ -398,7 +500,11 @@ export default function ReportsPage() {
                   </div>
                 ),
               },
-              { header: "Developer", width: "14%", render: (e) => <span style={{ fontWeight: 700 }}>{e.developer}</span> },
+              {
+                header: "Developer",
+                width: "14%",
+                render: (e) => <span style={{ fontWeight: 700 }}>{e.developer}</span>,
+              },
               { header: "Reason", render: (e) => <span style={{ color: "#555" }}>{e.reason}</span> },
             ]}
           />
