@@ -10,13 +10,17 @@ MODEL = "llama3.2:3b"
 def build_prompt(summary: str) -> str:
     summary = (summary or "").strip()
     return (
-        "You are a senior software process auditor.\n"
-        "Generate 6-10 best-practice recommendations for improving the workflow.\n"
-        "Rules:\n"
-        "1) Do NOT repeat workflow task names.\n"
-        "2) Do NOT restate steps.\n"
-        "3) Return ONLY bullet points.\n"
-        "4) Each line MUST start with '- '.\n\n"
+        "You are a senior software architect and process auditor.\n"
+        "Based on the workflow summary below, generate 6-10 recommended backend function names.\n\n"
+        "Each recommendation must:\n"
+        "1) Be a meaningful backend function name in snake_case.\n"
+        "2) Follow this exact format:\n"
+        "   - function_name: Short technical description.\n"
+        "3) The description must explain the function's responsibility clearly.\n"
+        "4) Do NOT repeat workflow task names.\n"
+        "5) Do NOT restate workflow steps.\n"
+        "6) Focus on best practices such as validation, security, logging, error handling, monitoring, role control, transactions, retries, or auditing.\n"
+        "7) Return ONLY bullet points. No explanations.\n\n"
         f"Workflow summary:\n{summary}\n"
     )
 
