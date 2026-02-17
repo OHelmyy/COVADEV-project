@@ -299,6 +299,31 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function downloadReport(format: "pdf" | "csv" | "html") {
+    if (!canViewReport) return;
+  
+    try {
+      const url = `/api/projects/${id}/report/export?format=${format}`;
+      const res = await fetch(url, { credentials: "include" });
+  
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Export failed");
+      }
+  
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `project_${id}_report.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (e: any) {
+      setActionMsg(`Export failed: ${e?.message ?? e}`);
+    }
+  }
+
   // Load report when tab opened (Admin/Evaluator only)
   useEffect(() => {
     if (activeTab !== "report") return;
@@ -779,18 +804,29 @@ export default function ProjectDetailPage() {
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div>
-                    <h3 style={{ marginTop: 0, marginBottom: 6 }}>Project Report</h3>
-                    <div style={{ color: "#666" }}>Traceability + Missing/Extra summary for this project.</div>
-                  </div>
+  <div>
+    <h3 style={{ marginTop: 0, marginBottom: 6 }}>Project Report</h3>
+    <div style={{ color: "#666" }}>Traceability + Missing/Extra summary for this project.</div>
+  </div>
 
-                  <button
-                    onClick={loadReport}
-                    style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                  >
-                    Refresh report
-                  </button>
-                </div>
+  {/* Right side actions */}
+  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+    <button
+      onClick={loadReport}
+      style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+    >
+      Refresh report
+    </button>
+
+
+    <button
+      onClick={() => downloadReport("pdf")}
+      style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", fontWeight: 800 }}
+    >
+      Export PDF
+    </button>
+  </div>
+</div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 12 }}>
                   <Stat label="Traceability rows" value={report.traceability.length} />
