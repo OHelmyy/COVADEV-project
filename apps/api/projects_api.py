@@ -15,6 +15,8 @@ from apps.accounts.rbac import is_admin, is_evaluator
 from apps.projects.models import Project, ProjectMembership, CodeFile, ProjectFile
 from apps.projects.services import save_bpmn_file, save_code_zip_and_extract
 
+from apps.analysis.models import BpmnRecommendations  # import your new model
+from apps.analysis.bpmn.recommender_local import generate_recommendations_local
 
 # ---------------------------
 # Permissions helpers
@@ -58,6 +60,25 @@ def _latest_file(project: Project, file_type: str):
 # ---------------------------
 # JSON helpers
 # ---------------------------
+
+# apps/api/projects_api.py (near helpers)
+def _get_project_bpmn_summary(project: Project) -> str:
+    # 1) active BPMN file
+    f = getattr(project, "active_bpmn", None)
+    if f and hasattr(f, "bpmn_summary"):
+        return (f.bpmn_summary or "").strip()
+
+    # 2) latest BPMN file
+    latest = _latest_file(project, "BPMN")
+    if latest and hasattr(latest, "bpmn_summary"):
+        return (latest.bpmn_summary or "").strip()
+
+    # 3) fallback
+    if hasattr(project, "bpmn_summary"):
+        return (project.bpmn_summary or "").strip()
+
+    return ""
+
 
 def _get_membership(project: Project, user) -> ProjectMembership | None:
     return ProjectMembership.objects.filter(project=project, user=user).first()
@@ -670,3 +691,60 @@ def api_delete_project(request, project_id: int):
 
     project.delete()
     return JsonResponse({"ok": True})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def api_project_recommendations(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    summary = _get_project_bpmn_summary(project)
+
+    if request.method == "GET":
+        rec = getattr(project, "bpmn_recommendations", None)
+        return JsonResponse({
+            "projectId": project.id,
+            "hasSummary": bool(summary),
+            "recommendations": (rec.as_list() if rec else []),
+            "updatedAt": rec.updated_at.isoformat() if rec else None,
+            "sourceHash": (hash((rec.source_summary or "").strip()) if rec else None),
+        })
+
+    # POST
+    if not summary:
+        return JsonResponse({"detail": "No BPMN summary found."}, status=400)
+
+    rec, _ = BpmnRecommendations.objects.get_or_create(project=project)
+
+    force = (request.GET.get("force") or request.POST.get("force") or "").lower() in ("1", "true", "yes")
+
+    # ✅ cache based on *correct* field name
+    if (not force) and rec.recommendations_text.strip() and (rec.source_summary or "").strip() == summary.strip():
+        return JsonResponse({
+            "ok": True,
+            "cached": True,
+            "engine": "cache",
+            "recommendations": rec.as_list(),
+            "updatedAt": rec.updated_at.isoformat() if rec.updated_at else None,
+        })
+
+    try:
+        print("✅ RECOMMENDER ENGINE: OLLAMA/LLAMA (force=%s)" % force)
+        items = generate_recommendations_local(summary)  # list of "- ..."
+    except Exception as e:
+        return JsonResponse({"detail": f"Ollama failed: {type(e).__name__}: {e}"}, status=500)
+
+    rec.recommendations_text = "\n".join(items)
+    rec.source_summary = summary  # ✅ correct
+    rec.save(update_fields=["recommendations_text", "source_summary", "updated_at"])
+
+    return JsonResponse({
+        "ok": True,
+        "cached": False,
+        "engine": "ollama",
+        "recommendations": rec.as_list(),
+        "updatedAt": rec.updated_at.isoformat() if rec.updated_at else None,
+    })
