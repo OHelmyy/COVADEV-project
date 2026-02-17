@@ -105,3 +105,31 @@ class MatchResult(models.Model):
 
     def __str__(self):
         return f"{self.status} - {self.similarity_score:.2f} (Project={self.project_id})"
+
+
+class BpmnRecommendations(models.Model):
+    """
+    Recommended methods generated from the stored BPMN summary for a project.
+    Stored per project (versioning removed).
+    """
+
+    project = models.OneToOneField(
+        "projects.Project",
+        on_delete=models.CASCADE,
+        related_name="bpmn_recommendations",
+    )
+
+    # Store as lines, each line starts with "- "
+    recommendations_text = models.TextField(blank=True, default="")
+
+    # Keep the summary used to generate (helps you know if BPMN summary changed)
+    source_summary = models.TextField(blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def as_list(self) -> list[str]:
+        return [x.strip() for x in (self.recommendations_text or "").splitlines() if x.strip()]
+
+    def __str__(self):
+        return f"BpmnRecommendations(Project={self.project_id})"
