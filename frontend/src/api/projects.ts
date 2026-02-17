@@ -99,3 +99,20 @@ export function fetchLogs(projectId: number) {
 export function deleteProject(projectId: number) {
   return apiDelete<{ ok: true }>(`/api/projects/${projectId}/`);
 }
+
+export function fetchRecommendations(projectId: number) {
+  return apiGet<{
+    projectId: number;
+    hasSummary: boolean;
+    recommendations: string[];
+    updatedAt: string | null;
+  }>(`/api/projects/${projectId}/recommendations/`);
+}
+
+export function generateRecommendations(projectId: number) {
+  return apiPost<{
+    ok: boolean;
+    recommendations: string[];
+    updatedAt: string;
+  }>(`/api/projects/${projectId}/recommendations/`, {});
+}

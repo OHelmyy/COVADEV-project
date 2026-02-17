@@ -13,6 +13,8 @@ import {
   fetchMatches,
   fetchTasks,
   deleteProject,
+  fetchRecommendations,
+  generateRecommendations,
 } from "../api/projects";
 import type { ProjectDetailApi } from "../api/types";
 
@@ -27,7 +29,15 @@ type MatchRow = {
   code_ref: string;
 };
 
-type TabKey = "overview" | "uploads" | "settings" | "results" | "runs" | "members" | "report";
+type TabKey =
+  | "overview"
+  | "uploads"
+  | "settings"
+  | "results"
+  | "recommendations"
+  | "runs"
+  | "members"
+  | "report";
 
 // ----- Report types (backend: /api/projects/:id/report/) -----
 type TraceRow = {
@@ -90,7 +100,8 @@ export default function ProjectDetailPage() {
       { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin }, // hide for admin
       { key: "settings", label: "Settings", visible: canUpdateThreshold || canManageMembers || canViewUploadLogs },
       { key: "results", label: "Results", visible: true },
-      { key: "report", label: "Report", visible: canViewReport }, // ✅ NEW TAB
+      { key: "recommendations", label: "Recommendations", visible: true }, // ✅ NEW TAB
+      { key: "report", label: "Report", visible: canViewReport },
       { key: "runs", label: "Runs", visible: true },
       { key: "members", label: "Members", visible: true },
     ];
@@ -297,6 +308,38 @@ export default function ProjectDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  // -----------------------------
+  // ✅ Recommendations state + loader
+  // -----------------------------
+  const [recState, setRecState] = useState<LoadState>("idle");
+  const [recError, setRecError] = useState("");
+  const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [recUpdatedAt, setRecUpdatedAt] = useState<string | null>(null);
+  const [hasSummary, setHasSummary] = useState<boolean>(true);
+
+  async function loadRecommendations() {
+    if (!Number.isFinite(id)) return;
+    setRecState("loading");
+    setRecError("");
+    try {
+      const r = await fetchRecommendations(id);
+      setHasSummary(Boolean(r?.hasSummary));
+      setRecommendations(r?.recommendations ?? []);
+      setRecUpdatedAt(r?.updatedAt ?? null);
+      setRecState("success");
+    } catch (e: any) {
+      setRecState("error");
+      setRecError(e?.message ?? "Failed to load recommendations");
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "recommendations") return;
+    if (recState === "success") return;
+    loadRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   const formatPercent = (x: number) => `${Math.round((Number(x) || 0) * 100)}%`;
   const badge = (x: number) => {
     const pct = (Number(x) || 0) * 100;
@@ -410,6 +453,7 @@ export default function ProjectDetailPage() {
             ) : null}
           </>
         ) : null}
+
         {/* TAB: Uploads & Tools (not admin) */}
         {activeTab === "uploads" ? (
           <Card>
@@ -524,7 +568,11 @@ export default function ProjectDetailPage() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <h3 style={{ marginTop: 0 }}>Analysis Output</h3>
-              <button onClick={loadResults} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }} disabled={resultsLoading}>
+              <button
+                onClick={loadResults}
+                style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                disabled={resultsLoading}
+              >
                 {resultsLoading ? "Refreshing..." : "Refresh results"}
               </button>
             </div>
@@ -645,6 +693,80 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
+        {/* ✅ TAB: Recommendations */}
+        {activeTab === "recommendations" ? (
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 6 }}>Recommended Methods</h3>
+                <div style={{ color: "#666" }}>Generated from the stored BPMN summary (best practices).</div>
+                {recUpdatedAt ? (
+                  <div style={{ color: "#888", fontSize: 13, marginTop: 6 }}>Last updated: {recUpdatedAt}</div>
+                ) : null}
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={loadRecommendations}
+                  style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                >
+                  Refresh
+                </button>
+
+                {(isEvaluator || isAdmin) ? (
+                  <button
+                    onClick={async () => {
+                      setActionMsg("Generating recommendations...");
+                      try {
+                        await generateRecommendations(id);
+                        setActionMsg("Recommendations generated ✅");
+                        await loadRecommendations();
+                      } catch (e: any) {
+                        setActionMsg(`Generate failed: ${e?.message ?? e}`);
+                      }
+                    }}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #094780",
+                      background: "#f3f7ff",
+                      color: "#094780",
+                      fontWeight: 800,
+                    }}
+                  >
+                    Generate
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {!hasSummary ? (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #ffe3b3", background: "#fff8e8" }}>
+                <div style={{ fontWeight: 800, color: "#8a5a00" }}>No BPMN summary found</div>
+                <div style={{ color: "#8a5a00", marginTop: 6, fontSize: 13 }}>
+                  Upload a BPMN (Evaluator) and make sure the summary is generated/stored, then try again.
+                </div>
+              </div>
+            ) : recState === "loading" || recState === "idle" ? (
+              <StatusMessage title="Loading recommendations..." />
+            ) : recState === "error" ? (
+              <StatusMessage title="Failed to load recommendations" message={recError} onRetry={loadRecommendations} />
+            ) : recommendations.length === 0 ? (
+              <div style={{ color: "#888", marginTop: 12 }}>
+                No recommendations yet. {(isEvaluator || isAdmin) ? <>Click <b>Generate</b> to create them.</> : null}
+              </div>
+            ) : (
+              <ul style={{ marginTop: 12, paddingLeft: 18 }}>
+                {recommendations.map((x, idx) => (
+                  <li key={idx} style={{ marginBottom: 8, lineHeight: 1.55 }}>
+                    {String(x).replace(/^- /, "")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        ) : null}
+
         {/* ✅ TAB: Report (Admin + Evaluator only) */}
         {activeTab === "report" ? (
           <Card>
@@ -758,7 +880,6 @@ export default function ProjectDetailPage() {
                           {report.extraCode.slice(0, 80).map((e, idx) => (
                             <tr key={`${e.id}-${idx}`}>
                               <td style={td}>
-
                                 <div style={{ fontWeight: 800 }}>{e.id}</div>
                               </td>
                               <td style={td}>
@@ -820,24 +941,24 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
       </section>
+
       <ConfirmModal
-          open={showDeleteModal}
-          title="Delete project?"
-          message={`Delete "${data.project.name}" permanently? This action cannot be undone.`}
-          confirmText={deletingProject ? "Deleting..." : "Delete"}
-          cancelText="Cancel"
-          danger
-          onCancel={() => {
-            if (deletingProject) return;
-            setShowDeleteModal(false);
-          }}
-          onConfirm={confirmDeleteProject}
-        />
-      
+        open={showDeleteModal}
+        title="Delete project?"
+        message={`Delete "${data.project.name}" permanently? This action cannot be undone.`}
+        confirmText={deletingProject ? "Deleting..." : "Delete"}
+        cancelText="Cancel"
+        danger
+        onCancel={() => {
+          if (deletingProject) return;
+          setShowDeleteModal(false);
+        }}
+        onConfirm={confirmDeleteProject}
+      />
     </div>
   );
 }
-      
+
 // ✅ Local fetch for report (keeps your backend route: /api/projects/:id/report/)
 async function fetchProjectReport(projectId: number): Promise<ReportPayload> {
   const res = await fetch(`/api/projects/${projectId}/report/`, {
