@@ -499,3 +499,33 @@ def api_project_matches(request, project_id):
         })
 
     return JsonResponse({"project_id": project.id, "matches": matches})
+def compare_inputs_api(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    # ❌ access helper مش مضمون موجود
+    if not _can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    # BPMN
+    bpmn_tasks = []
+    for t in BpmnTask.objects.filter(project=project):
+        bpmn_tasks.append({
+            "taskId": t.task_id,
+            "name": t.name,
+            "description": t.description,
+        })
+
+    # Code
+    code_functions = []
+    for c in CodeArtifact.objects.filter(project=project):
+        code_functions.append({
+            "codeUid": c.code_uid,
+            "symbol": c.symbol,
+            "file": c.file_path,
+            "summary": c.summary_text,
+        })
+
+    return JsonResponse({
+        "bpmnTasks": bpmn_tasks,
+        "codeFunctions": code_functions,
+    })

@@ -44,15 +44,22 @@ def build_bpmn_text(task: Dict[str, Any]) -> str:
     return " ".join(parts).strip()
 
 
+# apps/analysis/embeddings/pipeline.py
+
 def build_code_text(item: Dict[str, Any]) -> str:
     """
     Build the semantic text for a code item.
 
-    Preferred:
-      - item["text"] if already normalized by the extractor (Day 3)
-    Fallback:
-      - "<type>: <name>"
+    Priority:
+      1) summary_text (AI one-sentence intent)  ✅ BEST for matching BPMN
+      2) item["text"] (extractor normalized text)
+      3) fallback "<type>: <name>"
     """
+    summary = (item.get("summary_text") or "").strip()
+    if summary:
+        return f"Description: {summary}"
+   # prefix helps retrieval-style behavior
+
     text = (item.get("text") or "").strip()
     if text:
         return text

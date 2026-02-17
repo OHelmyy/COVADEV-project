@@ -1,9 +1,8 @@
 # apps/analysis/services.py
-
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from django.conf import settings
 from django.db import transaction
@@ -13,20 +12,19 @@ from apps.analysis.bpmn.parser import extract_tasks
 from apps.analysis.semantic.analyze import analyze_project
 
 from .models import AnalysisRun, BpmnTask, MatchResult
-
-
 from .metrics.evaluation import evaluate_traceability
-from .semantic.embedding_service import SemanticEmbeddingService
-from .code.extractor import extract_python_from_directory
+
 
 def _abs_media_path(stored_path: str) -> Path:
     """
     Convert a stored relative path under MEDIA_ROOT to an absolute Path.
     If stored_path is already absolute, keep it as-is.
     """
-    p = Path(str(stored_path or "").strip())
-    if not p:
+    stored_path = str(stored_path or "").strip()
+    if not stored_path:
         raise ValueError("Empty stored_path")
+
+    p = Path(stored_path)
     if p.is_absolute():
         return p
     return Path(settings.MEDIA_ROOT) / p
@@ -72,17 +70,9 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
         desc = str(t.get("description", "")).strip()
 
         if not task_id:
-            # Skip invalid rows (no BPMN id)
             continue
 
-        objs.append(
-            BpmnTask(
-                project=project,
-                task_id=task_id,
-                name=name,
-                description=desc,
-            )
-        )
+        objs.append(BpmnTask(project=project, task_id=task_id, name=name, description=desc))
 
     if objs:
         BpmnTask.objects.bulk_create(objs)
@@ -136,27 +126,18 @@ def run_analysis_for_project(
 ) -> AnalysisRun:
     """
     Real pipeline (Project-based, no versions):
-
-    Inputs expected on the Project:
-      - project.active_bpmn.stored_path : relative BPMN file path under MEDIA_ROOT
-      - project.active_code.extracted_dir : folder path for extracted code
-      - project.similarity_threshold : float
-
-    What this does:
       1) Create AnalysisRun (RUNNING)
       2) Read BPMN bytes and parse tasks
       3) Store tasks in BpmnTask
-      4) Call semantic engine analyze_project(...)
+      4) Call semantic engine analyze_project(...)  ✅ (uses code summaries)
       5) Store MatchResult rows (MATCHED/MISSING/EXTRA)
       6) Mark run DONE/FAILED
     """
-    # Basic validation
     if not getattr(project, "active_bpmn", None):
         raise ValueError("No active BPMN uploaded for this project.")
     if not getattr(project, "active_code", None):
         raise ValueError("No active Code ZIP uploaded for this project.")
 
-    # Create and mark RUNNING atomically
     with transaction.atomic():
         run = AnalysisRun.objects.create(project=project, status="PENDING")
         run.status = "RUNNING"
@@ -193,6 +174,8 @@ def run_analysis_for_project(
             matcher=matcher,
             top_k=int(top_k),
             include_debug=False,
+            project=project,  # ✅ IMPORTANT: store CodeArtifact (summaries)
+            run=run,          # ✅ IMPORTANT: store embeddings/similarity (optional models)
         )
 
         # ---- 5) Convert engine output -> MatchResult storage schema ----
@@ -203,7 +186,6 @@ def run_analysis_for_project(
 
         storage_results: List[Dict[str, Any]] = []
 
-        # matched pairs: {task_id, code_id, score}
         for m in matched:
             storage_results.append(
                 {
@@ -214,7 +196,6 @@ def run_analysis_for_project(
                 }
             )
 
-        # missing tasks: list[str] of task ids
         for tid in missing:
             storage_results.append(
                 {
@@ -225,7 +206,6 @@ def run_analysis_for_project(
                 }
             )
 
-        # extra code: list[str] of code ids
         for cid in extra:
             storage_results.append(
                 {
@@ -253,12 +233,66 @@ def run_analysis_for_project(
         return run
 
 
-
-
-def compute_metrics_from_similarity_payload(payload: Dict) -> Dict:
+def run_semantic_pipeline_for_project(project_id: int, threshold: float = 0.7, top_k: int = 3) -> Dict[str, Any]:
     """
-    This is the function your views need right now.
-    It consumes the POST payload from the dashboard.
+    Used by apps/analysis/views.py (dashboard endpoint).
+    It should return a UI-ready JSON payload.
+
+    IMPORTANT:
+    - This uses the SAME engine (analyze_project) so you are comparing:
+      BPMN tasks ↔ code summaries
+    """
+    from apps.projects.models import Project
+
+    project = Project.objects.select_related("active_bpmn", "active_code").get(id=project_id)
+
+    if not getattr(project, "active_bpmn", None):
+        raise ValueError("No active BPMN uploaded for this project.")
+    if not getattr(project, "active_code", None):
+        raise ValueError("No active Code ZIP uploaded for this project.")
+
+    bpmn_abs = _abs_media_path(project.active_bpmn.stored_path)
+    bpmn_bytes = bpmn_abs.read_bytes()
+
+    code_root = _resolve_code_root_from_project(project)
+
+    # We do NOT create an AnalysisRun here (this endpoint is for dashboard preview).
+    # The official "Run Analysis" button should call run_analysis_for_project().
+    result = analyze_project(
+    bpmn_input=bpmn_bytes,
+    code_root=code_root,
+    threshold=threshold,
+    matcher="greedy",
+    top_k=int(top_k),
+    include_debug=False,
+    project=project,
+    run=None,
+)
+
+
+
+    # Build UI-friendly previews
+    return {
+        "summary": result.get("summary_status") or {},
+        "matching": result.get("matching") or {},
+        "stats": result.get("stats") or {},
+        "bpmn": result.get("bpmn") or {},
+        "code": {
+            "items": (result.get("code") or {}).get("items") or [],
+        },
+        "previews": {
+            "bpmn_tasks": ((result.get("bpmn") or {}).get("tasks") or [])[:20],
+            "code_items": ((result.get("code") or {}).get("items") or [])[:30],
+            "matched": ((result.get("matching") or {}).get("matched") or [])[:30],
+            "missing": ((result.get("matching") or {}).get("missing") or [])[:30],
+            "extra": ((result.get("matching") or {}).get("extra") or [])[:30],
+        },
+    }
+
+
+def compute_metrics_from_similarity_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Consumes POST payload from dashboard and computes evaluation metrics.
     """
     threshold = float(payload.get("threshold", 0.7))
     bpmn_tasks = payload.get("bpmn_tasks", []) or []
@@ -271,124 +305,3 @@ def compute_metrics_from_similarity_payload(payload: Dict) -> Dict:
         matches=matches,
         threshold=threshold,
     )
-def run_semantic_pipeline_for_project(project_id: int, threshold: float = 0.7, top_k: int = 3) -> Dict:
-    """
-    End-to-end (Project-based):
-    - Read BPMN from project.active_bpmn.stored_path
-    - Read extracted code from project.active_code.extracted_dir
-    - Extract texts
-    - Compute similarity (MiniLM) and build matches
-    - Evaluate traceability (summary + details)
-    - Return UI-ready payload for dashboard.html (including previews)
-    """
-    # ✅ Import here so we don’t guess your apps/projects structure at module import time
-    from apps.projects.models import Project  # change only if your Project model path differs
-
-    project = Project.objects.select_related("active_bpmn", "active_code").get(id=project_id)
-
-    if not getattr(project, "active_bpmn", None):
-        raise ValueError("No active BPMN uploaded for this project.")
-    if not getattr(project, "active_code", None):
-        raise ValueError("No active Code ZIP uploaded for this project.")
-
-    # ---- 1) Read BPMN bytes ----
-    bpmn_abs = _abs_media_path(project.active_bpmn.stored_path)
-    bpmn_bytes = bpmn_abs.read_bytes()
-
-    # ---- 2) Parse BPMN tasks (extract_tasks must accept bytes, like your run_analysis_for_project does) ----
-    parsed_tasks = extract_tasks(bpmn_bytes)  # [{id,name,description,type}, ...]
-
-    # ---- 3) Normalize BPMN tasks for evaluator/dashboard ----
-    bpmn_tasks: List[Dict[str, Any]] = []
-    task_texts: List[str] = []
-    for t in parsed_tasks:
-        tid = str(t.get("id", "") or "").strip()
-        if not tid:
-            continue
-        name = str(t.get("name", "") or "").strip()
-        desc = str(t.get("description", "") or "").strip()
-        ttype = str(t.get("type", "") or "").strip()
-
-        # semantic text used by embedder
-        parts: List[str] = []
-        if name:
-            parts.append(f"Task: {name}.")
-        if desc:
-            parts.append(f"Description: {desc}.")
-        if ttype:
-            parts.append(f"Type: {ttype}.")
-        text = " ".join(parts).strip() or name
-
-        bpmn_tasks.append({"taskId": tid, "taskName": name, "text": text})
-        task_texts.append(text)
-
-    # ---- 4) Resolve code root and extract code items ----
-    code_root = _resolve_code_root_from_project(project)
-
-    # your extractor should return items with at least: id OR codeId, file, symbol/name, text(optional)
-    raw_code_items = extract_python_from_directory(code_root, project_root=code_root)
-
-    code_items: List[Dict[str, Any]] = []
-    code_texts: List[str] = []
-    for c in raw_code_items:
-        cid = str(c.get("id") or c.get("codeId") or "").strip()
-        if not cid:
-            continue
-        file_ = str(c.get("file", "") or "").strip()
-        symbol = str(c.get("symbol") or c.get("name") or "").strip()
-        text = str(c.get("text") or "").strip() or symbol
-
-        code_items.append({"codeId": cid, "file": file_, "symbol": symbol, "text": text})
-        code_texts.append(text)
-
-    # ---- 5) If empty, return safe result ----
-    if not bpmn_tasks or not code_items:
-        result = evaluate_traceability(
-            bpmn_tasks=bpmn_tasks,
-            code_items=code_items,
-            matches=[],
-            threshold=float(threshold),
-        )
-        result["previews"] = {
-            "bpmn_tasks": bpmn_tasks[:20],
-            "code_items": code_items[:30],
-            "matches": [],
-        }
-        return result
-
-    # ---- 6) Compute similarity matrix ----
-    embedder = SemanticEmbeddingService()
-    sim_matrix = embedder.compute_similarity_matrix(task_texts, code_texts)  # NxM list
-
-    # ---- 7) Build matches list (TOP-K per task to keep payload smaller) ----
-    k = max(1, int(top_k))
-    matches: List[Dict[str, Any]] = []
-
-    for i, t in enumerate(bpmn_tasks):
-        row = sim_matrix[i]
-        # top-k indices by similarity
-        top_idx = sorted(range(len(row)), key=lambda j: row[j], reverse=True)[:k]
-        for j in top_idx:
-            matches.append({
-                "taskId": t["taskId"],
-                "codeId": code_items[j]["codeId"],
-                "similarity": float(row[j]),
-            })
-
-    # ---- 8) Evaluate and attach previews for dashboard ----
-    result = evaluate_traceability(
-        bpmn_tasks=bpmn_tasks,
-        code_items=code_items,
-        matches=matches,
-        threshold=float(threshold),
-    )
-
-    result["previews"] = {
-        "bpmn_tasks": bpmn_tasks[:20],
-        "code_items": code_items[:30],
-        "matches": matches[:50],
-    }
-
-    return result
-
-

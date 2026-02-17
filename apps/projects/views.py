@@ -11,6 +11,13 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
 from apps.analysis.services import run_analysis_for_project
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404
+
+from apps.analysis.models import BpmnTask
+# لو CodeArtifact موجود عندك:
+from apps.analysis.models_code import CodeArtifact
 
 from apps.accounts.rbac import is_admin, is_evaluator
 from .models import Project, ProjectMembership, CodeFile, ProjectFile
@@ -432,3 +439,44 @@ def remove_member(request, project_id, membership_id):
 
     messages.success(request, "Member removed.")
     return redirect("projects:members", project_id=project.id)
+
+# ============================================================
+# viewss gededa
+# ============================================================
+# apps/projects/views.py
+
+
+# موجودة عندك فوق غالبًا:
+# from apps.accounts.rbac import is_admin, is_evaluator
+# from .models import Project, ProjectMembership
+# def _can_open_project(project, user): ...
+
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404
+
+from apps.analysis.models import BpmnTask
+from apps.analysis.models_code import CodeArtifact
+
+@login_required
+def compare_inputs_api(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    bpmn_tasks = [
+        {"taskId": t.task_id, "name": t.name, "description": t.description}
+        for t in BpmnTask.objects.filter(project=project)
+    ]
+
+    code_functions = [
+        {"codeUid": c.code_uid, "symbol": c.symbol, "file": c.file_path, "summaryText": c.summary_text}
+        for c in CodeArtifact.objects.filter(project=project)
+    ]
+
+    return JsonResponse({
+        "projectId": project.id,
+        "bpmnTasks": bpmn_tasks,
+        "codeFunctions": code_functions,
+    })

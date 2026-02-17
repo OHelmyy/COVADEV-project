@@ -12,6 +12,7 @@ import {
   fetchMatches,
   fetchTasks,
   deleteProject,
+  fetchCompareInputs,
 } from "../api/projects";
 import type { ProjectDetailApi } from "../api/types";
 
@@ -26,7 +27,38 @@ type MatchRow = {
   code_ref: string;
 };
 
-type TabKey = "overview" | "uploads" | "settings" | "results" | "runs" | "members";
+type CompareBpmnTask = {
+  taskId: string;
+  name: string;
+  description?: string;
+  summaryText?: string;
+  compareText?: string; // backward compat
+};
+
+type CompareCodeFn = {
+  codeUid: string;
+
+  // ✅ new keys
+  functionName?: string;
+  filePath?: string;
+  summaryText?: string;
+
+  // ✅ backward compat keys (in case backend still returns old ones)
+  symbol?: string;
+  file?: string;
+  summary_text?: string;
+  summary?: string;
+  structuredSummary?: string;
+};
+
+type TabKey =
+  | "overview"
+  | "uploads"
+  | "settings"
+  | "results"
+  | "compare"
+  | "runs"
+  | "members";
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams();
@@ -49,6 +81,12 @@ export default function ProjectDetailPage() {
   const [resultsError, setResultsError] = useState<string>("");
   const [resultsLoading, setResultsLoading] = useState<boolean>(false);
 
+  // ✅ Compare state
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState("");
+  const [bpmnCompare, setBpmnCompare] = useState<CompareBpmnTask[]>([]);
+  const [codeCompare, setCodeCompare] = useState<CompareCodeFn[]>([]);
+
   const role = String(data?.membership.role || "").toUpperCase();
   const isAdmin = role === "ADMIN";
   const isEvaluator = role === "EVALUATOR";
@@ -67,8 +105,13 @@ export default function ProjectDetailPage() {
     const all: { key: TabKey; label: string; visible: boolean }[] = [
       { key: "overview", label: "Overview", visible: true },
       { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin }, // hide for admin
-      { key: "settings", label: "Settings", visible: canUpdateThreshold || canManageMembers || canViewUploadLogs }, // evaluator only
+      {
+        key: "settings",
+        label: "Settings",
+        visible: canUpdateThreshold || canManageMembers || canViewUploadLogs,
+      },
       { key: "results", label: "Results", visible: true },
+      { key: "compare", label: "Compare", visible: true },
       { key: "runs", label: "Runs", visible: true },
       { key: "members", label: "Members", visible: true },
     ];
@@ -114,12 +157,34 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // ✅ Compare loader
+  async function loadCompare() {
+    if (!Number.isFinite(id)) return;
+    setCompareLoading(true);
+    setCompareError("");
+    try {
+      const res: any = await fetchCompareInputs(id);
+      setBpmnCompare((res?.bpmnTasks ?? []) as CompareBpmnTask[]);
+      setCodeCompare((res?.codeFunctions ?? []) as CompareCodeFn[]);
+    } catch (e: any) {
+      setCompareError(e?.message ?? "Failed to load compare inputs");
+    } finally {
+      setCompareLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!Number.isFinite(id)) return;
     load();
     loadResults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // when switching to compare tab, load compare inputs
+  useEffect(() => {
+    if (activeTab === "compare") loadCompare();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, id]);
 
   async function onUploadBpmn() {
     if (!bpmnFile) return;
@@ -130,6 +195,7 @@ export default function ProjectDetailPage() {
       setBpmnFile(null);
       await load();
       await loadResults();
+      if (activeTab === "compare") await loadCompare();
     } catch (e: any) {
       setActionMsg(`BPMN upload failed: ${e?.message ?? e}`);
     }
@@ -144,6 +210,7 @@ export default function ProjectDetailPage() {
       setCodeZip(null);
       await load();
       await loadResults();
+      if (activeTab === "compare") await loadCompare();
     } catch (e: any) {
       setActionMsg(`Code ZIP upload failed: ${e?.message ?? e}`);
     }
@@ -156,6 +223,7 @@ export default function ProjectDetailPage() {
       setActionMsg(`Analysis: ${res?.run?.status ?? "DONE"} ✅`);
       await load();
       await loadResults();
+      if (activeTab === "compare") await loadCompare();
     } catch (e: any) {
       setActionMsg(`Analysis failed: ${e?.message ?? e}`);
     }
@@ -173,20 +241,18 @@ export default function ProjectDetailPage() {
     }
   }
 
-  //delete function
   async function onDeleteProject() {
-  if (!window.confirm("Delete this project permanently? This cannot be undone.")) return;
-
-  setActionMsg("Deleting project...");
-  try {
-    await deleteProject(id);
-    setActionMsg("");
-    // send admin back to projects list
-    window.location.href = "/projects";
-  } catch (e: any) {
-    setActionMsg(`Delete failed: ${e?.message ?? e}`);
+    if (!window.confirm("Delete this project permanently? This cannot be undone.")) return;
+    setActionMsg("Deleting project...");
+    try {
+      await deleteProject(id);
+      setActionMsg("");
+      window.location.href = "/projects";
+    } catch (e: any) {
+      setActionMsg(`Delete failed: ${e?.message ?? e}`);
+    }
   }
-}
+
   // Result groups
   const matched = useMemo(
     () => matches.filter((x) => x.task && !String(x.status).toLowerCase().includes("missing")),
@@ -194,24 +260,31 @@ export default function ProjectDetailPage() {
   );
 
   const missing = useMemo(() => {
-    const matchedTaskIds = new Set(matched.map((x) => x.task?.task_id).filter(Boolean) as string[]);
+    const matchedTaskIds = new Set(
+      matched.map((x) => x.task?.task_id).filter(Boolean) as string[]
+    );
     const explicitMissing = matches.filter((x) => String(x.status).toLowerCase().includes("missing"));
     const implicitMissing = tasks.filter((t) => !matchedTaskIds.has(t.task_id));
 
     const map = new Map<string, { task_id: string; name: string; reason: string }>();
 
     explicitMissing.forEach((x) => {
-      if (x.task) map.set(x.task.task_id, { task_id: x.task.task_id, name: x.task.name, reason: "Marked missing" });
+      if (x.task)
+        map.set(x.task.task_id, { task_id: x.task.task_id, name: x.task.name, reason: "Marked missing" });
     });
 
     implicitMissing.forEach((t) => {
-      if (!map.has(t.task_id)) map.set(t.task_id, { task_id: t.task_id, name: t.name, reason: "No match found" });
+      if (!map.has(t.task_id))
+        map.set(t.task_id, { task_id: t.task_id, name: t.name, reason: "No match found" });
     });
 
     return Array.from(map.values());
   }, [tasks, matches, matched]);
 
-  const extra = useMemo(() => matches.filter((x) => !x.task || String(x.status).toLowerCase().includes("extra")), [matches]);
+  const extra = useMemo(
+    () => matches.filter((x) => !x.task || String(x.status).toLowerCase().includes("extra")),
+    [matches]
+  );
 
   const scoreAvg = useMemo(() => {
     if (matched.length === 0) return 0;
@@ -221,19 +294,44 @@ export default function ProjectDetailPage() {
 
   const coverage = useMemo(() => {
     if (tasks.length === 0) return 0;
-    const matchedTaskIds = new Set(matched.map((x) => x.task?.task_id).filter(Boolean) as string[]);
+    const matchedTaskIds = new Set(
+      matched.map((x) => x.task?.task_id).filter(Boolean) as string[]
+    );
     return (matchedTaskIds.size / tasks.length) * 100;
   }, [tasks, matched]);
 
   if (state === "loading" || state === "idle") return <StatusMessage title="Loading project..." />;
-  if (state === "error") return <StatusMessage title="Failed to load project" message={errorText} onRetry={load} />;
+  if (state === "error")
+    return <StatusMessage title="Failed to load project" message={errorText} onRetry={load} />;
   if (!data) return null;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 14, alignItems: "start" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "240px 1fr",
+        gap: 14,
+        alignItems: "start",
+      }}
+    >
       {/* LEFT MENU */}
-      <aside style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 10 }}>
-        <div style={{ fontWeight: 900, padding: "10px 10px", borderBottom: "1px solid #f3f3f3" }}>Project</div>
+      <aside
+        style={{
+          border: "1px solid #eee",
+          borderRadius: 12,
+          background: "#fff",
+          padding: 10,
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 900,
+            padding: "10px 10px",
+            borderBottom: "1px solid #f3f3f3",
+          }}
+        >
+          Project
+        </div>
 
         <div style={{ padding: "10px 10px", color: "#666" }}>
           <div style={{ fontWeight: 800 }}>{data.project.name}</div>
@@ -270,7 +368,9 @@ export default function ProjectDetailPage() {
       <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Top message */}
         {actionMsg ? (
-          <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee", background: "#fff" }}>{actionMsg}</div>
+          <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee", background: "#fff" }}>
+            {actionMsg}
+          </div>
         ) : null}
 
         {/* TAB: Overview */}
@@ -317,7 +417,7 @@ export default function ProjectDetailPage() {
           </>
         ) : null}
 
-        {/* TAB: Uploads & Tools (not admin) */}
+        {/* TAB: Uploads & Tools */}
         {activeTab === "uploads" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Uploads & Tools</h3>
@@ -375,7 +475,9 @@ export default function ProjectDetailPage() {
                   >
                     Run analysis
                   </button>
-                  <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>Runs analysis using current active uploads.</div>
+                  <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
+                    Runs analysis using current active uploads.
+                  </div>
                 </>
               ) : (
                 <div style={{ color: "#888" }}>Only evaluator or developers can run analysis.</div>
@@ -384,7 +486,7 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
-        {/* TAB: Settings (evaluator only) */}
+        {/* TAB: Settings */}
         {activeTab === "settings" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Settings</h3>
@@ -428,7 +530,9 @@ export default function ProjectDetailPage() {
                 </div>
               </>
             ) : (
-              <div style={{ color: "#888", marginTop: 10 }}>Only evaluator can change settings and view upload logs.</div>
+              <div style={{ color: "#888", marginTop: 10 }}>
+                Only evaluator can change settings and view upload logs.
+              </div>
             )}
           </Card>
         ) : null}
@@ -461,7 +565,6 @@ export default function ProjectDetailPage() {
               <MiniStat label="Avg Similarity (matched)" value={scoreAvg.toFixed(3)} />
             </div>
 
-            {/* Matched */}
             <SectionTable
               title="Matched"
               emptyText="No matched results yet."
@@ -496,7 +599,6 @@ export default function ProjectDetailPage() {
               }
             />
 
-            {/* Missing */}
             <SectionTable
               title="Missing"
               emptyText="No missing tasks."
@@ -525,7 +627,6 @@ export default function ProjectDetailPage() {
               }
             />
 
-            {/* Extra */}
             <SectionTable
               title="Extra"
               emptyText="No extra results."
@@ -555,17 +656,125 @@ export default function ProjectDetailPage() {
               }
             />
 
-            {/* Indexed files preview */}
             <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12, marginTop: 12 }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Indexed Code Files (preview)</div>
               {files.length === 0 ? (
                 <div style={{ color: "#888" }}>No files indexed yet.</div>
               ) : (
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(files.slice(0, 30), null, 2)}</pre>
+                <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                  {JSON.stringify(files.slice(0, 30), null, 2)}
+                </pre>
               )}
             </div>
           </Card>
         ) : null}
+
+        {/* ✅ TAB: Compare */}
+{activeTab === "compare" ? (
+  <Card>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 10,
+        flexWrap: "wrap",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>
+        Compare Inputs (What the system compares)
+      </h3>
+      <button
+        onClick={loadCompare}
+        style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+        disabled={compareLoading}
+      >
+        {compareLoading ? "Refreshing..." : "Refresh compare"}
+      </button>
+    </div>
+
+    {compareError ? (
+      <div style={{ color: "#a00", marginTop: 8 }}>{compareError}</div>
+    ) : null}
+
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+      {/* BPMN */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ fontWeight: 900 }}>BPMN Task Summaries</div>
+
+        {bpmnCompare.length === 0 ? (
+          <div style={{ color: "#888" }}>No BPMN tasks yet.</div>
+        ) : (
+          bpmnCompare.map((t) => {
+            const body =
+              (t.summaryText && t.summaryText.trim()) ||
+              // لو لسه API بيرجع compareText (compat)
+              ((t as any).compareText && String((t as any).compareText).trim()) ||
+              `Task: ${t.name || "Unnamed Task"}. Description: ${t.description || ""}`;
+
+            return (
+              <CompareCard
+                key={t.taskId}
+                title={t.name || "Unnamed Task"}
+                subtitle={t.taskId}
+                body={body}
+              />
+            );
+          })
+        )}
+      </div>
+
+      {/* Code */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ fontWeight: 900 }}>Code Function Summaries</div>
+
+        {codeCompare.length === 0 ? (
+          <div style={{ color: "#888" }}>No code summaries yet.</div>
+        ) : (
+          codeCompare.map((c: any) => {
+            const fnName =
+              (c.functionName && String(c.functionName).trim()) ||
+              (c.symbol && String(c.symbol).trim()) ||
+              "Unnamed Function";
+
+            const fp =
+              (c.filePath && String(c.filePath).trim()) ||
+              (c.file && String(c.file).trim()) ||
+              "";
+
+            const subtitle = fp ? `${c.codeUid} — ${fp}` : `${c.codeUid}`;
+
+            // ✅ أهم نقطة: body يبقى نفس فورمات BPMN
+            // لو backend رجّع summaryText جاهز بصيغة "Task: ... Description: ..."
+            const sumRaw =
+              (c.summaryText && String(c.summaryText).trim()) ||
+              (c.summary_text && String(c.summary_text).trim()) ||
+              (c.summary && String(c.summary).trim()) ||
+              "";
+
+            const humanTitle = humanizeTitle(fnName);
+
+            const body =
+              sumRaw && sumRaw.startsWith("Task:") && sumRaw.includes("Description:")
+                ? sumRaw
+                : `Task: ${humanTitle || "Unnamed function"}. Description: ${
+                    sumRaw || "No summary generated for this function."
+                  }`;
+
+            return (
+              <CompareCard
+                key={c.codeUid}
+                title={fnName}
+                subtitle={subtitle}
+                body={body}
+              />
+            );
+          })
+        )}
+      </div>
+    </div>
+  </Card>
+) : null}
+
 
         {/* TAB: Runs */}
         {activeTab === "runs" ? (
@@ -610,7 +819,7 @@ export default function ProjectDetailPage() {
   );
 }
 
-/* ---------- small helpers (keep your style) ---------- */
+/* ---------- small helpers ---------- */
 function Card({ children }: { children: React.ReactNode }) {
   return <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 14 }}>{children}</div>;
 }
@@ -650,6 +859,22 @@ function SectionTable(props: { title: string; emptyText: string; table: React.Re
     </div>
   );
 }
+
+function CompareCard(props: { title: string; subtitle: string; body: string }) {
+  return (
+    <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12, background: "#fff" }}>
+      <div style={{ fontWeight: 900, fontSize: 16 }}>{props.title}</div>
+      <div style={{ color: "#888", fontSize: 12, marginTop: 2 }}>{props.subtitle}</div>
+      <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.45 }}>{props.body}</div>
+    </div>
+  );
+}
+function humanizeTitle(s: string) {
+  const t = String(s || "").replace(/_/g, " ").trim();
+  if (!t) return "";
+  return t[0].toUpperCase() + t.slice(1);
+}
+
 
 const th: React.CSSProperties = { padding: "10px 8px", borderBottom: "1px solid #eee" };
 const td: React.CSSProperties = { padding: "10px 8px", borderBottom: "1px solid #f3f3f3" };

@@ -1,20 +1,29 @@
 # apps/projects/services.py
+from __future__ import annotations
 
 import shutil
 import zipfile
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.db import transaction
 
 from .models import Project, ProjectFile, CodeFile
+
+# ✅ Analysis imports (for code summarization on upload)
+from apps.analysis.code.structured_extractor import extract_structured_from_directory
+from apps.analysis.summary.service import SummaryService
+from apps.analysis.summary.structured_summary import build_structured_summary
+from apps.analysis.models_code import CodeArtifact
 
 
 # ============================================================
 # Project creation (simple helper)
 # ============================================================
 
-def create_project(user, name, description=""):
+def create_project(user, name, description: str = ""):
     """
     Create a new Project. (Membership role assignment is handled in views.)
     """
@@ -40,13 +49,9 @@ def save_bpmn_file(project: Project, uploaded_file, uploader):
     project_dir = Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "bpmn"
     project_dir.mkdir(parents=True, exist_ok=True)
 
-    # Keep original filename (good for MVP)
     file_path = project_dir / uploaded_file.name
-
-    # default_storage returns relative path under MEDIA_ROOT
     stored_path = default_storage.save(str(file_path), uploaded_file)
 
-    # Log upload
     pf = ProjectFile.objects.create(
         project=project,
         file_type="BPMN",
@@ -55,7 +60,6 @@ def save_bpmn_file(project: Project, uploaded_file, uploader):
         uploaded_by=uploader,
     )
 
-    # Mark as active BPMN
     project.active_bpmn = pf
     project.save(update_fields=["active_bpmn"])
     return pf
@@ -85,22 +89,18 @@ def _safe_extract_zip(zip_file_path: Path, extract_to: Path):
 
     with zipfile.ZipFile(zip_file_path, "r") as zf:
         for member in zf.infolist():
-            # skip directories
             if member.is_dir():
                 continue
 
-            # block symlinks
             if _is_symlink(member):
                 raise ValueError("Unsafe zip content (symlink detected).")
 
             member_path = Path(member.filename)
-
-            # Resolve destination path & verify it stays inside extract_to
             resolved = (extract_to / member_path).resolve()
+
             if not str(resolved).startswith(str(extract_to)):
                 raise ValueError("Unsafe zip content (path traversal detected).")
 
-        # If all safe -> extract
         zf.extractall(extract_to)
 
 
@@ -123,11 +123,9 @@ def _index_code_files(project: Project, code_root_dir: Path, uploader):
         if not p.is_file():
             continue
 
-        # Ignore junk files
         if p.name.lower() in ignore_files:
             continue
 
-        # Ignore if path contains ignored dirs
         if any(part.lower() in ignore_dirs for part in p.parts):
             continue
 
@@ -145,57 +143,181 @@ def _index_code_files(project: Project, code_root_dir: Path, uploader):
 
 
 # ============================================================
+# ✅ Code Summarization helpers
+# ============================================================
+
+def _fallback_summary(sf: Dict[str, Any]) -> str:
+    """
+    Non-hallucinating fallback if the local LLM fails.
+    Ensures UI never shows 'No summary generated'.
+    """
+    fn = (sf.get("function_name") or "function").replace("_", " ").strip()
+    calls = sf.get("calls") or []
+    writes = sf.get("writes") or []
+    returns = sf.get("returns") or []
+
+    bits: List[str] = []
+    if calls:
+        bits.append("calls other routines")
+    if writes:
+        bits.append("updates data")
+    if returns:
+        bits.append("returns a result")
+
+    tail = ", ".join(bits) if bits else "implements its main behavior based on available code context"
+    return f"{fn} {tail}."
+
+
+def _persist_code_artifacts_with_summaries(
+    *,
+    project: Project,
+    code_root_dir: Path,
+) -> Dict[str, Any]:
+    """
+    Extract structured functions from the extracted code folder,
+    generate summaries, and save/update CodeArtifact rows.
+    """
+    structured_functions = extract_structured_from_directory(
+        code_root_dir,
+        project_root=code_root_dir,
+    )
+
+    summaries_by_uid: Dict[str, Dict[str, str]] = {}
+    summary_errors: Dict[str, str] = {}
+
+    summarizer = SummaryService()
+    try:
+        # returns: {uid: {"short": "...", "detailed": "..."}}
+        summaries_by_uid = summarizer.summarize_many(structured_functions)
+    except Exception as e:
+        summary_errors["__GLOBAL__"] = str(e)
+        summaries_by_uid = {}
+
+    saved = 0
+    failed = 0
+
+    with transaction.atomic():
+        for sf in structured_functions:
+            uid = (sf.get("function_uid") or "").strip()
+            if not uid:
+                continue
+
+            fn_name = (sf.get("function_name") or "").strip()
+            file_path = (sf.get("file_path") or "").strip()
+
+            val = summaries_by_uid.get(uid) or {}
+            short = (val.get("short") or "").strip() if isinstance(val, dict) else str(val).strip()
+            detailed = (val.get("detailed") or "").strip() if isinstance(val, dict) else ""
+
+            if not short:
+                short = _fallback_summary(sf)
+                failed += 1
+                if uid not in summary_errors:
+                    summary_errors[uid] = "Empty/failed model summary (fallback used)"
+
+            try:
+                structured_ui = build_structured_summary(sf)
+            except Exception:
+                structured_ui = detailed or ""
+
+            CodeArtifact.objects.update_or_create(
+                project=project,
+                code_uid=uid,
+                defaults={
+                    "file_path": file_path,
+                    "language": (sf.get("language") or "python").strip() or "python",
+                    "symbol": fn_name,
+                    "kind": (sf.get("kind") or "function").strip() or "function",
+                    "raw_snippet": sf.get("raw_snippet") or "",
+                    "calls": sf.get("calls") or [],
+                    "writes": sf.get("writes") or [],
+                    "returns": sf.get("returns") or [],
+                    "exceptions": sf.get("exceptions") or [],
+                    "summary_text": short,                 # ✅ for embeddings + compare
+                    "structured_summary": structured_ui,   # ✅ for UI/debug
+                },
+            )
+            saved += 1
+
+    return {
+        "structured_functions": len(structured_functions),
+        "saved": saved,
+        "failed_summaries": failed,
+        "errors_sample": dict(list(summary_errors.items())[:5]),
+    }
+
+
+# ============================================================
 # Code ZIP upload (project-based, no versions)
 # ============================================================
 
 def save_code_zip_and_extract(project: Project, uploaded_zip, uploader):
     """
-    Save ZIP, extract into: media/projects/<project_id>/code/
-    Index CodeFile rows, and log upload in ProjectFile.
+    Save ZIP, extract into:
+      media/projects/<project_id>/code/extracted/
+
+    Index CodeFile rows, log upload in ProjectFile, and
+    ✅ generate CodeArtifact summaries immediately after upload.
 
     Behavior:
-    - Stores the ZIP file under code folder (so you can audit it later)
-    - Clears old extracted code folder content before extracting (prevents mixing old/new files)
+    - Stores the ZIP file under code folder (audit)
+    - Clears old extracted code folder content before extracting
     - Updates project.active_code pointer
     """
     code_root = Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "code"
     code_root.mkdir(parents=True, exist_ok=True)
 
-    # OPTIONAL BUT RECOMMENDED:
-    # Clear old extracted content (but keep folder)
-    # This prevents stale files from previous zips staying around.
+    # Keep zip audit file in code_root, but extract into a clean subfolder
+    extract_dir = code_root / "extracted"
+
+    # Clear old extracted content
+    if extract_dir.exists():
+        try:
+            shutil.rmtree(extract_dir)
+        except Exception:
+            pass
+    extract_dir.mkdir(parents=True, exist_ok=True)
+
+    # Optionally clear old zip files in code_root (keep folder)
+    # If you want to keep all past zips, remove this block.
     for child in code_root.iterdir():
         try:
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
+            if child.is_file() and child.suffix.lower() == ".zip":
                 child.unlink()
         except Exception:
-            # If something is locked, we keep going (MVP friendly).
             pass
 
-    # Save ZIP file into code root
+    # Save ZIP file into code root (audit)
     zip_path = code_root / uploaded_zip.name
     stored_zip_path = default_storage.save(str(zip_path), uploaded_zip)
 
-    # Convert stored path to absolute path for extraction
+    # Absolute path for extraction
     zip_full_path = Path(settings.MEDIA_ROOT) / stored_zip_path
 
-    # Extract safely and index
-    _safe_extract_zip(zip_full_path, code_root)
-    _index_code_files(project, code_root, uploader)
+    # Extract safely and index files
+    _safe_extract_zip(zip_full_path, extract_dir)
+    _index_code_files(project, extract_dir, uploader)
 
     # Log upload
     pf = ProjectFile.objects.create(
         project=project,
         file_type="CODE",
         original_name=uploaded_zip.name,
-        stored_path=stored_zip_path,  
-        extracted_dir=str(code_root),  
+        stored_path=stored_zip_path,
+        extracted_dir=str(extract_dir),
         uploaded_by=uploader,
     )
 
     # Mark as active Code ZIP
     project.active_code = pf
     project.save(update_fields=["active_code"])
+
+    # ✅ Generate code function summaries right after upload
+    try:
+        stats = _persist_code_artifacts_with_summaries(project=project, code_root_dir=extract_dir)
+        print("Code summarization stats:", stats)
+    except Exception as e:
+        # MVP-friendly: upload still succeeds even if summarizer fails
+        print("Code summarization FAILED:", str(e))
+
     return pf

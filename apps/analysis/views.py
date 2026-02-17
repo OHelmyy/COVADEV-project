@@ -1,22 +1,6 @@
 # apps/analysis/views.py
-#
-# ✅ Edited to work with Option 1 RBAC (Admin / Evaluator / Developer)
-# ✅ Protects ALL endpoints with login + project access checks
-# ✅ Does NOT change the pipeline logic (services.py stays the same)
-#
-# Key rules used here:
-# - Admin can access everything
-# - Evaluator can access projects where project.evaluator == user
-# - Developer can access projects where ProjectMembership exists
-#
-# IMPORTANT:
-# - The prototype upload endpoint is kept but locked to ADMIN only (recommended).
-#   If you don't need it, delete it entirely.
 
 from __future__ import annotations
-from django.contrib.auth.decorators import login_required
-from apps.projects.models import ProjectMembership, ProjectFile, Project
-from apps.analysis.models import AnalysisRun
 
 import json
 import traceback
@@ -25,14 +9,18 @@ import zipfile
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
-from django.contrib.auth.decorators import login_required
+from apps.projects.models import Project, ProjectMembership, ProjectFile
+from apps.analysis.models import AnalysisRun
 
 from apps.accounts.rbac import is_admin, is_evaluator
-from apps.projects.models import Project, ProjectMembership
+from apps.projects.models import Project, ProjectMembership, ProjectFile
+from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
+from apps.analysis.models_code import CodeArtifact
 
 from .bpmn.parser import extract_tasks
 from .code.extractor import extract_python_from_directory
@@ -40,10 +28,21 @@ from .embeddings.pipeline import embed_pipeline
 from .semantic.similarity import compute_similarity, top_k_matches
 from .services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
 
+# Used by compare endpoint
+from apps.analysis.services import replace_bpmn_tasks
+from apps.analysis.semantic.analyze import analyze_project
+
 
 # ============================================================
 # Helpers
 # ============================================================
+
+def _abs_media_path(stored_path: str) -> Path:
+    """
+    Convert a MEDIA relative stored path to an absolute Path.
+    """
+    return (Path(settings.MEDIA_ROOT) / stored_path).resolve()
+
 
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
@@ -71,22 +70,31 @@ def _can_open_project(project: Project, user) -> bool:
     return ProjectMembership.objects.filter(project=project, user=user).exists()
 
 
-def _require_project_access(request, project_id: int) -> Project:
-    """
-    Resolve project and enforce access. Returns Project or raises 403 JsonResponse.
-    """
-    project = get_object_or_404(Project, id=project_id)
-
-    if not _can_open_project(project, request.user):
-        # raise a JsonResponse-style "forbidden"
-        # caller should return it
-        return None  # type: ignore
-
-    return project
-
-
 def _forbidden():
     return JsonResponse({"detail": "Forbidden"}, status=403)
+
+
+def _resolve_code_root_from_project(project: Project) -> Path:
+    """
+    Return the extracted code directory for the project's active code zip.
+    You must ensure your upload/extract step extracts zip into a stable folder.
+    """
+    if not getattr(project, "active_code", None):
+        raise ValueError("No active Code ZIP uploaded.")
+
+    # stored_path points to the ZIP itself under MEDIA
+    zip_abs = _abs_media_path(project.active_code.stored_path)
+
+    # choose a stable extraction folder (example)
+    extract_dir = (Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "code_extracted").resolve()
+    _ensure_dir(extract_dir)
+
+    # (Optional) if you already extract elsewhere, just return that folder instead
+    # If you want: always re-extract to keep fresh:
+    with zipfile.ZipFile(zip_abs, "r") as zf:
+        zf.extractall(extract_dir)
+
+    return extract_dir
 
 
 # ============================================================
@@ -132,8 +140,7 @@ def run_analysis(request):
         zf.extractall(code_dir)
 
     try:
-        # NOTE: if your parser expects bytes, adapt accordingly
-        tasks = extract_tasks(bpmn_path)  # your prototype uses path-based parser
+        tasks = extract_tasks(bpmn_path)  # prototype uses path-based parser
         code_items = extract_python_from_directory(code_dir, project_root=code_dir)
 
         embedded = embed_pipeline(tasks=tasks, code_items=code_items, batch_size=32)
@@ -179,18 +186,10 @@ def dashboard(request):
 @login_required
 @require_GET
 def run_project(request, project_id: int):
-    """
-    Returns the UI-ready payload for a specific project.
-    This calls: run_semantic_pipeline_for_project(project_id, ...)
-
-    Access:
-      - Any user who can open the project (Admin, assigned evaluator, assigned developer)
-    """
     project = get_object_or_404(Project, id=project_id)
     if not _can_open_project(project, request.user):
         return _forbidden()
 
-    # default threshold to project threshold unless override is provided
     threshold = float(request.GET.get("threshold", project.similarity_threshold or 0.7))
     top_k = int(request.GET.get("top_k", 3))
 
@@ -198,7 +197,6 @@ def run_project(request, project_id: int):
 
     # Attach pre-dev info stored on active_bpmn
     try:
-        from apps.projects.models import Project
         project = Project.objects.select_related("active_bpmn").get(id=project_id)
         ab = project.active_bpmn
         result["bpmn_summary"] = (ab.bpmn_summary if ab else "") or ""
@@ -213,19 +211,13 @@ def run_project(request, project_id: int):
 
 
 # ============================================================
-# ✅ Metrics-from-payload endpoint (PROJECT-BASED)
+# ✅ Metrics endpoints
 # ============================================================
 
 @csrf_exempt
 @login_required
 @require_http_methods(["POST"])
 def run_project_metrics(request, project_id: int):
-    """
-    Uses client payload (tasks/code/matches) to compute metrics.
-
-    Access:
-      - Any user who can open the project
-    """
     project = get_object_or_404(Project, id=project_id)
     if not _can_open_project(project, request.user):
         return _forbidden()
@@ -242,10 +234,6 @@ def run_project_metrics(request, project_id: int):
 @login_required
 @require_http_methods(["POST"])
 def metrics_summary(request, project_id: int):
-    """
-    Access:
-      - Any user who can open the project
-    """
     project = get_object_or_404(Project, id=project_id)
     if not _can_open_project(project, request.user):
         return _forbidden()
@@ -262,10 +250,6 @@ def metrics_summary(request, project_id: int):
 @login_required
 @require_http_methods(["POST"])
 def metrics_details(request, project_id: int):
-    """
-    Access:
-      - Any user who can open the project
-    """
     project = get_object_or_404(Project, id=project_id)
     if not _can_open_project(project, request.user):
         return _forbidden()
@@ -282,32 +266,142 @@ def metrics_details(request, project_id: int):
 @login_required
 @require_http_methods(["POST"])
 def metrics_developers(request, project_id: int):
-    """
-    Placeholder for developer scoring.
-
-    IMPORTANT for your rules:
-      - Evaluator-only (and Admin) should be able to view/export developer dashboards.
-      - Developers should only see THEIR own dashboard.
-    For now, this endpoint returns "not wired".
-
-    We'll implement this after you add:
-      - DeveloperScore / DeveloperEvaluation models
-      - logic to compute scores per developer upload/run
-    """
     project = get_object_or_404(Project, id=project_id)
     if not _can_open_project(project, request.user):
         return _forbidden()
 
     return JsonResponse({"message": "developer scoring not wired yet"}, safe=True)
+
+
+# ============================================================
+# Compare BPMN vs Code inputs endpoint
+# ============================================================
+
+@login_required
+@require_GET
+def compare_inputs_api(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    if not getattr(project, "active_bpmn", None):
+        return JsonResponse({"error": "No active BPMN uploaded."}, status=400)
+    if not getattr(project, "active_code", None):
+        return JsonResponse({"error": "No active Code ZIP uploaded."}, status=400)
+
+    bpmn_abs = _abs_media_path(project.active_bpmn.stored_path)
+    bpmn_bytes = bpmn_abs.read_bytes()
+
+    parsed = extract_tasks(bpmn_bytes)
+    storage_tasks = [
+        {
+            "task_id": (t.get("id") or "").strip(),
+            "name": (t.get("name") or "").strip(),
+            "description": (t.get("description") or "").strip(),
+        }
+        for t in (parsed or [])
+        if (t.get("id") or "").strip()
+    ]
+    replace_bpmn_tasks(project, storage_tasks)
+
+    MatchResult.objects.filter(project=project).delete()
+
+    code_root = _resolve_code_root_from_project(project)
+    analyze_project(
+        bpmn_input=bpmn_bytes,
+        code_root=code_root,
+        threshold=float(getattr(project, "similarity_threshold", 0.6) or 0.6),
+        matcher="greedy",
+        top_k=3,
+        include_debug=False,
+        project=project,
+        run=None,
+    )
+
+    tasks_qs = BpmnTask.objects.filter(project=project).order_by("name")
+    bpmn_tasks = []
+    for t in tasks_qs:
+        parts = []
+        if t.name:
+            parts.append(f"Task: {t.name}.")
+        if t.description:
+            parts.append(f"Description: {t.description}.")
+        bpmn_tasks.append(
+            {
+                "taskId": t.task_id,
+                "name": t.name,
+                "description": t.description,
+                "compareText": " ".join(parts).strip(),
+            }
+        )
+
+    artifacts_qs = (
+        CodeArtifact.objects.filter(project=project)
+        .exclude(file_path__startswith="bpmn\\")
+        .exclude(file_path__startswith="bpmn/")
+        .order_by("file_path", "symbol")
+    )
+
+    code_functions = []
+    for a in artifacts_qs:
+        symbol = (a.symbol or "").strip() or "Unnamed Function"
+        summary = (a.summary_text or "").strip()
+
+        title = symbol.replace("_", " ").strip()
+        title = title[:1].upper() + title[1:] if title else "Unnamed Function"
+
+        parts = [f"Task: {title}."]
+        if summary:
+            parts.append(f"Description: {summary}.")
+        compare_text = " ".join(parts).strip()
+
+        dev = request.user
+        dev_id = getattr(dev, "id", None)
+        dev_email = getattr(dev, "email", "") or ""
+        dev_name = (
+            getattr(dev, "get_username", lambda: "")()
+            or getattr(dev, "username", "")
+            or getattr(dev, "first_name", "")
+            or ""
+        )
+
+        code_functions.append(
+            {
+                "codeUid": a.code_uid,
+                "file": a.file_path,
+                "symbol": symbol,
+
+                "name": title,
+                "functionName": symbol,
+
+                "summary": summary,
+                "summary_text": summary,
+                "summaryText": summary,
+
+                "developerId": dev_id,
+                "developerEmail": dev_email,
+                "developerName": dev_name,
+                "developer": {"id": dev_id, "email": dev_email, "name": dev_name},
+
+                "compareText": compare_text,
+            }
+        )
+
+    return JsonResponse(
+        {"projectId": project.id, "bpmnTasks": bpmn_tasks, "codeFunctions": code_functions},
+        safe=True,
+        json_dumps_params={"ensure_ascii": False},
+    )
+
 @login_required
 @require_GET
 def dashboard_stats(request):
     """
     JSON endpoint for React DashboardPage:
-    GET /api/reports/dashboard/
+    GET /analysis/api/reports/dashboard/
     Scoped to projects where the user is a member.
     """
-
     memberships = (
         ProjectMembership.objects
         .select_related("project")
@@ -317,15 +411,11 @@ def dashboard_stats(request):
     unique_project_ids = list(set(project_ids))
 
     total_projects = len(unique_project_ids)
-
-    # total uploads across user's projects
     total_uploads = ProjectFile.objects.filter(project_id__in=unique_project_ids).count()
 
-    # analysis runs status across user's projects
     analyses_done = AnalysisRun.objects.filter(project_id__in=unique_project_ids, status="DONE").count()
     analyses_pending = AnalysisRun.objects.filter(project_id__in=unique_project_ids).exclude(status="DONE").count()
 
-    # recent projects list (max 10)
     recent_projects_qs = (
         Project.objects
         .filter(id__in=unique_project_ids)
@@ -356,3 +446,4 @@ def dashboard_stats(request):
         safe=True,
         json_dumps_params={"ensure_ascii": False},
     )
+

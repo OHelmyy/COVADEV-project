@@ -13,17 +13,35 @@ function csrf() {
 async function request<T>(url: string, options: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
-    credentials: "include",
+    credentials: "include", // ✅ keep session cookie
     headers: {
+      Accept: "application/json", // ✅ ask for JSON
       ...(options.headers || {}),
     },
   });
 
   const text = await res.text();
+
+  // ✅ If backend returned HTML, don't JSON.parse it
+  const looksLikeHtml = text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html");
+
   if (!res.ok) {
-    throw new Error(text || `HTTP ${res.status}`);
+    // show short snippet only
+    const snippet = looksLikeHtml ? "HTML response (likely login/404/CSRF)" : text.slice(0, 200);
+    throw new Error(`HTTP ${res.status}: ${snippet}`);
   }
-  return text ? JSON.parse(text) : (null as any);
+
+  if (!text) return null as any;
+
+  if (looksLikeHtml) {
+    throw new Error("Expected JSON but got HTML (check endpoint URL / login / permissions).");
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Invalid JSON response: ${text.slice(0, 200)}`);
+  }
 }
 
 export function apiGet<T>(url: string) {
@@ -53,7 +71,6 @@ export function apiUpload<T>(url: string, form: FormData) {
     body: form,
   });
 }
-
 
 export function apiPatch<T>(url: string, data: Record<string, any>) {
   const body = new URLSearchParams();

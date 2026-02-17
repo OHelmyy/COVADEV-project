@@ -13,7 +13,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 
     # analysis app (dashboard + project API)
-    path("", include("apps.analysis.urls")),
+path("analysis/", include("apps.analysis.urls")),
 
     # projects
     path("projects/", include("apps.projects.urls")),
