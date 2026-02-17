@@ -15,4 +15,5 @@ urlpatterns = [
 
     # Prototype endpoint (ADMIN-only in edited views.py)
     path("run/", views.run_analysis, name="run_analysis"),
+
 ]
