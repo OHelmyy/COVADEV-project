@@ -6,8 +6,10 @@ from typing import Dict, List
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
+
 from .generator import build_generator_block
 from .postprocess import validate_one_sentence, validate_detailed
+from .postprocess import validate_code_compare_line
 
 
 # ✅ NEW: BPMN-like output format for Code Function cards (Compare tab)
@@ -77,7 +79,8 @@ class SummaryService:
 
             # ✅ Validate output
             # - short must be ONE sentence (we also enforce one line below)
-            short_clean = validate_one_sentence(short_raw)
+
+            short_clean = validate_code_compare_line(short_raw)
             short_clean = " ".join((short_clean or "").splitlines()).strip()  # force single-line
 
             out[uid] = {

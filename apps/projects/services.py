@@ -147,25 +147,27 @@ def _index_code_files(project: Project, code_root_dir: Path, uploader):
 # ============================================================
 
 def _fallback_summary(sf: Dict[str, Any]) -> str:
-    """
-    Non-hallucinating fallback if the local LLM fails.
-    Ensures UI never shows 'No summary generated'.
-    """
     fn = (sf.get("function_name") or "function").replace("_", " ").strip()
+    title = " ".join(w.capitalize() for w in fn.split()) or "Unnamed Function"
+
     calls = sf.get("calls") or []
     writes = sf.get("writes") or []
     returns = sf.get("returns") or []
 
-    bits: List[str] = []
-    if calls:
-        bits.append("calls other routines")
+    actions = []
     if writes:
-        bits.append("updates data")
+        actions.append("store or update records")
+    if calls:
+        actions.append("invoke related operations")
     if returns:
-        bits.append("returns a result")
+        actions.append("produce an output")
 
-    tail = ", ".join(bits) if bits else "implements its main behavior based on available code context"
-    return f"{fn} {tail}."
+    action = " and ".join(actions) if actions else "implement its main behavior from available code signals"
+    desc = f"{action} for the target business object using only available static code context."
+
+    # keep within 12–22 words تقريبًا
+    # (لو عايز strict، قصّها أكتر)
+    return f"Task: {title}. Description: {desc}"
 
 
 def _persist_code_artifacts_with_summaries(
@@ -203,7 +205,7 @@ def _persist_code_artifacts_with_summaries(
                 continue
 
             fn_name = (sf.get("function_name") or "").strip()
-            file_path = (sf.get("file_path") or "").strip()
+            file_path = Path(file_path).as_posix().lstrip("/")
 
             val = summaries_by_uid.get(uid) or {}
             short = (val.get("short") or "").strip() if isinstance(val, dict) else str(val).strip()

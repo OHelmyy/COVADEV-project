@@ -498,7 +498,7 @@ def compare_inputs_api(request, project_id: int):
     ]
 
     code_functions = [
-        {"codeUid": c.code_uid, "symbol": c.symbol, "file": c.file_path, "summaryText": c.summary_text}
+        {"codeUid": c.code_uid, "symbol": c.symbol, "file": c.file_path, "summaryText": _ensure_task_desc(c.symbol, c.summary_text)}
         for c in CodeArtifact.objects.filter(project=project)
     ]
 
