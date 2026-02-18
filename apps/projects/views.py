@@ -458,6 +458,33 @@ from django.shortcuts import get_object_or_404
 from apps.analysis.models import BpmnTask
 from apps.analysis.models_code import CodeArtifact
 
+
+import re
+
+def _humanize_title(s: str) -> str:
+    s = (s or "").strip().replace("_", " ")
+    if not s:
+        return "Unnamed Function"
+    return " ".join(w.capitalize() for w in s.split())
+
+def _one_line(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip())
+
+def _ensure_task_desc(task_title: str, desc: str) -> str:
+    task_title = _humanize_title(task_title)
+    desc = _one_line(desc)
+
+    # If backend already formatted it correctly, keep it
+    if desc.startswith("Task:") and "Description:" in desc:
+        return desc
+
+    # If desc is empty, provide a neutral sentence (no hallucination)
+    if not desc:
+        desc = "No business description available for this function."
+
+    # Ensure final exact UI format
+    return f"Task: {task_title}. Description: {desc}"
+
 @login_required
 def compare_inputs_api(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)

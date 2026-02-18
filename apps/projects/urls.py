@@ -22,6 +22,6 @@ urlpatterns = [
     path("<int:project_id>/settings/threshold/", views.update_threshold, name="update_threshold"),
     path("<int:project_id>/members/", views.project_members, name="members"),
     path("<int:project_id>/members/<int:membership_id>/remove/", views.remove_member, name="remove_member"),
-    path("api/projects/<int:project_id>/compare-inputs/", views.compare_inputs_api, name="compare_inputs"),
+    path("<int:project_id>/compare-inputs/", views.compare_inputs_api, name="compare_inputs"),
 
 ]
