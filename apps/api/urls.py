@@ -1,5 +1,6 @@
 # apps/api/urls.py
 from django.urls import include, path
+from apps.projects.views import compare_inputs_api
 from apps.api.projects_api import api_project_report
 from apps.analysis import views as analysis_views
 
@@ -47,6 +48,11 @@ urlpatterns = [
     path("projects/<int:project_id>/tasks/", api_project_tasks, name="project_tasks"),
     path("projects/<int:project_id>/matches/", api_project_matches, name="project_matches"),
 
+    path(
+       "projects/<int:project_id>/compare-inputs/",
+        compare_inputs_api,
+        name="compare_inputs",
+    ),
     # Dashboard
     path("reports/dashboard/", analysis_views.dashboard_stats, name="dashboard_stats"),
 
@@ -60,4 +66,7 @@ urlpatterns = [
   path("projects/<int:project_id>/report/", api_project_report, name="project_report"),
   path("projects/<int:project_id>/recommendations/", api_project_recommendations),
     
+  
+
+
 ]
