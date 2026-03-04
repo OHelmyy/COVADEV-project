@@ -11,6 +11,13 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
 from apps.analysis.services import run_analysis_for_project
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404
+
+from apps.analysis.models import BpmnTask
+# لو CodeArtifact موجود عندك:
+from apps.analysis.models_code import CodeArtifact
 
 from apps.accounts.rbac import is_admin, is_evaluator
 from .models import Project, ProjectMembership, CodeFile, ProjectFile
@@ -432,3 +439,71 @@ def remove_member(request, project_id, membership_id):
 
     messages.success(request, "Member removed.")
     return redirect("projects:members", project_id=project.id)
+
+# ============================================================
+# viewss gededa
+# ============================================================
+# apps/projects/views.py
+
+
+# موجودة عندك فوق غالبًا:
+# from apps.accounts.rbac import is_admin, is_evaluator
+# from .models import Project, ProjectMembership
+# def _can_open_project(project, user): ...
+
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404
+
+from apps.analysis.models import BpmnTask
+from apps.analysis.models_code import CodeArtifact
+
+
+import re
+
+def _humanize_title(s: str) -> str:
+    s = (s or "").strip().replace("_", " ")
+    if not s:
+        return "Unnamed Function"
+    return " ".join(w.capitalize() for w in s.split())
+
+def _one_line(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip())
+
+def _ensure_task_desc(task_title: str, desc: str) -> str:
+    task_title = _humanize_title(task_title)
+    desc = _one_line(desc)
+
+    # If backend already formatted it correctly, keep it
+    if desc.startswith("Task:") and "Description:" in desc:
+        return desc
+
+    # If desc is empty, provide a neutral sentence (no hallucination)
+    if not desc:
+        desc = "No business description available for this function."
+
+    # Ensure final exact UI format
+    return f"Task: {task_title}. Description: {desc}"
+
+@login_required
+def compare_inputs_api(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    bpmn_tasks = [
+        {"taskId": t.task_id, "name": t.name, "description": t.description}
+        for t in BpmnTask.objects.filter(project=project)
+    ]
+
+    code_functions = [
+        {"codeUid": c.code_uid, "symbol": c.symbol, "file": c.file_path, "summaryText": c.summary_text}
+        for c in CodeArtifact.objects.filter(project=project)
+    ]
+
+    return JsonResponse({
+        "projectId": project.id,
+        "bpmnTasks": bpmn_tasks,
+        "codeFunctions": code_functions,
+    })

@@ -44,26 +44,58 @@ def build_bpmn_text(task: Dict[str, Any]) -> str:
     return " ".join(parts).strip()
 
 
+# apps/analysis/embeddings/pipeline.py
+
+_BAD_GENERIC = (
+    "returns a result",
+    "does",
+    "handles",
+    "processes data",
+    "performs",
+)
+
+def _is_too_generic(s: str) -> bool:
+    s = (s or "").lower()
+    return any(p in s for p in _BAD_GENERIC)
+
+
 def build_code_text(item: Dict[str, Any]) -> str:
     """
-    Build the semantic text for a code item.
-
-    Preferred:
-      - item["text"] if already normalized by the extractor (Day 3)
-    Fallback:
-      - "<type>: <name>"
+    Build semantic text for a code item, aligned with BPMN wording.
     """
+
+    # 1️⃣ Get name/title safely
+    name = (
+        (item.get("name") or "").strip()
+        or (item.get("symbol") or "").strip()
+    )
+    kind = (item.get("type") or "").strip()
+
+    # 2️⃣ Human-readable task title
+    task_title = name.replace("_", " ").strip()
+    if task_title:
+        task_title = " ".join(w.capitalize() for w in task_title.split())
+
+    # 3️⃣ Candidate summary (LLM-generated)
+    summary = (item.get("summary_text") or "").strip()
+
+    # ✅ HERE IS THE IMPORTANT PART
+    # Use summary ONLY if it's meaningful
+    if summary and not _is_too_generic(summary):
+        if task_title:
+            return f"Task: {task_title}. Description: {summary}."
+        return f"Description: {summary}."
+
+    # 4️⃣ Fallback: extractor text
     text = (item.get("text") or "").strip()
     if text:
         return text
 
-    kind = (item.get("type") or "").strip()
-    name = (item.get("name") or "").strip()
-
+    # 5️⃣ Last resort fallback
     if kind and name:
         return f"{kind}: {name}".strip()
-    return name.strip()
 
+    return name.strip()
 
 def _collect_payloads(
     tasks: Sequence[Dict[str, Any]],
