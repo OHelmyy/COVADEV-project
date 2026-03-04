@@ -457,25 +457,6 @@ export default function ProjectDetailPage() {
                 ) : null}
               </div>
 
-              <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
-                <div style={{ color: "#777" }}>Active Code ZIP</div>
-                <div style={{ fontWeight: 800, marginTop: 4 }}>
-                  {data.activeUploads.activeCode?.originalName ?? <span style={{ color: "#888" }}>None uploaded yet</span>}
-                </div>
-                {data.activeUploads.activeCode?.uploadedBy ? (
-                  <div style={{ color: "#888", fontSize: 13, marginTop: 6 }}>
-                    Uploaded by {data.activeUploads.activeCode.uploadedBy}
-                    {data.activeUploads.activeCode.createdAt ? ` • ${fmtDate(data.activeUploads.activeCode.createdAt)}` : null}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            {/* quick stats row */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 12 }}>
-              <Stat label="Indexed files" value={data.counts.codeFiles} />
-              <Stat label="BPMN tasks" value={data.counts.tasks} />
-              <Stat label="Match results" value={data.counts.matches} />
             </div>
 
             {/* Pre-development section (only if BPMN exists) */}
