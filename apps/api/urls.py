@@ -53,6 +53,11 @@ urlpatterns = [
         compare_inputs_api,
         name="compare_inputs",
     ),
+    path(
+       "projects/<int:project_id>/compare-inputs/",
+        compare_inputs_api,
+        name="compare_inputs",
+    ),
     # Dashboard
     path("reports/dashboard/", analysis_views.dashboard_stats, name="dashboard_stats"),
 
