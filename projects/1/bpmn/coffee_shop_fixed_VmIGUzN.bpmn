@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+  id="Definitions_Coffee"
+  targetNamespace="http://example.com/covadev-coffee">
+
+  <bpmn:process id="Process_CoffeeShop" name="Coffee Shop Process" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_1" name="Start"/>
+
+    <bpmn:task id="Task_Take_Order" name="Take order">
+      <bpmn:documentation>Receive a customer coffee order and store order details.</bpmn:documentation>
+    </bpmn:task>
+
+    <bpmn:task id="Task_Process_Payment" name="Process payment">
+      <bpmn:documentation>Process customer payment using cash or card.</bpmn:documentation>
+    </bpmn:task>
+
+    <bpmn:task id="Task_Brew_Coffee" name="Brew coffee">
+      <bpmn:documentation>Brew the ordered coffee drink using the coffee machine.</bpmn:documentation>
+    </bpmn:task>
+
+    <bpmn:task id="Task_Prepare_Pastry" name="Prepare pastry">
+      <bpmn:documentation>Prepare and warm pastries requested by the customer.</bpmn:documentation>
+    </bpmn:task>
+
+    <bpmn:task id="Task_Serve_Customer" name="Serve customer">
+      <bpmn:documentation>Serve coffee and pastries to the customer.</bpmn:documentation>
+    </bpmn:task>
+
+    <bpmn:task id="Task_Daily_Report" name="Generate daily report">
+      <bpmn:documentation>Generate daily sales and orders report for the coffee shop.</bpmn:documentation>
+    </bpmn:task>
+
+    <bpmn:endEvent id="EndEvent_1" name="End"/>
+
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_Take_Order"/>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_Take_Order" targetRef="Task_Process_Payment"/>
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_Process_Payment" targetRef="Task_Brew_Coffee"/>
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_Brew_Coffee" targetRef="Task_Prepare_Pastry"/>
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_Prepare_Pastry" targetRef="Task_Serve_Customer"/>
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Task_Serve_Customer" targetRef="Task_Daily_Report"/>
+    <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_Daily_Report" targetRef="EndEvent_1"/>
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_CoffeeShop">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <omgdc:Bounds x="100" y="172" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Take_Order_di" bpmnElement="Task_Take_Order">
+        <omgdc:Bounds x="260" y="150" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Process_Payment_di" bpmnElement="Task_Process_Payment">
+        <omgdc:Bounds x="420" y="150" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Brew_Coffee_di" bpmnElement="Task_Brew_Coffee">
+        <omgdc:Bounds x="580" y="150" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Prepare_Pastry_di" bpmnElement="Task_Prepare_Pastry">
+        <omgdc:Bounds x="740" y="150" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Serve_Customer_di" bpmnElement="Task_Serve_Customer">
+        <omgdc:Bounds x="900" y="150" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Daily_Report_di" bpmnElement="Task_Daily_Report">
+        <omgdc:Bounds x="1060" y="150" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <omgdc:Bounds x="1220" y="172" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <omgdi:waypoint x="136" y="190.0"/>
+        <omgdi:waypoint x="260" y="190.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <omgdi:waypoint x="380" y="190.0"/>
+        <omgdi:waypoint x="420" y="190.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <omgdi:waypoint x="540" y="190.0"/>
+        <omgdi:waypoint x="580" y="190.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <omgdi:waypoint x="700" y="190.0"/>
+        <omgdi:waypoint x="740" y="190.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <omgdi:waypoint x="860" y="190.0"/>
+        <omgdi:waypoint x="900" y="190.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6">
+        <omgdi:waypoint x="1020" y="190.0"/>
+        <omgdi:waypoint x="1060" y="190.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_7_di" bpmnElement="Flow_7">
+        <omgdi:waypoint x="1180" y="190.0"/>
+        <omgdi:waypoint x="1220" y="190.0"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn:definitions>
