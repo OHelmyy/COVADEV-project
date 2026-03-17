@@ -201,11 +201,13 @@ def run_project(request, project_id: int):
         ab = project.active_bpmn
         result["bpmn_summary"] = (ab.bpmn_summary if ab else "") or ""
         result["precheck_warnings"] = (ab.precheck_warnings if ab else []) or []
-        result["is_well_formed"] = bool(ab.is_well_formed) if ab else True
+        result["precheck_errors"] = (ab.precheck_errors if ab else []) or []
+        result["is_well_formed"] = bool(ab.is_well_formed) if ab else False
     except Exception:
         result["bpmn_summary"] = ""
         result["precheck_warnings"] = []
-        result["is_well_formed"] = True
+        result["precheck_errors"] = []
+        result["is_well_formed"] = False
 
     return JsonResponse(result, safe=True, json_dumps_params={"ensure_ascii": False})
 

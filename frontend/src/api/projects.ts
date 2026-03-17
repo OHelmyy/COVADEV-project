@@ -46,7 +46,13 @@ export function removeMember(projectId: number, membershipId: number) {
 export function uploadBpmn(projectId: number, file: File) {
   const fd = new FormData();
   fd.append("bpmn_file", file);
-  return apiUpload<{ ok: boolean }>(`/api/projects/${projectId}/upload-bpmn/`, fd);
+  return apiUpload<{
+    ok: boolean;
+    isWellFormed?: boolean;
+    precheckWarnings?: string[];
+    precheckErrors?: string[];
+    bpmnSummary?: string;
+  }>(`/api/projects/${projectId}/upload-bpmn/`, fd);
 }
 
 export function uploadCodeZip(projectId: number, file: File) {

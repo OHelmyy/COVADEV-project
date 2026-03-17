@@ -1,6 +1,6 @@
 # apps/api/projects_api.py
 from __future__ import annotations
-
+from apps.analysis.bpmn.pipeline import run_bpmn_predev
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import JsonResponse
@@ -100,11 +100,11 @@ def _json_file_payload(f: ProjectFile | None):
     # - precheck_errors
     # - bpmn_summary
     if getattr(f, "file_type", None) == "BPMN":
-        payload["isWellFormed"] = bool(getattr(f, "is_well_formed", False))
+        raw_is_well_formed = getattr(f, "is_well_formed", None)
+        payload["isWellFormed"] = raw_is_well_formed if isinstance(raw_is_well_formed, bool) else None
         payload["precheckWarnings"] = getattr(f, "precheck_warnings", []) or []
         payload["precheckErrors"] = getattr(f, "precheck_errors", []) or []
         payload["bpmnSummary"] = getattr(f, "bpmn_summary", "") or ""
-
     return payload
 
 def _json_project_detail(project: Project, user: User):
@@ -443,12 +443,49 @@ def api_upload_bpmn(request, project_id: int):
         return JsonResponse({"detail": "Missing bpmn_file."}, status=400)
 
     try:
-        save_bpmn_file(project, f, request.user)
-        return JsonResponse({"ok": True})
+        # Read bytes first for pre-dev pipeline
+        bpmn_bytes = f.read()
+        f.seek(0)
+
+        # Save file using your existing service
+        saved = save_bpmn_file(project, f, request.user)
+
+        # If service doesn't return object, fetch active BPMN after save
+        bpmn_obj = saved if saved is not None else project.active_bpmn
+        if bpmn_obj is None:
+            project.refresh_from_db()
+            bpmn_obj = project.active_bpmn
+
+        if bpmn_obj is None:
+            return JsonResponse({"detail": "BPMN file saved, but active BPMN was not set."}, status=500)
+
+        # Run BPMN pre-development pipeline
+        predev = run_bpmn_predev(bpmn_bytes, do_summary=True)
+
+        # Save results on the BPMN ProjectFile
+        bpmn_obj.is_well_formed = bool(predev.get("ok", False))
+        bpmn_obj.precheck_warnings = predev.get("warnings", []) or []
+        bpmn_obj.precheck_errors = predev.get("errors", []) or []
+        bpmn_obj.bpmn_summary = predev.get("summary", "") or ""
+        bpmn_obj.save(update_fields=[
+            "is_well_formed",
+            "precheck_warnings",
+            "precheck_errors",
+            "bpmn_summary",
+        ])
+
+        # Make sure project points to this active BPMN
+        if getattr(project, "active_bpmn_id", None) != bpmn_obj.id:
+            project.active_bpmn = bpmn_obj
+            project.save(update_fields=["active_bpmn"])
+
+        return JsonResponse({
+            "ok": True,
+            "activeBpmn": _json_file_payload(bpmn_obj),
+        })
+
     except Exception as e:
         return JsonResponse({"detail": f"BPMN upload failed: {e}"}, status=400)
-
-
 @login_required
 @require_POST
 def api_upload_code_zip(request, project_id: int):

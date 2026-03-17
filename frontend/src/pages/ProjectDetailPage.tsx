@@ -32,18 +32,16 @@ type CompareBpmnTask = {
   name: string;
   description?: string;
   summaryText?: string;
-  compareText?: string; // backward compat
+  compareText?: string;
 };
 
 type CompareCodeFn = {
   codeUid: string;
-
-  // ✅ new keys
   functionName?: string;
   filePath?: string;
   summaryText?: string;
 
-  // ✅ backward compat keys (in case backend still returns old ones)
+  // backward compat
   symbol?: string;
   file?: string;
   summary_text?: string;
@@ -82,7 +80,7 @@ export default function ProjectDetailPage() {
   const [resultsError, setResultsError] = useState<string>("");
   const [resultsLoading, setResultsLoading] = useState<boolean>(false);
 
-  // ✅ Compare state
+  // Compare state
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState("");
   const [bpmnCompare, setBpmnCompare] = useState<CompareBpmnTask[]>([]);
@@ -94,29 +92,26 @@ export default function ProjectDetailPage() {
   const isDeveloper = role === "DEVELOPER";
 
   // Permissions
-  const canUploadBpmn = isEvaluator; // evaluator only
-  const canUploadCode = isEvaluator || isDeveloper; // evaluator + developer
-  const canRunAnalysis = isEvaluator || isDeveloper; // evaluator + developer
-  const canUpdateThreshold = isEvaluator; // evaluator only
-  const canManageMembers = isEvaluator; // evaluator only
-  const canViewUploadLogs = isEvaluator; // evaluator only
+  const canUploadBpmn = isEvaluator;
+  const canUploadCode = isEvaluator || isDeveloper;
+  const canRunAnalysis = isEvaluator || isDeveloper;
+  const canUpdateThreshold = isEvaluator;
+  const canManageMembers = isEvaluator;
+  const canViewUploadLogs = isEvaluator;
 
-  // Tabs (filtered by role)
   const tabs = useMemo(() => {
     const all: { key: TabKey; label: string; visible: boolean }[] = [
       { key: "overview", label: "Overview", visible: true },
-
-      // ✅ NEW: BPMN Check available for ALL roles
-      
-      { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin }, // hide for admin
+      { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
       { key: "bpmnCheck", label: "BPMN Check", visible: true },
-      {key: "settings",label: "Settings",
+      {
+        key: "settings",
+        label: "Settings",
         visible: canUpdateThreshold || canManageMembers || canViewUploadLogs,
       },
       { key: "results", label: "Results", visible: true },
       { key: "compare", label: "Compare", visible: true },
       { key: "runs", label: "Runs", visible: true },
-
       { key: "members", label: "Members", visible: true },
     ];
     return all.filter((t) => t.visible);
@@ -124,7 +119,6 @@ export default function ProjectDetailPage() {
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
-  // Ensure active tab always valid when role/data changes
   useEffect(() => {
     const keys = new Set(tabs.map((t) => t.key));
     if (!keys.has(activeTab)) setActiveTab(tabs[0]?.key ?? "overview");
@@ -161,7 +155,6 @@ export default function ProjectDetailPage() {
     }
   }
 
-  // ✅ Compare loader
   async function loadCompare() {
     if (!Number.isFinite(id)) return;
     setCompareLoading(true);
@@ -184,7 +177,6 @@ export default function ProjectDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // when switching to compare tab, load compare inputs
   useEffect(() => {
     if (activeTab === "compare") loadCompare();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,21 +244,18 @@ export default function ProjectDetailPage() {
     try {
       await deleteProject(id);
       setActionMsg("");
-      // send admin back to projects list
       window.location.href = "/projects";
     } catch (e: any) {
       setActionMsg(`Delete failed: ${e?.message ?? e}`);
     }
   }
 
-  //time formating helpers
   function fmtDate(iso?: string | null) {
     if (!iso) return "—";
     const d = new Date(iso);
     return isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
   }
 
-  // Result groups
   const matched = useMemo(
     () => matches.filter((x) => x.task && !String(x.status).toLowerCase().includes("missing")),
     [matches]
@@ -282,13 +271,23 @@ export default function ProjectDetailPage() {
     const map = new Map<string, { task_id: string; name: string; reason: string }>();
 
     explicitMissing.forEach((x) => {
-      if (x.task)
-        map.set(x.task.task_id, { task_id: x.task.task_id, name: x.task.name, reason: "Marked missing" });
+      if (x.task) {
+        map.set(x.task.task_id, {
+          task_id: x.task.task_id,
+          name: x.task.name,
+          reason: "Marked missing",
+        });
+      }
     });
 
     implicitMissing.forEach((t) => {
-      if (!map.has(t.task_id))
-        map.set(t.task_id, { task_id: t.task_id, name: t.name, reason: "No match found" });
+      if (!map.has(t.task_id)) {
+        map.set(t.task_id, {
+          task_id: t.task_id,
+          name: t.name,
+          reason: "No match found",
+        });
+      }
     });
 
     return Array.from(map.values());
@@ -314,16 +313,39 @@ export default function ProjectDetailPage() {
   }, [tasks, matched]);
 
   if (state === "loading" || state === "idle") return <StatusMessage title="Loading project..." />;
-  if (state === "error")
+  if (state === "error") {
     return <StatusMessage title="Failed to load project" message={errorText} onRetry={load} />;
+  }
   if (!data) return null;
 
-  // BPMN Check payload (optional fields; won't crash if backend doesn't send them)
+  // Accept both camelCase and snake_case from backend
   const bpmnMeta: any = (data as any)?.activeUploads?.activeBpmn ?? null;
-  const isWellFormed = Boolean(bpmnMeta?.isWellFormed);
-  const precheckWarnings: string[] = Array.isArray(bpmnMeta?.precheckWarnings) ? bpmnMeta.precheckWarnings : [];
-  const precheckErrors: string[] = Array.isArray(bpmnMeta?.precheckErrors) ? bpmnMeta.precheckErrors : [];
-  const bpmnSummary: string = typeof bpmnMeta?.bpmnSummary === "string" ? bpmnMeta.bpmnSummary : "";
+
+  const isWellFormedRaw =
+    typeof bpmnMeta?.isWellFormed === "boolean"
+      ? bpmnMeta.isWellFormed
+      : typeof bpmnMeta?.is_well_formed === "boolean"
+      ? bpmnMeta.is_well_formed
+      : null;
+
+  const precheckWarnings: string[] = Array.isArray(bpmnMeta?.precheckWarnings)
+    ? bpmnMeta.precheckWarnings
+    : Array.isArray(bpmnMeta?.precheck_warnings)
+    ? bpmnMeta.precheck_warnings
+    : [];
+
+  const precheckErrors: string[] = Array.isArray(bpmnMeta?.precheckErrors)
+    ? bpmnMeta.precheckErrors
+    : Array.isArray(bpmnMeta?.precheck_errors)
+    ? bpmnMeta.precheck_errors
+    : [];
+
+  const bpmnSummary: string =
+    typeof bpmnMeta?.bpmnSummary === "string"
+      ? bpmnMeta.bpmnSummary
+      : typeof bpmnMeta?.bpmn_summary === "string"
+      ? bpmnMeta.bpmn_summary
+      : "";
 
   return (
     <div
@@ -334,7 +356,6 @@ export default function ProjectDetailPage() {
         alignItems: "start",
       }}
     >
-      {/* LEFT MENU */}
       <aside
         style={{
           border: "1px solid #eee",
@@ -384,16 +405,13 @@ export default function ProjectDetailPage() {
         </div>
       </aside>
 
-      {/* RIGHT CONTENT */}
       <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Top message */}
         {actionMsg ? (
           <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee", background: "#fff" }}>
             {actionMsg}
           </div>
         ) : null}
 
-        {/* TAB: Overview */}
         {activeTab === "overview" ? (
           <>
             <Card>
@@ -408,8 +426,14 @@ export default function ProjectDetailPage() {
               <h3 style={{ marginTop: 0 }}>Current Uploads</h3>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
-                <MiniCard title="Active BPMN" value={data.activeUploads.activeBpmn?.originalName ?? "None uploaded yet"} />
-                <MiniCard title="Active Code ZIP" value={data.activeUploads.activeCode?.originalName ?? "None uploaded yet"} />
+                <MiniCard
+                  title="Active BPMN"
+                  value={data.activeUploads.activeBpmn?.originalName ?? "None uploaded yet"}
+                />
+                <MiniCard
+                  title="Active Code ZIP"
+                  value={data.activeUploads.activeCode?.originalName ?? "None uploaded yet"}
+                />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 12 }}>
@@ -437,89 +461,98 @@ export default function ProjectDetailPage() {
           </>
         ) : null}
 
-{/* ✅ TAB: BPMN Check (available for all users) */}
         {activeTab === "bpmnCheck" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>BPMN Check</h3>
 
-            {/* Current uploads summary (like your template) */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
               <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
                 <div style={{ color: "#777" }}>Active BPMN</div>
                 <div style={{ fontWeight: 800, marginTop: 4 }}>
-                  {data.activeUploads.activeBpmn?.originalName ?? <span style={{ color: "#888" }}>None uploaded yet</span>}
+                  {data.activeUploads.activeBpmn?.originalName ?? (
+                    <span style={{ color: "#888" }}>None uploaded yet</span>
+                  )}
                 </div>
+
                 {data.activeUploads.activeBpmn?.uploadedBy ? (
                   <div style={{ color: "#888", fontSize: 13, marginTop: 6 }}>
                     Uploaded by {data.activeUploads.activeBpmn.uploadedBy}
-                    {data.activeUploads.activeBpmn.createdAt ? ` • ${fmtDate(data.activeUploads.activeBpmn.createdAt)}` : null}
+                    {data.activeUploads.activeBpmn.createdAt
+                      ? ` • ${fmtDate(data.activeUploads.activeBpmn.createdAt)}`
+                      : null}
                   </div>
                 ) : null}
               </div>
-
             </div>
 
-            {/* Pre-development section (only if BPMN exists) */}
             {data.activeUploads.activeBpmn ? (
               <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12, marginTop: 12 }}>
                 <h3 style={{ marginTop: 0 }}>Pre-development</h3>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 12 }}>
-                  {/* Well-Formed Check */}
                   <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
                     <div style={{ color: "#777" }}>BPMN Well-Formed Check</div>
 
-                    {isWellFormed ? (
+                    {isWellFormedRaw === true ? (
                       <div style={{ marginTop: 8, fontWeight: 900 }}>✅ Valid BPMN/XML</div>
-                    ) : (
+                    ) : isWellFormedRaw === false ? (
                       <div style={{ marginTop: 8, fontWeight: 900 }}>❌ Invalid BPMN/XML</div>
+                    ) : (
+                      <div style={{ marginTop: 8, color: "#888", fontWeight: 700 }}>
+                        No check result returned yet.
+                      </div>
                     )}
 
                     {precheckWarnings.length > 0 ? (
                       <>
-                        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 800, color: "#777" }}>Warnings</div>
+                        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 800, color: "#777" }}>
+                          Warnings
+                        </div>
                         <pre style={codeboxStyle}>{precheckWarnings.map((w) => `- ${w}`).join("\n")}</pre>
                       </>
                     ) : null}
 
                     {precheckErrors.length > 0 ? (
                       <>
-                        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 800, color: "#777" }}>Errors</div>
+                        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 800, color: "#777" }}>
+                          Errors
+                        </div>
                         <pre style={codeboxStyle}>{precheckErrors.map((e) => `- ${e}`).join("\n")}</pre>
                       </>
                     ) : null}
 
                     {precheckWarnings.length === 0 && precheckErrors.length === 0 ? (
                       <div style={{ color: "#888", marginTop: 10, fontSize: 13 }}>
-                        No warnings/errors returned (or backend doesn't expose them yet).
+                        No warnings/errors returned yet.
                       </div>
                     ) : null}
                   </div>
 
-                  {/* BPMN Summary */}
                   <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
                     <div style={{ color: "#777" }}>BPMN Summary (T5)</div>
 
                     {bpmnSummary ? (
-                      <div style={{ marginTop: 10, fontWeight: 700, lineHeight: 1.6 }}>{bpmnSummary}</div>
+                      <div style={{ marginTop: 10, fontWeight: 700, lineHeight: 1.6 }}>
+                        {bpmnSummary}
+                      </div>
                     ) : (
                       <div style={{ color: "#888", marginTop: 10 }}>No summary generated yet.</div>
                     )}
 
                     <div style={{ color: "#888", marginTop: 10, fontSize: 13 }}>
-                      Generated from extracted process/tasks (no manual descriptions required).
+                      Generated from extracted process/tasks.
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
-              <div style={{ color: "#888", marginTop: 12 }}>Upload a BPMN file to see well-formed check, warnings, errors, and summary.</div>
+              <div style={{ color: "#888", marginTop: 12 }}>
+                Upload a BPMN file to see well-formed check, warnings, errors, and summary.
+              </div>
             )}
           </Card>
         ) : null}
 
-
-        {/* TAB: Uploads & Tools (not admin) */}
         {activeTab === "uploads" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Uploads & Tools</h3>
@@ -530,7 +563,11 @@ export default function ProjectDetailPage() {
 
                 {canUploadBpmn ? (
                   <>
-                    <input type="file" accept=".bpmn,.xml" onChange={(e) => setBpmnFile(e.target.files?.[0] ?? null)} />
+                    <input
+                      type="file"
+                      accept=".bpmn,.xml"
+                      onChange={(e) => setBpmnFile(e.target.files?.[0] ?? null)}
+                    />
                     <button
                       onClick={onUploadBpmn}
                       disabled={!bpmnFile}
@@ -558,7 +595,9 @@ export default function ProjectDetailPage() {
                     >
                       Upload & Index
                     </button>
-                    <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>Allowed for evaluator and developers.</div>
+                    <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
+                      Allowed for evaluator and developers.
+                    </div>
                   </>
                 ) : (
                   <div style={{ color: "#888" }}>You don't have permission to upload code.</div>
@@ -571,7 +610,10 @@ export default function ProjectDetailPage() {
 
               {canRunAnalysis ? (
                 <>
-                  <button onClick={onRunAnalysis} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+                  <button
+                    onClick={onRunAnalysis}
+                    style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                  >
                     Run analysis
                   </button>
                   <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
@@ -585,7 +627,6 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
-        {/* TAB: Settings */}
         {activeTab === "settings" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Settings</h3>
@@ -613,13 +654,17 @@ export default function ProjectDetailPage() {
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
                   {canManageMembers ? (
                     <Link to={`/projects/${id}/members`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Manage Members</button>
+                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+                        Manage Members
+                      </button>
                     </Link>
                   ) : null}
 
                   {canViewUploadLogs ? (
                     <Link to={`/projects/${id}/logs`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Upload Logs</button>
+                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+                        Upload Logs
+                      </button>
                     </Link>
                   ) : null}
                 </div>
@@ -632,7 +677,6 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
-        {/* TAB: Results */}
         {activeTab === "results" ? (
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -764,114 +808,102 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
-        {/* ✅ TAB: Compare */}
-{activeTab === "compare" ? (
-  <Card>
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 10,
-        flexWrap: "wrap",
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>
-        Compare Inputs (What the system compares)
-      </h3>
-      <button
-        onClick={loadCompare}
-        style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-        disabled={compareLoading}
-      >
-        {compareLoading ? "Refreshing..." : "Refresh compare"}
-      </button>
-    </div>
+        {activeTab === "compare" ? (
+          <Card>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <h3 style={{ marginTop: 0 }}>Compare Inputs (What the system compares)</h3>
+              <button
+                onClick={loadCompare}
+                style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                disabled={compareLoading}
+              >
+                {compareLoading ? "Refreshing..." : "Refresh compare"}
+              </button>
+            </div>
 
-    {compareError ? (
-      <div style={{ color: "#a00", marginTop: 8 }}>{compareError}</div>
-    ) : null}
+            {compareError ? <div style={{ color: "#a00", marginTop: 8 }}>{compareError}</div> : null}
 
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-      {/* BPMN */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontWeight: 900 }}>BPMN Task Summaries</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontWeight: 900 }}>BPMN Task Summaries</div>
 
-        {bpmnCompare.length === 0 ? (
-          <div style={{ color: "#888" }}>No BPMN tasks yet.</div>
-        ) : (
-          bpmnCompare.map((t) => {
-            const body =
-              (t.summaryText && t.summaryText.trim()) ||
-              // لو لسه API بيرجع compareText (compat)
-              ((t as any).compareText && String((t as any).compareText).trim()) ||
-              `Task: ${t.name || "Unnamed Task"}. Description: ${t.description || ""}`;
+                {bpmnCompare.length === 0 ? (
+                  <div style={{ color: "#888" }}>No BPMN tasks yet.</div>
+                ) : (
+                  bpmnCompare.map((t) => {
+                    const body =
+                      (t.summaryText && t.summaryText.trim()) ||
+                      ((t as any).compareText && String((t as any).compareText).trim()) ||
+                      `Task: ${t.name || "Unnamed Task"}. Description: ${t.description || ""}`;
 
-            return (
-              <CompareCard
-                key={t.taskId}
-                title={t.name || "Unnamed Task"}
-                subtitle={t.taskId}
-                body={body}
-              />
-            );
-          })
-        )}
-      </div>
+                    return (
+                      <CompareCard
+                        key={t.taskId}
+                        title={t.name || "Unnamed Task"}
+                        subtitle={t.taskId}
+                        body={body}
+                      />
+                    );
+                  })
+                )}
+              </div>
 
-      {/* Code */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontWeight: 900 }}>Code Function Summaries</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontWeight: 900 }}>Code Function Summaries</div>
 
-        {codeCompare.length === 0 ? (
-          <div style={{ color: "#888" }}>No code summaries yet.</div>
-        ) : (
-          codeCompare.map((c: any) => {
-            const fnName =
-              (c.functionName && String(c.functionName).trim()) ||
-              (c.symbol && String(c.symbol).trim()) ||
-              "Unnamed Function";
+                {codeCompare.length === 0 ? (
+                  <div style={{ color: "#888" }}>No code summaries yet.</div>
+                ) : (
+                  codeCompare.map((c: any) => {
+                    const fnName =
+                      (c.functionName && String(c.functionName).trim()) ||
+                      (c.symbol && String(c.symbol).trim()) ||
+                      "Unnamed Function";
 
-            const fp =
-              (c.filePath && String(c.filePath).trim()) ||
-              (c.file && String(c.file).trim()) ||
-              "";
+                    const fp =
+                      (c.filePath && String(c.filePath).trim()) ||
+                      (c.file && String(c.file).trim()) ||
+                      "";
 
-            const subtitle = fp ? `${c.codeUid} — ${fp}` : `${c.codeUid}`;
+                    const subtitle = fp ? `${c.codeUid} — ${fp}` : `${c.codeUid}`;
 
-            // ✅ أهم نقطة: body يبقى نفس فورمات BPMN
-            // لو backend رجّع summaryText جاهز بصيغة "Task: ... Description: ..."
-            const sumRaw =
-              (c.summaryText && String(c.summaryText).trim()) ||
-              (c.summary_text && String(c.summary_text).trim()) ||
-              (c.summary && String(c.summary).trim()) ||
-              "";
+                    const sumRaw =
+                      (c.summaryText && String(c.summaryText).trim()) ||
+                      (c.summary_text && String(c.summary_text).trim()) ||
+                      (c.summary && String(c.summary).trim()) ||
+                      "";
 
-            const humanTitle = humanizeTitle(fnName);
+                    const humanTitle = humanizeTitle(fnName);
 
-            const body =
-              sumRaw && sumRaw.startsWith("Task:") && sumRaw.includes("Description:")
-                ? sumRaw
-                : `Task: ${humanTitle || "Unnamed function"}. Description: ${
-                    sumRaw || "No summary generated for this function."
-                  }`;
+                    const body =
+                      sumRaw && sumRaw.startsWith("Task:") && sumRaw.includes("Description:")
+                        ? sumRaw
+                        : `Task: ${humanTitle || "Unnamed function"}. Description: ${
+                            sumRaw || "No summary generated for this function."
+                          }`;
 
-            return (
-              <CompareCard
-                key={c.codeUid}
-                title={fnName}
-                subtitle={subtitle}
-                body={body}
-              />
-            );
-          })
-        )}
-      </div>
-    </div>
-  </Card>
-) : null}
+                    return (
+                      <CompareCard
+                        key={c.codeUid}
+                        title={fnName}
+                        subtitle={subtitle}
+                        body={body}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </Card>
+        ) : null}
 
-
-        {/* TAB: Runs */}
         {activeTab === "runs" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Analysis Runs (latest 10)</h3>
@@ -886,14 +918,15 @@ export default function ProjectDetailPage() {
                   <div style={{ color: "#888", fontSize: 13 }}>
                     Started: {r.startedAt ?? "—"} | Finished: {r.finishedAt ?? "—"}
                   </div>
-                  {r.errorMessage ? <div style={{ color: "#a00", marginTop: 6 }}>Error: {r.errorMessage}</div> : null}
+                  {r.errorMessage ? (
+                    <div style={{ color: "#a00", marginTop: 6 }}>Error: {r.errorMessage}</div>
+                  ) : null}
                 </div>
               ))
             )}
           </Card>
         ) : null}
 
-        {/* TAB: Members */}
         {activeTab === "members" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Members</h3>
@@ -914,9 +947,12 @@ export default function ProjectDetailPage() {
   );
 }
 
-/* ---------- small helpers ---------- */
 function Card({ children }: { children: React.ReactNode }) {
-  return <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 14 }}>{children}</div>;
+  return (
+    <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 14 }}>
+      {children}
+    </div>
+  );
 }
 
 function MiniCard(props: { title: string; value: string }) {
@@ -964,17 +1000,16 @@ function CompareCard(props: { title: string; subtitle: string; body: string }) {
     </div>
   );
 }
+
 function humanizeTitle(s: string) {
   const t = String(s || "").replace(/_/g, " ").trim();
   if (!t) return "";
   return t[0].toUpperCase() + t.slice(1);
 }
 
-
 const th: React.CSSProperties = { padding: "10px 8px", borderBottom: "1px solid #eee" };
 const td: React.CSSProperties = { padding: "10px 8px", borderBottom: "1px solid #f3f3f3" };
 
-// ✅ NEW: code box styling (like your template)
 const codeboxStyle: React.CSSProperties = {
   marginTop: 8,
   maxHeight: 160,
