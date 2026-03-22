@@ -11,6 +11,7 @@ import ProjectCreatePage from "../pages/ProjectCreatePage";
 import ProjectDetailPage from "../pages/ProjectDetailPage";
 import ProjectMembersPage from "../pages/ProjectMembersPage";
 import ProjectLogsPage from "../pages/ProjectLogsPage";
+import MyTasksPage from "../features/task-managment/components/MyTasksPage";  
 
 import ReportsPage from "../pages/ReportsPage";
 import DevelopersPage from "../pages/DevelopersPage";
@@ -41,6 +42,16 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+
+      {
+        path: "myTasks",
+        element: (
+          <RequireAuth>
+            <MyTasksPage />
+          </RequireAuth>
+        ),
+      },
+
 
       // Admin-only
       {
