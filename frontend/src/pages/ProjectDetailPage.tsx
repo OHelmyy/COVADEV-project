@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
+import TaskManagementTab from "../features/task-managment/components/TaskManagementTab";
 import {
   fetchProjectDetail,
   runAnalysis,
@@ -52,15 +53,16 @@ type CompareCodeFn = {
 type TabKey =
   | "overview"
   | "uploads"
-  | "settings"
   | "results"
   | "compare"
   | "runs"
   | "members"
-  | "bpmnCheck";
+  | "bpmnCheck"
+  | "taskManagement";
 
 export default function ProjectDetailPage() {
-  const { projectId } = useParams();
+  const { projectId: projectIdParam } = useParams();
+  const projectId = Number(projectIdParam);
   const id = useMemo(() => Number(projectId), [projectId]);
 
   const [state, setState] = useState<LoadState>("idle");
@@ -104,11 +106,7 @@ export default function ProjectDetailPage() {
       { key: "overview", label: "Overview", visible: true },
       { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
       { key: "bpmnCheck", label: "BPMN Check", visible: true },
-      {
-        key: "settings",
-        label: "Settings",
-        visible: canUpdateThreshold || canManageMembers || canViewUploadLogs,
-      },
+      { key: "taskManagement", label: "Task Management", visible: true },
       { key: "results", label: "Results", visible: true },
       { key: "compare", label: "Compare", visible: true },
       { key: "runs", label: "Runs", visible: true },
@@ -553,6 +551,13 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
+        {activeTab === "taskManagement" && (
+          <Card>
+            <TaskManagementTab projectId={projectId} />
+          </Card>
+        )}
+
+
         {activeTab === "uploads" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Uploads & Tools</h3>
@@ -624,56 +629,6 @@ export default function ProjectDetailPage() {
                 <div style={{ color: "#888" }}>Only evaluator or developers can run analysis.</div>
               )}
             </div>
-          </Card>
-        ) : null}
-
-        {activeTab === "settings" ? (
-          <Card>
-            <h3 style={{ marginTop: 0 }}>Settings</h3>
-            <div style={{ color: "#666" }}>
-              Similarity threshold: <b>{data.project.similarityThreshold}</b>
-            </div>
-
-            {canUpdateThreshold ? (
-              <>
-                <div style={{ marginTop: 10 }}>
-                  <input
-                    value={thresholdInput}
-                    onChange={(e) => setThresholdInput(e.target.value)}
-                    placeholder="e.g., 0.6"
-                    style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-                  />
-                  <button
-                    onClick={onUpdateThreshold}
-                    style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                  >
-                    Update threshold
-                  </button>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                  {canManageMembers ? (
-                    <Link to={`/projects/${id}/members`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Manage Members
-                      </button>
-                    </Link>
-                  ) : null}
-
-                  {canViewUploadLogs ? (
-                    <Link to={`/projects/${id}/logs`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Upload Logs
-                      </button>
-                    </Link>
-                  ) : null}
-                </div>
-              </>
-            ) : (
-              <div style={{ color: "#888", marginTop: 10 }}>
-                Only evaluator can change settings and view upload logs.
-              </div>
-            )}
           </Card>
         ) : null}
 
