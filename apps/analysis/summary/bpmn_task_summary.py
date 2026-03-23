@@ -34,7 +34,7 @@ def summarize_bpmn_task_text(prompt: str) -> str:
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_new_tokens=40,
+            max_new_tokens=24,
             temperature=0.2,
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
@@ -43,34 +43,67 @@ def summarize_bpmn_task_text(prompt: str) -> str:
     generated_ids = outputs[0][inputs["input_ids"].shape[1]:]
     result = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
     return result
+
 def build_bpmn_task_summary_input(name, description):
+    desc = (description or "").strip()
+
     return (
         "Write ONE short technical sentence describing what this BPMN task does.\n\n"
-
         "Rules:\n"
         "- Describe actual system behavior (read, validate, update, process, generate, return)\n"
         "- Mention the main object (order, payment, report, user input, data)\n"
-        "- Do NOT invent systems (database, API, gateway) unless explicitly mentioned\n"
+        "- If the description is missing, infer the summary from the task name only\n"
+        "- Do NOT say the task is undefined, missing, unknown, or lacking context\n"
+        "- Do NOT ask for more details\n"
+        "- Do NOT invent systems unless explicitly mentioned\n"
         "- Do NOT start with 'This task', 'The task', etc\n"
         "- No explanation\n"
         "- Make it useful for semantic matching with code functions\n\n"
-
         f"Task name: {name or 'Unknown'}\n"
-        f"Task description: {description or 'Not provided'}"
+        f"Task description: {desc if desc else 'Missing'}"
     )
-def is_weak(summary: str, name: str) -> bool:
-    s = (summary or "").lower().strip()
-    n = (name or "").lower().strip()
 
+def is_bad_bpmn_summary(summary: str, name: str) -> bool:
+    s = (summary or "").strip().lower()
+    n = (name or "").strip().lower()
+
+    if not s:
+        return True
+
+    bad_phrases = [
+        "not defined in the given bpmn diagram",
+        "not defined in the bpmn diagram",
+        "please provide more context",
+        "please provide more details",
+        "not enough context",
+        "insufficient context",
+        "cannot determine",
+        "cannot infer",
+        "unknown",
+    ]
+
+    if any(p in s for p in bad_phrases):
+        return True
+
+    if s == n or s == f"{n}.":
+        return True
+
+    return False
+
+def build_bpmn_task_repair_input(name, description, bad_output):
     return (
-        len(s.split()) <= 7
-        or s == n
-        or s == f"{n}."
-        or s.startswith("the task")
-        or s.startswith("this task")
-        or s.startswith("to ")
+        "Rewrite the BPMN task summary as ONE short technical sentence.\n\n"
+        "Rules:\n"
+        "- Describe actual system behavior\n"
+        "- Mention the main object\n"
+        "- Do NOT say the task is undefined, unknown, or missing context\n"
+        "- Do NOT ask for more details\n"
+        "- Do NOT explain limitations\n"
+        "- Output only the corrected sentence\n\n"
+        f"Task name: {name or 'Unknown'}\n"
+        f"Task description: {description or 'Not provided'}\n"
+        f"Bad summary to fix: {bad_output or ''}"
     )
-
 
 def summarize_bpmn_task(name: Optional[str], description: Optional[str]) -> str:
     prompt = build_bpmn_task_summary_input(name, description)
@@ -78,13 +111,10 @@ def summarize_bpmn_task(name: Optional[str], description: Optional[str]) -> str:
     summary = clean_summary(summary)
     summary = " ".join((summary or "").splitlines()).strip()
 
-    if is_weak(summary, name or ""):
-        stronger_prompt = (
-            prompt
-            + " Expand it with a clearer action, object, and business outcome. "
-            "Make it at least 10 words and useful for semantic matching."
-        )
-        summary = summarize_bpmn_task_text(stronger_prompt)
+    if is_bad_bpmn_summary(summary, name or ""):
+        repair_prompt = build_bpmn_task_repair_input(name, description, summary)
+        summary = summarize_bpmn_task_text(repair_prompt)
+        summary = clean_summary(summary)
         summary = " ".join((summary or "").splitlines()).strip()
 
     return summary

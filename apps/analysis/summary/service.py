@@ -6,7 +6,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from .generator import build_generator_block
-from .postprocess import validate_detailed
+
 
 
 CODE_COMPARE_RULES = """Write ONE short technical sentence describing what this function does.
@@ -86,10 +86,8 @@ class SummaryService:
             block = build_generator_block(sf)
 
             short_prompt = build_code_compare_prompt(block)
-            detailed_prompt = build_detailed_prompt(block)
 
-            short_raw = self._call_model(short_prompt, max_new_tokens=60)
-            detailed_raw = self._call_model(detailed_prompt, max_new_tokens=160)
+            short_raw = self._call_model(short_prompt, max_new_tokens=24)
 
             print("UID:", uid)
             print("SHORT RAW:", repr(short_raw))
@@ -102,8 +100,10 @@ class SummaryService:
                 short_clean = ""
 
             out[uid] = {
+
                 "short": short_clean,
-                "detailed": validate_detailed(detailed_raw),
+                "detailed": "",
+
             }
 
         return out
