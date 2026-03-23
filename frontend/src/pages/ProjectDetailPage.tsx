@@ -837,21 +837,21 @@ export default function ProjectDetailPage() {
                 {bpmnCompare.length === 0 ? (
                   <div style={{ color: "#888" }}>No BPMN tasks yet.</div>
                 ) : (
-                  bpmnCompare.map((t) => {
-                    const body =
-                      (t.summaryText && t.summaryText.trim()) ||
-                      ((t as any).compareText && String((t as any).compareText).trim()) ||
-                      `Task: ${t.name || "Unnamed Task"}. Description: ${t.description || ""}`;
+                bpmnCompare.map((t) => {
+                const body =
+                  (t.summaryText && t.summaryText.trim()) ||
+                  ((t as any).compareText && String((t as any).compareText).trim()) ||
+                  "No generated summary available.";
 
-                    return (
-                      <CompareCard
-                        key={t.taskId}
-                        title={t.name || "Unnamed Task"}
-                        subtitle={t.taskId}
-                        body={body}
-                      />
-                    );
-                  })
+                  return (
+                    <CompareCard
+                      key={t.taskId}
+                      title={t.name || "Unnamed Task"}
+                      subtitle={t.taskId}
+                      body={body}
+                    />
+                  );
+                })
                 )}
               </div>
 
@@ -861,43 +861,36 @@ export default function ProjectDetailPage() {
                 {codeCompare.length === 0 ? (
                   <div style={{ color: "#888" }}>No code summaries yet.</div>
                 ) : (
-                  codeCompare.map((c: any) => {
-                    const fnName =
-                      (c.functionName && String(c.functionName).trim()) ||
-                      (c.symbol && String(c.symbol).trim()) ||
-                      "Unnamed Function";
+                codeCompare.map((c: any) => {
+                  const fnName =
+                    (c.functionName && String(c.functionName).trim()) ||
+                    (c.symbol && String(c.symbol).trim()) ||
+                    "Unnamed Function";
 
-                    const fp =
-                      (c.filePath && String(c.filePath).trim()) ||
-                      (c.file && String(c.file).trim()) ||
-                      "";
+                  const fp =
+                    (c.filePath && String(c.filePath).trim()) ||
+                    (c.file && String(c.file).trim()) ||
+                    "";
 
-                    const subtitle = fp ? `${c.codeUid} — ${fp}` : `${c.codeUid}`;
+                  const subtitle = fp ? `${c.codeUid} — ${fp}` : `${c.codeUid}`;
 
-                    const sumRaw =
-                      (c.summaryText && String(c.summaryText).trim()) ||
-                      (c.summary_text && String(c.summary_text).trim()) ||
-                      (c.summary && String(c.summary).trim()) ||
-                      "";
+                  const sumRaw =
+                    (c.summaryText && String(c.summaryText).trim()) ||
+                    (c.summary_text && String(c.summary_text).trim()) ||
+                    (c.summary && String(c.summary).trim()) ||
+                    "";
 
-                    const humanTitle = humanizeTitle(fnName);
+                  const body = sumRaw || "No generated summary available.";
 
-                    const body =
-                      sumRaw && sumRaw.startsWith("Task:") && sumRaw.includes("Description:")
-                        ? sumRaw
-                        : `Task: ${humanTitle || "Unnamed function"}. Description: ${
-                            sumRaw || "No summary generated for this function."
-                          }`;
-
-                    return (
-                      <CompareCard
-                        key={c.codeUid}
-                        title={fnName}
-                        subtitle={subtitle}
-                        body={body}
-                      />
-                    );
-                  })
+                  return (
+                    <CompareCard
+                      key={c.codeUid}
+                      title={fnName}
+                      subtitle={subtitle}
+                      body={body}
+                    />
+                  );
+                })
                 )}
               </div>
             </div>

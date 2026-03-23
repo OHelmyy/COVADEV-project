@@ -97,72 +97,6 @@ def _resolve_code_root_from_project(project: Project) -> Path:
     return extract_dir
 
 
-# ============================================================
-# ✅ Prototype upload endpoint (LOCKED)
-# ============================================================
-
-@csrf_exempt
-@login_required
-@require_http_methods(["POST"])
-def run_analysis(request):
-    """
-    ⚠️ Prototype endpoint for direct file upload pipeline.
-    Recommended: ADMIN only (so random users can't upload code/bpmn here).
-
-    multipart/form-data:
-      - bpmn_file
-      - code_zip
-      - top_k (optional)
-    """
-    if not is_admin(request.user):
-        return _forbidden()
-
-    bpmn_file = request.FILES.get("bpmn_file")
-    code_zip = request.FILES.get("code_zip")
-    top_k = int(request.POST.get("top_k", "3") or "3")
-
-    if not bpmn_file or not code_zip:
-        return JsonResponse({"error": "bpmn_file and code_zip are required"}, status=400)
-
-    run_id = uuid.uuid4().hex
-    base_dir = Path(settings.MEDIA_ROOT) / "tmp_analysis" / run_id
-    _ensure_dir(base_dir)
-
-    bpmn_path = base_dir / bpmn_file.name
-    zip_path = base_dir / code_zip.name
-    code_dir = base_dir / "code"
-
-    bpmn_path.write_bytes(bpmn_file.read())
-    zip_path.write_bytes(code_zip.read())
-
-    _ensure_dir(code_dir)
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(code_dir)
-
-    try:
-        tasks = extract_tasks(bpmn_path)  # prototype uses path-based parser
-        code_items = extract_python_from_directory(code_dir, project_root=code_dir)
-
-        embedded = embed_pipeline(tasks=tasks, code_items=code_items, batch_size=32)
-        similarity = compute_similarity(
-            task_embeddings=embedded["task_embeddings"],
-            code_embeddings=embedded["code_embeddings"],
-        )
-
-        topk = top_k_matches(similarity=similarity, k=top_k)
-
-        return JsonResponse(
-            {
-                "meta": {**embedded["meta"], **similarity["meta"], "top_k": top_k},
-                "counts": {"tasks": len(tasks), "code_items": len(code_items)},
-                "tasks_preview": tasks[:30],
-                "code_items_preview": code_items[:50],
-                "topk": topk,
-            },
-            json_dumps_params={"ensure_ascii": False},
-        )
-    except Exception as e:
-        return JsonResponse({"error": str(e), "trace": traceback.format_exc()}, status=500)
 
 
 # ============================================================
@@ -282,6 +216,7 @@ def metrics_developers(request, project_id: int):
 @login_required
 @require_GET
 def compare_inputs_api(request, project_id: int):
+    print("COMPARE API 1")  # change 1 → 2 → 3 in each file
     project = get_object_or_404(Project, id=project_id)
 
     if not _can_open_project(project, request.user):
@@ -389,7 +324,7 @@ def compare_inputs_api(request, project_id: int):
                 "compareText": compare_text,
             }
         )
-
+    print("BPMN SAMPLE:", bpmn_tasks[:2])
     return JsonResponse(
         {"projectId": project.id, "bpmnTasks": bpmn_tasks, "codeFunctions": code_functions},
         safe=True,

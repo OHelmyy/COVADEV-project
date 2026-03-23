@@ -10,21 +10,34 @@ def _clean_spaces(s: str) -> str:
 def _word_count(s: str) -> int:
     return len([w for w in (s or "").strip().split() if w])
 
-def validate_one_sentence(s: str) -> str:
-    s = _clean_spaces(s)
+import re
 
-    if "\n" in s:
-        raise ValueError("Summary must be exactly one sentence (no newlines).")
 
-    # good-enough one sentence check
-    if s.count(".") > 1:
+def validate_one_sentence(text: str) -> str:
+    text = (text or "").strip()
+
+    if not text:
+        raise ValueError("Summary is empty.")
+
+    # collapse whitespace
+    text = re.sub(r"\s+", " ", text)
+
+    # remove wrapping quotes if any
+    text = text.strip("\"'“”‘’")
+
+    # count sentence-ending punctuation marks
+    sentence_parts = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    if len(sentence_parts) != 1:
         raise ValueError("Summary must be exactly one sentence.")
 
-    wc = _word_count(s)
-    if wc < 12 or wc > 22:
-        raise ValueError(f"Summary must be 12–22 words (got {wc}).")
+    # count words robustly
+    words = re.findall(r"\b[\w'-]+\b", text)
+    wc = len(words)
 
-    return s
+    if wc < 8 or wc > 14:
+        raise ValueError(f"Summary must be between 8 and 14 words (got {wc}).")
+
+    return text
 
 def validate_detailed(s: str) -> str:
     s = (s or "").strip()
