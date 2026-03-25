@@ -1,39 +1,42 @@
 # apps/analysis/summary/postprocess.py
 import re
 
-def validate_code_compare_line(s: str) -> str:
-    s = re.sub(r"\s+", " ", (s or "").strip())
-
-    if "\n" in s:
-        raise ValueError("Must be one line (no newlines).")
-
-    if not s.startswith("Task:") or " Description: " not in s:
-        raise ValueError("Must follow: Task: <Title>. Description: <Sentence>.")
-
-    # split
-    m = re.match(r"^Task:\s*(.+?)\.\s*Description:\s*(.+)$", s)
-    if not m:
-        raise ValueError("Invalid format; expected period after title.")
-
-    title = m.group(1).strip()
-    desc = m.group(2).strip()
-
-    # Title: 2–6 words
-    title_words = [w for w in title.split() if w]
-    if len(title_words) < 2 or len(title_words) > 6:
-        raise ValueError("Title must be 2–6 words.")
-
-    # Description: 12–22 words (one sentence)
-    desc_words = [w for w in re.sub(r"[^A-Za-z0-9\s]", " ", desc).split() if w]
-    wc = len(desc_words)
-    if wc < 12 or wc > 22:
-        raise ValueError(f"Description must be 12–22 words (got {wc}).")
-
-    # keep it one sentence-ish (allow final period)
-    if desc.count(".") > 1:
-        raise ValueError("Description should be one sentence.")
-
+def _clean_spaces(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r"\s+", " ", s)
     return s
+
+def _word_count(s: str) -> int:
+    return len([w for w in (s or "").strip().split() if w])
+
+import re
+
+
+def validate_one_sentence(text: str) -> str:
+    text = (text or "").strip()
+
+    if not text:
+        raise ValueError("Summary is empty.")
+
+    # collapse whitespace
+    text = re.sub(r"\s+", " ", text)
+
+    # remove wrapping quotes if any
+    text = text.strip("\"'“”‘’")
+
+    # count sentence-ending punctuation marks
+    sentence_parts = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    if len(sentence_parts) != 1:
+        raise ValueError("Summary must be exactly one sentence.")
+
+    # count words robustly
+    words = re.findall(r"\b[\w'-]+\b", text)
+    wc = len(words)
+
+    if wc < 8 or wc > 14:
+        raise ValueError(f"Summary must be between 8 and 14 words (got {wc}).")
+
+    return text
 
 
 # ✅ Backward-compatible names used by SummaryService

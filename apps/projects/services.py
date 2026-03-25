@@ -171,10 +171,12 @@ def _fallback_summary(sf: Dict[str, Any]) -> str:
 
 
 def _persist_code_artifacts_with_summaries(
+    
     *,
     project: Project,
     code_root_dir: Path,
 ) -> Dict[str, Any]:
+    print("BBBB -> _persist_code_artifacts_with_summaries CALLED")
     """
     Extract structured functions from the extracted code folder,
     generate summaries, and save/update CodeArtifact rows.
@@ -192,7 +194,10 @@ def _persist_code_artifacts_with_summaries(
         # returns: {uid: {"short": "...", "detailed": "..."}}
         summaries_by_uid = summarizer.summarize_many(structured_functions)
     except Exception as e:
+        import traceback
         summary_errors["__GLOBAL__"] = str(e)
+        print("GLOBAL SUMMARY ERROR:", str(e))
+        traceback.print_exc()
         summaries_by_uid = {}
 
     saved = 0
@@ -240,7 +245,7 @@ def _persist_code_artifacts_with_summaries(
                 },
             )
             saved += 1
-
+    print("CCCC -> structured_functions count:", len(structured_functions))
     return {
         "structured_functions": len(structured_functions),
         "saved": saved,
@@ -266,6 +271,7 @@ def save_code_zip_and_extract(project: Project, uploaded_zip, uploader):
     - Clears old extracted code folder content before extracting
     - Updates project.active_code pointer
     """
+    print("AAAA -> save_code_zip_and_extract CALLED")
     code_root = Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "code"
     code_root.mkdir(parents=True, exist_ok=True)
 
@@ -313,13 +319,4 @@ def save_code_zip_and_extract(project: Project, uploaded_zip, uploader):
     # Mark as active Code ZIP
     project.active_code = pf
     project.save(update_fields=["active_code"])
-
-    # ✅ Generate code function summaries right after upload
-    try:
-        stats = _persist_code_artifacts_with_summaries(project=project, code_root_dir=extract_dir)
-        print("Code summarization stats:", stats)
-    except Exception as e:
-        # MVP-friendly: upload still succeeds even if summarizer fails
-        print("Code summarization FAILED:", str(e))
-
     return pf

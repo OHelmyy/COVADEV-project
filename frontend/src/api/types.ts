@@ -70,3 +70,18 @@ export type DashboardStats = {
   analysesDone: number;
   recentProjects: DashboardProjectSummary[];
 };
+
+
+export type ActiveUpload = {
+  id: number;
+  originalName: string;
+  createdAt?: string | null;
+  uploadedBy?: string | null;
+  fileType?: "BPMN" | "CODE";
+
+  // BPMN only:
+  isWellFormed?: boolean;
+  precheckWarnings?: string[];
+  precheckErrors?: string[];
+  bpmnSummary?: string;
+};

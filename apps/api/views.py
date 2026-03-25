@@ -499,6 +499,7 @@ def api_project_matches(request, project_id):
         })
 
     return JsonResponse({"project_id": project.id, "matches": matches})
+
 def compare_inputs_api(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 

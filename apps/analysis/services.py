@@ -1,18 +1,20 @@
 # apps/analysis/services.py
 from __future__ import annotations
-
+from typing import Any, Dict, List
 from pathlib import Path
 from typing import Any, Dict, List
-
+from apps.analysis.models import BpmnTask
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from apps.analysis.bpmn.parser import extract_tasks
 from apps.analysis.semantic.analyze import analyze_project
-
+from apps.analysis.summary.bpmn_task_summary import summarize_bpmn_task
 from .models import AnalysisRun, BpmnTask, MatchResult
 from .metrics.evaluation import evaluate_traceability
+from apps.analysis.models_code import CodeArtifact
+from apps.projects.services import _persist_code_artifacts_with_summaries
 
 
 def _abs_media_path(stored_path: str) -> Path:
@@ -56,11 +58,6 @@ def _resolve_code_root_from_project(project) -> Path:
 
 
 def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
-    """
-    Storage helper (Project-based) for BPMN tasks.
-    tasks: list of dicts:
-      [{"task_id": "...", "name": "...", "description": "..."}]
-    """
     BpmnTask.objects.filter(project=project).delete()
 
     objs: List[BpmnTask] = []
@@ -72,13 +69,27 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
         if not task_id:
             continue
 
-        objs.append(BpmnTask(project=project, task_id=task_id, name=name, description=desc))
+        summary = summarize_bpmn_task(name=name, description=desc)
+
+        print("TASK NAME:", name)
+        print("TASK DESC:", desc)
+        print("GENERATED SUMMARY:", repr(summary))
+
+        objs.append(
+            BpmnTask(
+                project=project,
+                task_id=task_id,
+                name=name,
+                description=desc,
+                summary_text=summary,
+            )
+        )
 
     if objs:
+        print("FIRST OBJ SUMMARY BEFORE SAVE:", repr(objs[0].summary_text))
         BpmnTask.objects.bulk_create(objs)
 
     return BpmnTask.objects.filter(project=project).count()
-
 
 def replace_match_results(project, results: List[Dict[str, Any]]) -> int:
     """
@@ -129,9 +140,10 @@ def run_analysis_for_project(
       1) Create AnalysisRun (RUNNING)
       2) Read BPMN bytes and parse tasks
       3) Store tasks in BpmnTask
-      4) Call semantic engine analyze_project(...)  ✅ (uses code summaries)
-      5) Store MatchResult rows (MATCHED/MISSING/EXTRA)
-      6) Mark run DONE/FAILED
+      4) Generate fresh code summaries and save CodeArtifact
+      5) Call semantic engine analyze_project(...)
+      6) Store MatchResult rows
+      7) Mark run DONE/FAILED
     """
     if not getattr(project, "active_bpmn", None):
         raise ValueError("No active BPMN uploaded for this project.")
@@ -164,7 +176,15 @@ def run_analysis_for_project(
         # ---- 3) Resolve code root ----
         code_root = _resolve_code_root_from_project(project)
 
-        # ---- 4) Run semantic engine ----
+        # ---- 4) Generate fresh code summaries NOW (during analysis) ----
+        CodeArtifact.objects.filter(project=project).delete()
+
+        _persist_code_artifacts_with_summaries(
+            project=project,
+            code_root_dir=code_root,
+        )
+
+        # ---- 5) Run semantic engine ----
         threshold = float(getattr(project, "similarity_threshold", 0.6) or 0.6)
 
         result = analyze_project(
@@ -174,11 +194,11 @@ def run_analysis_for_project(
             matcher=matcher,
             top_k=int(top_k),
             include_debug=False,
-            project=project,  # ✅ IMPORTANT: store CodeArtifact (summaries)
-            run=run,          # ✅ IMPORTANT: store embeddings/similarity (optional models)
+            project=project,  # use saved CodeArtifact summaries
+            run=run,
         )
 
-        # ---- 5) Convert engine output -> MatchResult storage schema ----
+        # ---- 6) Convert engine output -> MatchResult storage schema ----
         matching = result.get("matching") or {}
         matched = matching.get("matched") or []
         missing = matching.get("missing") or []
@@ -218,7 +238,7 @@ def run_analysis_for_project(
 
         replace_match_results(project, storage_results)
 
-        # ---- 6) Mark DONE ----
+        # ---- 7) Mark DONE ----
         run.status = "DONE"
         run.finished_at = timezone.now()
         run.error_message = ""

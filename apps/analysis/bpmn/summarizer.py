@@ -1,11 +1,15 @@
-from __future__ import annotations
-from typing import List, Optional
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
 
-from apps.analysis.semantic.model_registry import get_t5_bundle
+MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"  # use 1.5B (fast)
 
-# ✅ Better model than t5-small
-DEFAULT_MODEL = "google/flan-t5-base"
-
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    torch_dtype=torch.float16,
+    device_map="auto",
+    trust_remote_code=True,
+)
 
 def build_bpmn_summary_input(process_name: Optional[str], tasks: List[str]) -> str:
     tasks = [t.strip() for t in tasks if t and t.strip()]
@@ -20,24 +24,28 @@ def build_bpmn_summary_input(process_name: Optional[str], tasks: List[str]) -> s
     )
 
 
-def summarize_bpmn_text(text: str, model_name: str = DEFAULT_MODEL) -> str:
-    tokenizer, model, device = get_t5_bundle(model_name)
+def summarize_bpmn_text(text: str) -> str:
+    messages = [
+        {"role": "system", "content": "You are a business analyst writing precise workflow summaries."},
+        {"role": "user", "content": text},
+    ]
 
-    inputs = tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-        max_length=512,
-    ).to(device)
+    chat = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+    )
 
-    import torch
+    inputs = tokenizer(chat, return_tensors="pt").to(model.device)
+
     with torch.no_grad():
-        output_ids = model.generate(
+        outputs = model.generate(
             **inputs,
-            max_new_tokens=90,
-            num_beams=4,
+            max_new_tokens=100,
+            temperature=0.2,
             do_sample=False,
-            early_stopping=True,
+            pad_token_id=tokenizer.eos_token_id,
         )
 
-    return tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
+    generated = outputs[0][inputs["input_ids"].shape[1]:]
+    return tokenizer.decode(generated, skip_special_tokens=True).strip()

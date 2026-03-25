@@ -8,15 +8,12 @@ from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
-
+from apps.projects.services import _persist_code_artifacts_with_summaries
 from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
 from apps.analysis.services import run_analysis_for_project
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404
-
 from apps.analysis.models import BpmnTask
-# لو CodeArtifact موجود عندك:
 from apps.analysis.models_code import CodeArtifact
 
 from apps.accounts.rbac import is_admin, is_evaluator
@@ -251,6 +248,8 @@ def upload_bpmn(request, project_id):
 @login_required
 @require_POST
 def upload_code_zip(request, project_id):
+    
+    print("ZZZZ -> upload_code_zip VIEW CALLED")
     project = get_object_or_404(Project, id=project_id)
 
     if not _can_open_project(project, request.user):
@@ -278,6 +277,7 @@ def upload_code_zip(request, project_id):
 @login_required
 @require_POST
 def run_analysis(request, project_id):
+    print("PROJECTS VIEWS.PY RUN_ANALYSIS HIT")
     project = get_object_or_404(Project, id=project_id)
 
     if not _can_open_project(project, request.user):
@@ -487,20 +487,32 @@ def _ensure_task_desc(task_title: str, desc: str) -> str:
 
 @login_required
 def compare_inputs_api(request, project_id: int):
+    print("COMPARE API 3")
     project = get_object_or_404(Project, id=project_id)
 
     if not _can_open_project(project, request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     bpmn_tasks = [
-        {"taskId": t.task_id, "name": t.name, "description": t.description}
+        {
+            "taskId": t.task_id,
+            "name": t.name,
+            "summaryText": t.summary_text,
+        }
         for t in BpmnTask.objects.filter(project=project)
     ]
 
     code_functions = [
-        {"codeUid": c.code_uid, "symbol": c.symbol, "file": c.file_path, "summaryText": _ensure_task_desc(c.symbol, c.summary_text)}
+        {
+            "codeUid": c.code_uid,
+            "symbol": c.symbol,
+            "file": c.file_path,
+            "summaryText": c.summary_text,
+        }
         for c in CodeArtifact.objects.filter(project=project)
     ]
+
+    print("BPMN SAMPLE:", bpmn_tasks[:2])
 
     return JsonResponse({
         "projectId": project.id,

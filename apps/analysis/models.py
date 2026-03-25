@@ -51,7 +51,7 @@ class BpmnTask(models.Model):
     task_id = models.CharField(max_length=200)  # BPMN task id from XML
     name = models.CharField(max_length=500)
     description = models.TextField(blank=True, default="")
-
+    summary_text = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

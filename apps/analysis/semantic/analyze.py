@@ -130,29 +130,6 @@ def _fallback_symbol_from_uid(uid: str) -> str:
     right = right.split(":")[-1]
     return right.strip() or "unknown"
 
-def _fallback_summary(sf: Dict[str, Any]) -> str:
-    """
-    Non-hallucinating fallback when the LLM summary fails.
-    Keeps UI usable and allows matching to proceed.
-    """
-    fn = (sf.get("function_name") or "").strip() or _fallback_symbol_from_uid(str(sf.get("function_uid") or ""))
-    fn_h = _humanize_symbol(fn) or "Function"
-
-    calls = sf.get("calls") or []
-    writes = sf.get("writes") or []
-    returns = sf.get("returns") or []
-
-    bits: List[str] = []
-    if calls:
-        bits.append("calls other routines")
-    if writes:
-        bits.append("updates data")
-    if returns:
-        bits.append("returns a result")
-
-    tail = ", ".join(bits) if bits else "implements its main behavior based on available code context"
-    return f"{fn_h} {tail}."
-
 
 # -------------------------------------------------
 # Main
@@ -244,7 +221,7 @@ def analyze_project(
     summaries_by_uid: Dict[str, str] = {}
     summary_errors: Dict[str, str] = {}
 
-    if not code_items:
+    if not code_items and project is None:
         structured_functions = extract_structured_from_directory(code_root_path, project_root=code_root_path) or []
 
         summarizer = SummaryService()
