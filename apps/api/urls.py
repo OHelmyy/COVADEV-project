@@ -1,7 +1,9 @@
 # apps/api/urls.py
 from django.urls import include, path
 from apps.projects.views import compare_inputs_api
+from apps.api.projects_api import api_project_report
 from apps.analysis import views as analysis_views
+
 from .projects_api import (
     api_projects_list_create,
     api_project_members,
@@ -14,8 +16,9 @@ from .projects_api import (
     api_project_files,
     api_project_tasks,
     api_project_matches,
-    api_project_detail_or_delete
-    
+    api_project_report,  
+    api_project_detail_or_delete,
+    api_project_recommendations, 
 )
 
 app_name = "api"
@@ -50,6 +53,11 @@ urlpatterns = [
         compare_inputs_api,
         name="compare_inputs",
     ),
+    path(
+       "projects/<int:project_id>/compare-inputs/",
+        compare_inputs_api,
+        name="compare_inputs",
+    ),
     # Dashboard
     path("reports/dashboard/", analysis_views.dashboard_stats, name="dashboard_stats"),
 
@@ -59,6 +67,10 @@ urlpatterns = [
     #adminnn
     path("admin/", include("apps.api.admin_users_urls")),
 
+
+  path("projects/<int:project_id>/report/", api_project_report, name="project_report"),
+  path("projects/<int:project_id>/recommendations/", api_project_recommendations),
+    
   
 
 

@@ -1,4 +1,5 @@
 // frontend/src/api/projects.ts
+
 import { apiGet, apiPost, apiUpload, apiDelete } from "./http";
 import type { ProjectDetailApi, ProjectSummaryApi } from "./types";
 
@@ -41,6 +42,10 @@ export function removeMember(projectId: number, membershipId: number) {
     `/api/projects/${projectId}/members/${membershipId}/remove/`,
     {}
   );
+  return apiPost<{ ok: boolean }>(
+    `/api/projects/${projectId}/members/${membershipId}/remove/`,
+    {}
+  );
 }
 
 export function uploadBpmn(projectId: number, file: File) {
@@ -73,9 +78,17 @@ export function fetchFiles(projectId: number) {
     project_id: number;
     files: Array<{ relative_path: string; ext: string; size_bytes: number }>;
   }>(`/api/projects/${projectId}/files/`);
+  return apiGet<{
+    project_id: number;
+    files: Array<{ relative_path: string; ext: string; size_bytes: number }>;
+  }>(`/api/projects/${projectId}/files/`);
 }
 
 export function fetchTasks(projectId: number) {
+  return apiGet<{
+    project_id: number;
+    tasks: Array<{ task_id: string; name: string; description: string }>;
+  }>(`/api/projects/${projectId}/tasks/`);
   return apiGet<{
     project_id: number;
     tasks: Array<{ task_id: string; name: string; description: string }>;
@@ -194,4 +207,22 @@ export async function fetchCompareInputs(projectId: number) {
       };
     }),
   };
+}
+
+
+export function fetchRecommendations(projectId: number) {
+  return apiGet<{
+    projectId: number;
+    hasSummary: boolean;
+    recommendations: string[];
+    updatedAt: string | null;
+  }>(`/api/projects/${projectId}/recommendations/`);
+}
+
+export function generateRecommendations(projectId: number) {
+  return apiPost<{
+    ok: boolean;
+    recommendations: string[];
+    updatedAt: string;
+  }>(`/api/projects/${projectId}/recommendations/`, {});
 }
