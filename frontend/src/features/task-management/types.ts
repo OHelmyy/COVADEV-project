@@ -33,6 +33,7 @@ export type Assignment = {
   submittedAt?: string | null;
   reviewedAt?: string | null;
   developer?: AssignmentDeveloper;
+  evaluation?: TaskEvaluation | null;
 };
 
 export type TaskAssignmentItem = {
@@ -67,4 +68,34 @@ export type AssignmentWithTask = {
   reviewedAt?: string | null;
   task: TaskInfo;
   developer?: AssignmentDeveloper;
+};
+
+
+export type TaskEvaluation = {
+  id: number;
+  evaluator?: {
+    id: number;
+    username: string;
+  } | null;
+  correctnessScore: number;
+  qualityScore: number;
+  timelinessScore: number;
+  communicationScore: number;
+  finalScore: number;
+  comments: string;
+  evaluatedAt?: string | null;
+};
+
+export type DeveloperPerformanceItem = {
+  membershipId: number;
+  userId: number;
+  username: string;
+  email: string;
+  totalAssigned: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  submittedCount: number;
+  inProgressCount: number;
+  acceptanceRate: number;
+  averageScore: number;
 };

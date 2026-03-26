@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import TaskAssignmentRow from "./TaskAssignmentRow";
 import {
   getProjectDevelopers,
@@ -70,7 +70,6 @@ export default function TaskManagementTab({ projectId }: Props) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #ddd" }}>
-              <th style={{ textAlign: "left", padding: 10 }}>Task ID</th>
               <th style={{ textAlign: "left", padding: 10 }}>Task Name</th>
               <th style={{ textAlign: "left", padding: 10 }}>
                 Assigned Developer

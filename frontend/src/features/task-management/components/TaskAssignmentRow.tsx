@@ -1,9 +1,10 @@
-import React, { useState } from "react";
-import { assignTask, reviewTaskAssignment } from "../api/taskManagementApi";
+import { useState } from "react";
+import { assignTask, evaluateTaskAssignment, reviewTaskAssignment } from "../api/taskManagementApi";
 
 import type { Developer, TaskInfo, Assignment } from "../types";
 import { getStatusLabel } from "../utils";
 
+import EvaluationForm from "./EvaluationForm";
 type Props = {
   projectId: number;
   task: TaskInfo;
@@ -25,6 +26,8 @@ export default function TaskAssignmentRow({
       : ""
   );
   const [saving, setSaving] = useState(false);
+
+  const [showEvaluationForm, setShowEvaluationForm] = useState(false);
 
   async function handleAssign() {
     if (!developerMembershipId) {
@@ -64,9 +67,63 @@ export default function TaskAssignmentRow({
     }
   }
 
+  async function handleEvaluateClick() {
+  if (!assignment) return;
+
+  const correctnessScore = Number(prompt("Correctness score (0-100)", "80"));
+  const qualityScore = Number(prompt("Quality score (0-100)", "80"));
+  const timelinessScore = Number(prompt("Timeliness score (0-100)", "80"));
+  const communicationScore = Number(prompt("Communication score (0-100)", "80"));
+  const comments = prompt("Comments", "") || "";
+
+  if (
+    Number.isNaN(correctnessScore) ||
+    Number.isNaN(qualityScore) ||
+    Number.isNaN(timelinessScore) ||
+    Number.isNaN(communicationScore)
+  ) {
+    alert("Invalid scores.");
+    return;
+  }
+
+  try {
+    await evaluateTaskAssignment(assignment.assignmentId, {
+      correctnessScore,
+      qualityScore,
+      timelinessScore,
+      communicationScore,
+      comments,
+    });
+    await onChanged();
+  } catch (error: any) {
+    alert(error.message || "Failed to evaluate task.");
+  }
+}
+
+async function handleEvaluationSubmit(payload: {
+  correctnessScore: number;
+  qualityScore: number;
+  timelinessScore: number;
+  communicationScore: number;
+  comments: string;
+}) {
+  if (!assignment) return;
+
+  setSaving(true);
+  try {
+    await evaluateTaskAssignment(assignment.assignmentId, payload);
+    setShowEvaluationForm(false);
+    await onChanged();
+  } catch (error: any) {
+    alert(error.message || "Failed to evaluate task.");
+  } finally {
+    setSaving(false);
+  }
+}
+
   return (
+    <>
     <tr style={{ borderTop: "1px solid #eee" }}>
-      <td style={{ padding: 10 }}>{task.taskId}</td>
       <td style={{ padding: 10 }}>{task.name}</td>
       <td style={{ padding: 10 }}>
         <select
@@ -82,7 +139,14 @@ export default function TaskAssignmentRow({
           ))}
         </select>
       </td>
-      <td style={{ padding: 10 }}>{getStatusLabel(assignment?.status)}</td>
+     <td style={{ padding: 10 }}>
+      <div>{getStatusLabel(assignment?.status)}</div>
+      {assignment?.evaluation && (
+        <div style={{ marginTop: 6, fontSize: 12, color: "#555" }}>
+          Score: <strong>{assignment.evaluation.finalScore}</strong>
+        </div>
+      )}
+    </td>
       <td style={{ padding: 10 }}>
         <button
           onClick={handleAssign}
@@ -130,7 +194,46 @@ export default function TaskAssignmentRow({
             </button>
           </>
         )}
+        {assignment &&
+        (assignment.status === "ACCEPTED" || assignment.status === "REJECTED") && (
+          <button
+            onClick={() => setShowEvaluationForm((v) => !v)}
+            disabled={saving}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid #ccc",
+              cursor: "pointer",
+            }}
+          >
+            {assignment.evaluation ? "Update Evaluation" : "Evaluate"}
+          </button>
+        )}
       </td>
     </tr>
+    
+    {showEvaluationForm && assignment && (
+    <tr>
+      <td colSpan={5} style={{ padding: 10 }}>
+        <EvaluationForm
+          initialValues={
+            assignment.evaluation
+              ? {
+                  correctnessScore: assignment.evaluation.correctnessScore,
+                  qualityScore: assignment.evaluation.qualityScore,
+                  timelinessScore: assignment.evaluation.timelinessScore,
+                  communicationScore: assignment.evaluation.communicationScore,
+                  comments: assignment.evaluation.comments,
+                }
+              : null
+          }
+          onSubmit={handleEvaluationSubmit}
+          onCancel={() => setShowEvaluationForm(false)}
+          saving={saving}
+        />
+      </td>
+    </tr>
+  )}
+  </>
   );
 }
