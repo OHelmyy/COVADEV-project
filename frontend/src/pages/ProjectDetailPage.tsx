@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
-import TaskManagementTab from "../features/task-managment/components/TaskManagementTab";
+import TaskManagementTab from "../features/task-management/components/TaskManagementTab";
 import ConfirmModal from "../components/ConfirmModal";
 import {
   fetchProjectDetail,

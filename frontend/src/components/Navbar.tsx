@@ -49,6 +49,9 @@ export default function Navbar() {
             </NavLink>
             <NavLink to="/projects" end style={linkStyle}>
               Projects
+            <NavLink to="/developer-performance" end style={linkStyle}>
+            Developer Performance
+            </NavLink>
             </NavLink>
             <NavLink to="/users" end style={linkStyle}>
               Users
@@ -62,10 +65,13 @@ export default function Navbar() {
             <NavLink to="/projects" end style={linkStyle}>
               Projects
             </NavLink>
-            {/* Project-level tabs should appear inside ProjectDetailPage navigation, not global navbar */}
+
+            <NavLink to="/developer-performance" end style={linkStyle}>
+            Developer Performance
+            </NavLink>
           </>
         ) : null}
-
+        
         {/* DEVELOPER */}
         {isDeveloper ? (
           <>

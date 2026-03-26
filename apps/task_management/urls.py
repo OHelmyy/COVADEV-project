@@ -7,6 +7,8 @@ from apps.task_management.api import (
     review_task_assignment_api,
     my_task_assignments_api,
     start_task_assignment_api,
+    evaluate_task_assignment_api,
+    developer_performance_overview_api
 )
 
 urlpatterns = [
@@ -17,4 +19,7 @@ urlpatterns = [
     path("task-assignments/<int:assignment_id>/review/", review_task_assignment_api, name="review_task_assignment_api"),
     path("task-assignments/my/", my_task_assignments_api),
     path("task-assignments/<int:assignment_id>/start/", start_task_assignment_api),
+    path("task-assignments/<int:assignment_id>/evaluate/", evaluate_task_assignment_api, name="evaluate_task_assignment_api"),
+    path("task-management/developer-performance/",developer_performance_overview_api,name="developer_performance_overview_api",
+),
 ]
