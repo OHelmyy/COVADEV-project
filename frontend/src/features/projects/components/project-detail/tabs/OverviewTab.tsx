@@ -1,0 +1,90 @@
+import { Card, MiniCard, Stat } from "../ProjectUi";
+
+type Props = {
+  projectName: string;
+  description?: string | null;
+  role: string;
+  isAdmin: boolean;
+  activeBpmnName?: string | null;
+  activeCodeName?: string | null;
+  codeFilesCount: number;
+  tasksCount: number;
+  matchesCount: number;
+  onDeleteProject: () => void;
+};
+
+export default function OverviewTab({
+  projectName,
+  description,
+  role,
+  isAdmin,
+  activeBpmnName,
+  activeCodeName,
+  codeFilesCount,
+  tasksCount,
+  matchesCount,
+  onDeleteProject,
+}: Props) {
+  return (
+    <>
+      <Card>
+        <h2 style={{ marginTop: 0 }}>{projectName}</h2>
+        <div style={{ color: "#666" }}>{description || "No description"}</div>
+        <div style={{ color: "#777", marginTop: 8 }}>
+          Your role: <b>{role}</b>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Current Uploads</h3>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+            marginTop: 10,
+          }}
+        >
+          <MiniCard
+            title="Active BPMN"
+            value={activeBpmnName ?? "None uploaded yet"}
+          />
+          <MiniCard
+            title="Active Code ZIP"
+            value={activeCodeName ?? "None uploaded yet"}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 12,
+            marginTop: 12,
+          }}
+        >
+          <Stat label="Indexed files" value={codeFilesCount} />
+          <Stat label="BPMN tasks" value={tasksCount} />
+          <Stat label="Match results" value={matchesCount} />
+        </div>
+      </Card>
+
+      {isAdmin ? (
+        <button
+          onClick={onDeleteProject}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #ffd0d0",
+            background: "#fff3f3",
+            color: "#a00",
+            fontWeight: 800,
+          }}
+        >
+          Delete Project
+        </button>
+      ) : null}
+    </>
+  );
+}
