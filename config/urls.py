@@ -23,4 +23,7 @@ path("analysis/", include("apps.analysis.urls")),
 
     #  api app (if used)
     path("api/", include("apps.api.urls")),
+
+    # task managment
+    path("api/", include("apps.task_management.urls")),
 ]

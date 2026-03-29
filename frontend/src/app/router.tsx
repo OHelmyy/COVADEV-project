@@ -11,12 +11,14 @@ import ProjectCreatePage from "../pages/ProjectCreatePage";
 import ProjectDetailPage from "../pages/ProjectDetailPage";
 import ProjectMembersPage from "../pages/ProjectMembersPage";
 import ProjectLogsPage from "../pages/ProjectLogsPage";
+import MyTasksPage from "../features/task-management/components/MyTasksPage";  
 
 import ReportsPage from "../pages/ReportsPage";
 import DevelopersPage from "../pages/DevelopersPage";
 import ExportPage from "../pages/ExportPage";
 import AdminDashboardPage from "../pages/AdminDashboardPage";
 import HomeRedirect from "./HomeRedirect";
+import DeveloperPerformancePage from "../pages/DeveloperPerformancePage";
 
 export const router = createBrowserRouter([
   {
@@ -41,6 +43,16 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+
+      {
+        path: "myTasks",
+        element: (
+          <RequireAuth>
+            <MyTasksPage />
+          </RequireAuth>
+        ),
+      },
+
 
       // Admin-only
       {
@@ -123,6 +135,10 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      {
+        path: "/developer-performance",
+        element: <DeveloperPerformancePage />,
+      }
     ],
   },
 ]);

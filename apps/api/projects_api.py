@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods, require_POST
 
+from django.views.decorators.http import require_http_methods
 from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
 from apps.analysis.services import run_analysis_for_project
 
@@ -14,6 +15,8 @@ from apps.accounts.rbac import is_admin, is_evaluator
 from apps.projects.models import Project, ProjectMembership, CodeFile, ProjectFile
 from apps.projects.services import save_bpmn_file, save_code_zip_and_extract
 
+from apps.analysis.models import BpmnRecommendations  # import your new model
+from apps.analysis.bpmn.recommender_local import generate_recommendations_local
 
 # ---------------------------
 # Permissions helpers
@@ -58,6 +61,54 @@ def _latest_file(project: Project, file_type: str):
 # JSON helpers
 # ---------------------------
 
+# apps/api/projects_api.py (near helpers)
+def _get_project_bpmn_summary(project: Project) -> str:
+    # 1) active BPMN file
+    f = getattr(project, "active_bpmn", None)
+    if f and hasattr(f, "bpmn_summary"):
+        return (f.bpmn_summary or "").strip()
+
+    # 2) latest BPMN file
+    latest = _latest_file(project, "BPMN")
+    if latest and hasattr(latest, "bpmn_summary"):
+        return (latest.bpmn_summary or "").strip()
+
+    # 3) fallback
+    if hasattr(project, "bpmn_summary"):
+        return (project.bpmn_summary or "").strip()
+
+    return ""
+
+
+def _get_membership(project: Project, user) -> ProjectMembership | None:
+    return ProjectMembership.objects.filter(project=project, user=user).first()
+
+
+def _require_member(project: Project, user) -> bool:
+    # Admin can pass even if not explicitly a member (optional, but convenient)
+    if is_admin(user):
+        return True
+    return _get_membership(project, user) is not None
+
+
+def _is_project_evaluator(project: Project, user) -> bool:
+    # Admin always allowed
+    if is_admin(user):
+        return True
+
+    # If you store evaluator_id on Project, this is the strongest check
+    if getattr(project, "evaluator_id", None) == user.id:
+        return True
+
+    # Fallback: membership role check
+    m = _get_membership(project, user)
+    return bool(m and str(m.role).upper() == "EVALUATOR")
+
+
+def _require_admin_or_evaluator(project: Project, user) -> bool:
+    return _is_project_evaluator(project, user)
+
+
 def _json_project_summary(p: Project, user: User):
     """
     Frontend expects:
@@ -79,6 +130,25 @@ def _json_project_summary(p: Project, user: User):
         "similarityThreshold": float(p.similarity_threshold),
         "membership": {"role": role} if role else None,
     }
+
+
+def _require_admin_or_evaluator(project, user):
+    # Admin always allowed
+    if is_admin(user):
+        return True
+
+    membership = ProjectMembership.objects.filter(
+        project=project,
+        user=user
+    ).first()
+
+    if not membership:
+        return False
+
+    return str(membership.role).upper() == "EVALUATOR"
+
+
+    
 
 
 def _json_file_payload(f: ProjectFile | None):
@@ -577,3 +647,156 @@ def api_project_matches(request, project_id: int):
         })
 
     return JsonResponse({"project_id": project.id, "matches": matches})
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_project_report(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    # Must be admin or evaluator
+    if not _require_admin_or_evaluator(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    # --- Build report payload (adjust fields if your models differ) ---
+    tasks = list(BpmnTask.objects.filter(project=project).values("id", "task_id", "name"))
+
+    matches = list(
+        MatchResult.objects
+        .filter(project=project)
+        .select_related("task")
+        .values(
+            "id",
+            "status",
+            "similarity_score",
+            "code_ref",
+            "task__task_id",
+            "task__name",
+        )
+    )
+
+    # Simple example mapping similar to your frontend report expectations
+    traceability = []
+    missingTasks = []
+    extraCode = []
+
+    # build a set of matched task ids
+    matched_task_ids = set()
+
+    for m in matches:
+        status = str(m.get("status") or "").lower()
+        task_id = m.get("task__task_id")
+        task_name = m.get("task__name")
+
+        if task_id and "missing" not in status and "extra" not in status:
+            matched_task_ids.add(task_id)
+            traceability.append({
+                "taskId": task_id,
+                "taskName": task_name or "",
+                "bestMatch": m.get("code_ref") or "",
+                "similarity": float(m.get("similarity_score") or 0.0),
+                "developer": "-",  # fill if you store developer attribution
+                "note": m.get("status") or "",
+            })
+
+        if "missing" in status and task_id:
+            missingTasks.append({
+                "taskId": task_id,
+                "taskName": task_name or "",
+                "reason": "Marked missing",
+            })
+
+        if (not task_id) or ("extra" in status):
+            extraCode.append({
+                "id": str(m.get("id")),
+                "file": str(m.get("code_ref") or ""),
+                "symbol": str(m.get("code_ref") or ""),
+                "developer": "-",
+                "reason": m.get("status") or "Extra",
+            })
+
+    # implicit missing tasks (no match found)
+    for t in tasks:
+        if t["task_id"] not in matched_task_ids:
+            missingTasks.append({
+                "taskId": t["task_id"],
+                "taskName": t["name"] or "",
+                "reason": "No match found",
+            })
+
+    return JsonResponse({
+        "project": {"id": project.id, "name": project.name},
+        "traceability": traceability,
+        "missingTasks": missingTasks,
+        "extraCode": extraCode,
+    })
+
+@login_required
+@require_http_methods(["POST"])
+def api_delete_project(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    # Only evaluator (or creator) can delete
+    m = _get_membership(project, request.user)
+    if not m or m.role != ProjectMembership.Role.EVALUATOR:
+        return JsonResponse({"detail": "Only evaluator can delete this project."}, status=403)
+
+    project.delete()
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def api_project_recommendations(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    summary = _get_project_bpmn_summary(project)
+
+    if request.method == "GET":
+        rec = getattr(project, "bpmn_recommendations", None)
+        return JsonResponse({
+            "projectId": project.id,
+            "hasSummary": bool(summary),
+            "recommendations": (rec.as_list() if rec else []),
+            "updatedAt": rec.updated_at.isoformat() if rec else None,
+            "sourceHash": (hash((rec.source_summary or "").strip()) if rec else None),
+        })
+
+    # POST
+    if not summary:
+        return JsonResponse({"detail": "No BPMN summary found."}, status=400)
+
+    rec, _ = BpmnRecommendations.objects.get_or_create(project=project)
+
+    force = (request.GET.get("force") or request.POST.get("force") or "").lower() in ("1", "true", "yes")
+
+    # ✅ cache based on *correct* field name
+    if (not force) and rec.recommendations_text.strip() and (rec.source_summary or "").strip() == summary.strip():
+        return JsonResponse({
+            "ok": True,
+            "cached": True,
+            "engine": "cache",
+            "recommendations": rec.as_list(),
+            "updatedAt": rec.updated_at.isoformat() if rec.updated_at else None,
+        })
+
+    try:
+        print("✅ RECOMMENDER ENGINE: OLLAMA/LLAMA (force=%s)" % force)
+        items = generate_recommendations_local(summary)  # list of "- ..."
+    except Exception as e:
+        return JsonResponse({"detail": f"Ollama failed: {type(e).__name__}: {e}"}, status=500)
+
+    rec.recommendations_text = "\n".join(items)
+    rec.source_summary = summary  # ✅ correct
+    rec.save(update_fields=["recommendations_text", "source_summary", "updated_at"])
+
+    return JsonResponse({
+        "ok": True,
+        "cached": False,
+        "engine": "ollama",
+        "recommendations": rec.as_list(),
+        "updatedAt": rec.updated_at.isoformat() if rec.updated_at else None,
+    })

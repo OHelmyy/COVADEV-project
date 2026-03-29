@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
+import TaskManagementTab from "../features/task-management/components/TaskManagementTab";
+import ConfirmModal from "../components/ConfirmModal";
 import {
   fetchProjectDetail,
   runAnalysis,
@@ -13,6 +15,8 @@ import {
   fetchTasks,
   deleteProject,
   fetchCompareInputs,
+  fetchRecommendations,
+  generateRecommendations,
 } from "../api/projects";
 import type { ProjectDetailApi } from "../api/types";
 
@@ -52,15 +56,31 @@ type CompareCodeFn = {
 type TabKey =
   | "overview"
   | "uploads"
-  | "settings"
   | "results"
+  | "recommendations"
   | "compare"
   | "runs"
   | "members"
-  | "bpmnCheck";
+  | "bpmnCheck"
+  | "taskManagement"
+  | "report";
+
+// ----- Report types (backend: /api/projects/:id/report/) -----
+type TraceRow = {
+  taskId: string;
+  taskName: string;
+  bestMatch: string;
+  similarity: number;
+  developer: string;
+  note?: string;
+};
+type MissingTask = { taskId: string; taskName: string; reason: string };
+type ExtraCode = { id: string; file: string; symbol: string; developer: string; reason: string };
+type ReportPayload = { traceability: TraceRow[]; missingTasks: MissingTask[]; extraCode: ExtraCode[] };
 
 export default function ProjectDetailPage() {
-  const { projectId } = useParams();
+  const { projectId: projectIdParam } = useParams();
+  const projectId = Number(projectIdParam);
   const id = useMemo(() => Number(projectId), [projectId]);
 
   const [state, setState] = useState<LoadState>("idle");
@@ -72,6 +92,10 @@ export default function ProjectDetailPage() {
 
   const [thresholdInput, setThresholdInput] = useState("");
   const [actionMsg, setActionMsg] = useState<string>("");
+
+  // ✅ Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
 
   // Results state
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -92,30 +116,32 @@ export default function ProjectDetailPage() {
   const isDeveloper = role === "DEVELOPER";
 
   // Permissions
-  const canUploadBpmn = isEvaluator;
-  const canUploadCode = isEvaluator || isDeveloper;
-  const canRunAnalysis = isEvaluator || isDeveloper;
-  const canUpdateThreshold = isEvaluator;
-  const canManageMembers = isEvaluator;
-  const canViewUploadLogs = isEvaluator;
+  const canUploadBpmn = isEvaluator; // evaluator only
+  const canUploadCode = isEvaluator || isDeveloper; // evaluator + developer
+  const canRunAnalysis = isEvaluator || isDeveloper; // evaluator + developer
+  const canUpdateThreshold = isEvaluator; // evaluator only
+  const canManageMembers = isEvaluator; // evaluator only
+  const canViewUploadLogs = isEvaluator; // evaluator only
 
+  // ✅ Report tab visibility (Admin + Evaluator only)
+  const canViewReport = isAdmin || isEvaluator;
+
+  // Tabs (filtered by role)
   const tabs = useMemo(() => {
     const all: { key: TabKey; label: string; visible: boolean }[] = [
       { key: "overview", label: "Overview", visible: true },
       { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
       { key: "bpmnCheck", label: "BPMN Check", visible: true },
-      {
-        key: "settings",
-        label: "Settings",
-        visible: canUpdateThreshold || canManageMembers || canViewUploadLogs,
-      },
+      { key: "taskManagement", label: "Task Management", visible: true },
       { key: "results", label: "Results", visible: true },
       { key: "compare", label: "Compare", visible: true },
+      { key: "recommendations", label: "Recommendations", visible: true }, // ✅ NEW TAB
+      { key: "report", label: "Report", visible: canViewReport },
       { key: "runs", label: "Runs", visible: true },
       { key: "members", label: "Members", visible: true },
     ];
     return all.filter((t) => t.visible);
-  }, [isAdmin, canUpdateThreshold, canManageMembers, canViewUploadLogs]);
+  }, [isAdmin, canUpdateThreshold, canManageMembers, canViewUploadLogs, canViewReport]);
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
@@ -237,16 +263,30 @@ export default function ProjectDetailPage() {
     }
   }
 
-  async function onDeleteProject() {
-    if (!window.confirm("Delete this project permanently? This cannot be undone.")) return;
+  // ✅ delete (open modal)
+  function onDeleteProject() {
+    setShowDeleteModal(true);
+  }
 
+  // ✅ delete (confirm)
+  async function confirmDeleteProject() {
+    if (deletingProject) return;
+
+    setDeletingProject(true);
     setActionMsg("Deleting project...");
+
     try {
       await deleteProject(id);
+
+      // close modal before redirect
+      setShowDeleteModal(false);
       setActionMsg("");
+
       window.location.href = "/projects";
     } catch (e: any) {
       setActionMsg(`Delete failed: ${e?.message ?? e}`);
+      setDeletingProject(false);
+      setShowDeleteModal(false);
     }
   }
 
@@ -311,6 +351,119 @@ export default function ProjectDetailPage() {
     );
     return (matchedTaskIds.size / tasks.length) * 100;
   }, [tasks, matched]);
+
+  // -----------------------------
+  // ✅ Report state + loader
+  // -----------------------------
+  const [reportState, setReportState] = useState<LoadState>("idle");
+  const [reportError, setReportError] = useState("");
+  const [report, setReport] = useState<ReportPayload>({ traceability: [], missingTasks: [], extraCode: [] });
+
+  async function loadReport() {
+    if (!Number.isFinite(id)) return;
+    setReportState("loading");
+    setReportError("");
+    try {
+      const r = await fetchProjectReport(id);
+      setReport({
+        traceability: r?.traceability ?? [],
+        missingTasks: r?.missingTasks ?? [],
+        extraCode: r?.extraCode ?? [],
+      });
+      setReportState("success");
+    } catch (e: any) {
+      setReportState("error");
+      setReportError(e?.message ?? "Failed to load report");
+    }
+  }
+
+  async function downloadReport(format: "pdf" | "csv" | "html") {
+    if (!canViewReport) return;
+  
+    try {
+      const url = `/api/projects/${id}/report/export?format=${format}`;
+      const res = await fetch(url, { credentials: "include" });
+  
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Export failed");
+      }
+  
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `project_${id}_report.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (e: any) {
+      setActionMsg(`Export failed: ${e?.message ?? e}`);
+    }
+  }
+
+  // Load report when tab opened (Admin/Evaluator only)
+  useEffect(() => {
+    if (activeTab !== "report") return;
+    if (!canViewReport) return;
+    if (reportState === "success") return;
+    loadReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // -----------------------------
+  // ✅ Recommendations state + loader
+  // -----------------------------
+  const [recState, setRecState] = useState<LoadState>("idle");
+  const [recError, setRecError] = useState("");
+  const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [recUpdatedAt, setRecUpdatedAt] = useState<string | null>(null);
+  const [hasSummary, setHasSummary] = useState<boolean>(true);
+
+  async function loadRecommendations() {
+    if (!Number.isFinite(id)) return;
+    setRecState("loading");
+    setRecError("");
+    try {
+      const r = await fetchRecommendations(id);
+      setHasSummary(Boolean(r?.hasSummary));
+      setRecommendations(r?.recommendations ?? []);
+      setRecUpdatedAt(r?.updatedAt ?? null);
+      setRecState("success");
+    } catch (e: any) {
+      setRecState("error");
+      setRecError(e?.message ?? "Failed to load recommendations");
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "recommendations") return;
+    if (recState === "success") return;
+    loadRecommendations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const formatPercent = (x: number) => `${Math.round((Number(x) || 0) * 100)}%`;
+  const badge = (x: number) => {
+    const pct = (Number(x) || 0) * 100;
+    const bg = pct >= 80 ? "#eef5ff" : pct >= 70 ? "#fff5e6" : "#ffecec";
+    const fg = pct >= 80 ? "#094780" : pct >= 70 ? "#8a5a00" : "#a00000";
+    return (
+      <span
+        style={{
+          background: bg,
+          color: fg,
+          border: "1px solid #eee",
+          padding: "4px 10px",
+          borderRadius: 999,
+          fontWeight: 800,
+          fontSize: 12,
+        }}
+      >
+        {formatPercent(Number(x) || 0)}
+      </span>
+    );
+  };
 
   if (state === "loading" || state === "idle") return <StatusMessage title="Loading project..." />;
   if (state === "error") {
@@ -553,6 +706,13 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
+        {activeTab === "taskManagement" && (
+          <Card>
+            <TaskManagementTab projectId={projectId} />
+          </Card>
+        )}
+
+
         {activeTab === "uploads" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Uploads & Tools</h3>
@@ -610,10 +770,7 @@ export default function ProjectDetailPage() {
 
               {canRunAnalysis ? (
                 <>
-                  <button
-                    onClick={onRunAnalysis}
-                    style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                  >
+                  <button onClick={onRunAnalysis} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
                     Run analysis
                   </button>
                   <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
@@ -627,56 +784,8 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
-        {activeTab === "settings" ? (
-          <Card>
-            <h3 style={{ marginTop: 0 }}>Settings</h3>
-            <div style={{ color: "#666" }}>
-              Similarity threshold: <b>{data.project.similarityThreshold}</b>
-            </div>
 
-            {canUpdateThreshold ? (
-              <>
-                <div style={{ marginTop: 10 }}>
-                  <input
-                    value={thresholdInput}
-                    onChange={(e) => setThresholdInput(e.target.value)}
-                    placeholder="e.g., 0.6"
-                    style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-                  />
-                  <button
-                    onClick={onUpdateThreshold}
-                    style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                  >
-                    Update threshold
-                  </button>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                  {canManageMembers ? (
-                    <Link to={`/projects/${id}/members`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Manage Members
-                      </button>
-                    </Link>
-                  ) : null}
-
-                  {canViewUploadLogs ? (
-                    <Link to={`/projects/${id}/logs`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
-                        Upload Logs
-                      </button>
-                    </Link>
-                  ) : null}
-                </div>
-              </>
-            ) : (
-              <div style={{ color: "#888", marginTop: 10 }}>
-                Only evaluator can change settings and view upload logs.
-              </div>
-            )}
-          </Card>
-        ) : null}
-
+        {/* TAB: Results */}
         {activeTab === "results" ? (
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -897,6 +1006,228 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
+
+        {/* ✅ TAB: Recommendations */}
+        {activeTab === "recommendations" ? (
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 6 }}>Recommended Methods</h3>
+                <div style={{ color: "#666" }}>Generated from the stored BPMN summary (best practices).</div>
+                {recUpdatedAt ? (
+                  <div style={{ color: "#888", fontSize: 13, marginTop: 6 }}>Last updated: {recUpdatedAt}</div>
+                ) : null}
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={loadRecommendations}
+                  style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                >
+                  Refresh
+                </button>
+
+                {(isEvaluator || isAdmin) ? (
+                  <button
+                    onClick={async () => {
+                      setActionMsg("Generating recommendations...");
+                      try {
+                        await generateRecommendations(id);
+                        setActionMsg("Recommendations generated ✅");
+                        await loadRecommendations();
+                      } catch (e: any) {
+                        setActionMsg(`Generate failed: ${e?.message ?? e}`);
+                      }
+                    }}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #094780",
+                      background: "#f3f7ff",
+                      color: "#094780",
+                      fontWeight: 800,
+                    }}
+                  >
+                    Generate
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {!hasSummary ? (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #ffe3b3", background: "#fff8e8" }}>
+                <div style={{ fontWeight: 800, color: "#8a5a00" }}>No BPMN summary found</div>
+                <div style={{ color: "#8a5a00", marginTop: 6, fontSize: 13 }}>
+                  Upload a BPMN (Evaluator) and make sure the summary is generated/stored, then try again.
+                </div>
+              </div>
+            ) : recState === "loading" || recState === "idle" ? (
+              <StatusMessage title="Loading recommendations..." />
+            ) : recState === "error" ? (
+              <StatusMessage title="Failed to load recommendations" message={recError} onRetry={loadRecommendations} />
+            ) : recommendations.length === 0 ? (
+              <div style={{ color: "#888", marginTop: 12 }}>
+                No recommendations yet. {(isEvaluator || isAdmin) ? <>Click <b>Generate</b> to create them.</> : null}
+              </div>
+            ) : (
+              <ul style={{ marginTop: 12, paddingLeft: 18 }}>
+                {recommendations.map((x, idx) => (
+                  <li key={idx} style={{ marginBottom: 8, lineHeight: 1.55 }}>
+                    {String(x).replace(/^- /, "")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        ) : null}
+
+        {/* ✅ TAB: Report (Admin + Evaluator only) */}
+        {activeTab === "report" ? (
+          <Card>
+            {!canViewReport ? (
+              <div style={{ color: "#888" }}>You don't have permission to view this report.</div>
+            ) : reportState === "loading" || reportState === "idle" ? (
+              <StatusMessage title="Loading report..." message="Fetching report data from backend." />
+            ) : reportState === "error" ? (
+              <StatusMessage title="Failed to load report" message={reportError} onRetry={loadReport} />
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+  <div>
+    <h3 style={{ marginTop: 0, marginBottom: 6 }}>Project Report</h3>
+    <div style={{ color: "#666" }}>Traceability + Missing/Extra summary for this project.</div>
+  </div>
+
+  {/* Right side actions */}
+  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+    <button
+      onClick={loadReport}
+      style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+    >
+      Refresh report
+    </button>
+
+
+    <button
+      onClick={() => downloadReport("pdf")}
+      style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", fontWeight: 800 }}
+    >
+      Export PDF
+    </button>
+  </div>
+</div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 12 }}>
+                  <Stat label="Traceability rows" value={report.traceability.length} />
+                  <Stat label="Missing tasks" value={report.missingTasks.length} />
+                  <Stat label="Extra code" value={report.extraCode.length} />
+                </div>
+
+                <SectionTable
+                  title="Task-level Traceability"
+                  emptyText="No traceability results."
+                  table={
+                    report.traceability.length ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ textAlign: "left" }}>
+                            <th style={th}>Task</th>
+                            <th style={th}>Best Match</th>
+                            <th style={th}>Similarity</th>
+                            <th style={th}>Developer</th>
+                            <th style={th}>Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.traceability.slice(0, 80).map((r, idx) => (
+                            <tr key={`${r.taskId}-${idx}`}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 800 }}>{r.taskName}</div>
+                                <div style={{ color: "#888", fontSize: 12 }}>{r.taskId}</div>
+                              </td>
+                              <td style={td}>
+                                <code style={{ fontSize: 12 }}>{r.bestMatch}</code>
+                              </td>
+                              <td style={td}>{badge(r.similarity)}</td>
+                              <td style={td}>{r.developer}</td>
+                              <td style={td}>{r.note ?? "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : null
+                  }
+                />
+
+                <SectionTable
+                  title="Missing Tasks"
+                  emptyText="No missing tasks."
+                  table={
+                    report.missingTasks.length ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ textAlign: "left" }}>
+                            <th style={th}>Task</th>
+                            <th style={th}>Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.missingTasks.slice(0, 80).map((m, idx) => (
+                            <tr key={`${m.taskId}-${idx}`}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 800 }}>{m.taskName}</div>
+                                <div style={{ color: "#888", fontSize: 12 }}>{m.taskId}</div>
+                              </td>
+                              <td style={td}>{m.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : null
+                  }
+                />
+
+                <SectionTable
+                  title="Extra Code"
+                  emptyText="No extra code detected."
+                  table={
+                    report.extraCode.length ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ textAlign: "left" }}>
+                            <th style={th}>ID</th>
+                            <th style={th}>File / Symbol</th>
+                            <th style={th}>Developer</th>
+                            <th style={th}>Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.extraCode.slice(0, 80).map((e, idx) => (
+                            <tr key={`${e.id}-${idx}`}>
+                              <td style={td}>
+                                <div style={{ fontWeight: 800 }}>{e.id}</div>
+                              </td>
+                              <td style={td}>
+                                <div style={{ fontFamily: "monospace", fontSize: 12 }}>{e.file}</div>
+                                <div style={{ fontFamily: "monospace", fontSize: 12, color: "#555", marginTop: 4 }}>
+                                  {e.symbol}
+                                </div>
+                              </td>
+                              <td style={td}>{e.developer}</td>
+                              <td style={td}>{e.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : null
+                  }
+                />
+              </>
+            )}
+          </Card>
+        ) : null}
+
+        {/* TAB: Runs */}
         {activeTab === "runs" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Analysis Runs (latest 10)</h3>
@@ -936,10 +1267,42 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
       </section>
+
+      <ConfirmModal
+        open={showDeleteModal}
+        title="Delete project?"
+        message={`Delete "${data.project.name}" permanently? This action cannot be undone.`}
+        confirmText={deletingProject ? "Deleting..." : "Delete"}
+        cancelText="Cancel"
+        danger
+        onCancel={() => {
+          if (deletingProject) return;
+          setShowDeleteModal(false);
+        }}
+        onConfirm={confirmDeleteProject}
+      />
     </div>
   );
 }
 
+
+
+// ✅ Local fetch for report (keeps your backend route: /api/projects/:id/report/)
+async function fetchProjectReport(projectId: number): Promise<ReportPayload> {
+  const res = await fetch(`/api/projects/${projectId}/report/`, {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Failed to load report (${res.status})`);
+  }
+  return (await res.json()) as ReportPayload;
+}
+
+/* ---------- small helpers ---------- */
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 14 }}>
