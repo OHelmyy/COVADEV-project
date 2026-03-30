@@ -20,5 +20,5 @@ path("api/reports/dashboard/", views.dashboard_stats, name="dashboard_stats"),
 path("api/reports/dashboard/", views.dashboard_stats, name="dashboard_stats"),
 
     path("api/analysis/<int:project_id>/compare-inputs/", views.compare_inputs_api, name="compare_inputs_api"),
- path("run/", views.run_analysis, name="run_analysis"),
+    #path("run/", views.run_analysis, name="run_analysis"),
 ]

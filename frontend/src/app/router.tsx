@@ -5,10 +5,10 @@ import RequireAuth from "./RequireAuth";
 import LoginPage from "../pages/LoginPage";
 import AdminUsersPage from "../pages/AdminUsersPage";
 
-import DashboardPage from "../pages/DashboardPage";
+
 import ProjectsPage from "../pages/ProjectsPage";
 import ProjectCreatePage from "../pages/ProjectCreatePage";
-import ProjectDetailPage from "../pages/ProjectDetailPage";
+import ProjectDetailPage from "../features/projects/pages/ProjectDetailPage";
 import ProjectMembersPage from "../pages/ProjectMembersPage";
 import ProjectLogsPage from "../pages/ProjectLogsPage";
 import MyTasksPage from "../features/task-management/components/MyTasksPage";  
