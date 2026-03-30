@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
+import TaskManagementTab from "../features/task-management/components/TaskManagementTab";
 import ConfirmModal from "../components/ConfirmModal";
 import {
   fetchProjectDetail,
@@ -55,12 +56,13 @@ type CompareCodeFn = {
 type TabKey =
   | "overview"
   | "uploads"
-  | "settings"
   | "results"
   | "recommendations"
   | "compare"
   | "runs"
   | "members"
+  | "bpmnCheck"
+  | "taskManagement"
   | "report";
 
 // ----- Report types (backend: /api/projects/:id/report/) -----
@@ -77,7 +79,8 @@ type ExtraCode = { id: string; file: string; symbol: string; developer: string; 
 type ReportPayload = { traceability: TraceRow[]; missingTasks: MissingTask[]; extraCode: ExtraCode[] };
 
 export default function ProjectDetailPage() {
-  const { projectId } = useParams();
+  const { projectId: projectIdParam } = useParams();
+  const projectId = Number(projectIdParam);
   const id = useMemo(() => Number(projectId), [projectId]);
 
   const [state, setState] = useState<LoadState>("idle");
@@ -127,8 +130,9 @@ export default function ProjectDetailPage() {
   const tabs = useMemo(() => {
     const all: { key: TabKey; label: string; visible: boolean }[] = [
       { key: "overview", label: "Overview", visible: true },
-      { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin }, // hide for admin
-      { key: "settings", label: "Settings", visible: canUpdateThreshold || canManageMembers || canViewUploadLogs },
+      { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
+      { key: "bpmnCheck", label: "BPMN Check", visible: true },
+      { key: "taskManagement", label: "Task Management", visible: true },
       { key: "results", label: "Results", visible: true },
       { key: "compare", label: "Compare", visible: true },
       { key: "recommendations", label: "Recommendations", visible: true }, // ✅ NEW TAB
@@ -702,6 +706,13 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
+        {activeTab === "taskManagement" && (
+          <Card>
+            <TaskManagementTab projectId={projectId} />
+          </Card>
+        )}
+
+
         {activeTab === "uploads" ? (
           <Card>
             <h3 style={{ marginTop: 0 }}>Uploads & Tools</h3>
@@ -773,52 +784,8 @@ export default function ProjectDetailPage() {
           </Card>
         ) : null}
 
-        {activeTab === "settings" ? (
-          <Card>
-            <h3 style={{ marginTop: 0 }}>Settings</h3>
-            <div style={{ color: "#666" }}>
-              Similarity threshold: <b>{data.project.similarityThreshold}</b>
-            </div>
 
-            {canUpdateThreshold ? (
-              <>
-                <div style={{ marginTop: 10 }}>
-                  <input
-                    value={thresholdInput}
-                    onChange={(e) => setThresholdInput(e.target.value)}
-                    placeholder="e.g., 0.6"
-                    style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-                  />
-                  <button
-                    onClick={onUpdateThreshold}
-                    style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-                  >
-                    Update threshold
-                  </button>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                  {canManageMembers ? (
-                    <Link to={`/projects/${id}/members`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Manage Members</button>
-                    </Link>
-                  ) : null}
-
-                  {canViewUploadLogs ? (
-                    <Link to={`/projects/${id}/logs`} style={{ textDecoration: "none" }}>
-                      <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>Upload Logs</button>
-                    </Link>
-                  ) : null}
-                </div>
-              </>
-            ) : (
-              <div style={{ color: "#888", marginTop: 10 }}>
-                Only evaluator can change settings and view upload logs.
-              </div>
-            )}
-          </Card>
-        ) : null}
-
+        {/* TAB: Results */}
         {activeTab === "results" ? (
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -1335,6 +1302,7 @@ async function fetchProjectReport(projectId: number): Promise<ReportPayload> {
   return (await res.json()) as ReportPayload;
 }
 
+/* ---------- small helpers ---------- */
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 14 }}>
