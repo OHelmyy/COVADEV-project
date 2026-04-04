@@ -13,7 +13,7 @@ from apps.accounts.rbac import is_admin, is_evaluator
 from apps.analysis.bpmn.pipeline import run_bpmn_predev
 from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
 from apps.analysis.models_code import CodeArtifact
-from apps.analysis.services import run_analysis_for_project
+from apps.analysis.services.services import run_analysis_for_project
 from .models import Project, ProjectMembership, CodeFile, ProjectFile
 from .services import save_bpmn_file, save_code_zip_and_extract
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import List
 import re
 import requests
@@ -69,3 +70,12 @@ def generate_recommendations_local(summary: str) -> List[str]:
     data = r.json()
     text = data.get("response", "") or ""
     return normalize(text)
+
+
+def run_recommendation_pipeline(summary: str):
+    """
+    Backward-compatible wrapper around the Template Method pipeline.
+    """
+    from apps.analysis.pipelines.recommendation_pipeline import RecommendationPipeline
+
+    return RecommendationPipeline(summary=summary).run()
