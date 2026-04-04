@@ -1,11 +1,15 @@
-// frontend/src/components/Navbar.tsx
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/auth";
+import { buttonBase, ui } from "../theme/ui";
 
 const linkStyle = ({ isActive }: { isActive: boolean }) => ({
   textDecoration: "none",
-  color: isActive ? "#094780" : "#333",
-  fontWeight: isActive ? 700 : 500,
+  color: isActive ? ui.colors.primary : ui.colors.textSoft,
+  fontWeight: isActive ? 800 : 600,
+  padding: "8px 10px",
+  borderRadius: 10,
+  background: isActive ? ui.colors.primarySoft : "transparent",
+  transition: ui.transition,
 });
 
 export default function Navbar() {
@@ -31,17 +35,44 @@ export default function Navbar() {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "14px 18px",
-        borderBottom: "1px solid #eee",
-        background: "#fff",
+        padding: "14px 20px",
+        borderBottom: `1px solid ${ui.colors.border}`,
+        background: "rgba(255,255,255,0.88)",
+        backdropFilter: "blur(10px)",
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
       }}
     >
-      <NavLink to="/" style={{ textDecoration: "none", color: "#111", fontWeight: 800 }}>
-        COVADEV
+      <NavLink to="/" style={{ textDecoration: "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 12,
+              background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
+              color: "#fff",
+              display: "grid",
+              placeItems: "center",
+              fontWeight: 900,
+              boxShadow: "0 12px 24px rgba(15,61,145,0.22)",
+            }}
+          >
+            C
+          </div>
+          <div>
+            <div style={{ color: ui.colors.text, fontWeight: 900, fontSize: 16 }}>
+              COVADEV
+            </div>
+            <div style={{ fontSize: 11, color: ui.colors.textMuted }}>
+              BPMN • Code • AI Traceability
+            </div>
+          </div>
+        </div>
       </NavLink>
 
-      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        {/* ADMIN */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {isAdmin ? (
           <>
             <NavLink to="/admin" end style={linkStyle}>
@@ -49,9 +80,9 @@ export default function Navbar() {
             </NavLink>
             <NavLink to="/projects" end style={linkStyle}>
               Projects
-            <NavLink to="/developer-performance" end style={linkStyle}>
-            Developer Performance
             </NavLink>
+            <NavLink to="/developer-performance" end style={linkStyle}>
+              Developer Performance
             </NavLink>
             <NavLink to="/users" end style={linkStyle}>
               Users
@@ -59,38 +90,44 @@ export default function Navbar() {
           </>
         ) : null}
 
-        {/* EVALUATOR */}
         {isEvaluator ? (
           <>
             <NavLink to="/projects" end style={linkStyle}>
               Projects
             </NavLink>
-
             <NavLink to="/developer-performance" end style={linkStyle}>
-            Developer Performance
+              Developer Performance
             </NavLink>
           </>
         ) : null}
-        
-        {/* DEVELOPER */}
+
         {isDeveloper ? (
           <>
+           <NavLink to="/my-insights" end style={linkStyle}>
+              My Insights
+            </NavLink>
             <NavLink to="/projects" end style={linkStyle}>
               Projects
             </NavLink>
             <NavLink to="/myTasks" end style={linkStyle}>
-            My Tasks
+              My Tasks
             </NavLink>
-            {/* Developer insights can be global OR inside project; keep global if you want */}
-            <NavLink to="/me" end style={linkStyle}>
-              My Insights
-            </NavLink>
+           
           </>
         ) : null}
 
-        {/* user label */}
         {user?.email ? (
-          <span style={{ color: "#666", fontSize: 13 }}>
+          <span
+            style={{
+              color: ui.colors.textSoft,
+              fontSize: 13,
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: ui.colors.bgSoft,
+              border: `1px solid ${ui.colors.border}`,
+              marginLeft: 6,
+            }}
+          >
             {user.email} • <b>{role || "USER"}</b>
           </span>
         ) : null}
@@ -98,13 +135,12 @@ export default function Navbar() {
         <button
           onClick={onLogout}
           style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ff6b6b",
+            ...buttonBase,
+            padding: "9px 12px",
+            borderRadius: 12,
+            border: "1px solid #fecaca",
             background: "#fff",
-            color: "#ff3b3b",
-            fontWeight: 700,
-            cursor: "pointer",
+            color: ui.colors.danger,
           }}
         >
           Logout
