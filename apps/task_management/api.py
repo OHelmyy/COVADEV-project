@@ -516,3 +516,204 @@ def developer_performance_overview_api(request):
     )
 
     return JsonResponse({"items": items})
+
+@login_required
+@require_GET
+def my_performance_insights_api(request):
+    user = request.user
+
+    memberships = (
+        ProjectMembership.objects
+        .select_related("project")
+        .filter(user=user, role="DEVELOPER")
+    )
+
+    membership_ids = list(memberships.values_list("id", flat=True))
+
+    assignments = (
+        TaskAssignment.objects
+        .select_related(
+            "project",
+            "bpmn_task",
+            "evaluation",
+            "evaluation__evaluator",
+            "developer_membership__user",
+        )
+        .filter(developer_membership_id__in=membership_ids)
+        .order_by("-assigned_at")
+    )
+
+    total_assigned = assignments.count()
+    accepted_count = assignments.filter(status=TaskAssignment.Status.ACCEPTED).count()
+    rejected_count = assignments.filter(status=TaskAssignment.Status.REJECTED).count()
+    submitted_count = assignments.filter(status=TaskAssignment.Status.SUBMITTED).count()
+    in_progress_count = assignments.filter(status=TaskAssignment.Status.IN_PROGRESS).count()
+
+    evaluations = TaskEvaluation.objects.filter(assignment__in=assignments)
+    avg_final_score = evaluations.aggregate(avg=Avg("final_score"))["avg"] or 0
+    acceptance_rate = (accepted_count / total_assigned * 100) if total_assigned else 0
+
+    project_items = []
+    for membership in memberships:
+        project = membership.project
+        project_assignments = assignments.filter(developer_membership=membership)
+
+        project_total = project_assignments.count()
+        project_accepted = project_assignments.filter(
+            status=TaskAssignment.Status.ACCEPTED
+        ).count()
+        project_rejected = project_assignments.filter(
+            status=TaskAssignment.Status.REJECTED
+        ).count()
+        project_submitted = project_assignments.filter(
+            status=TaskAssignment.Status.SUBMITTED
+        ).count()
+        project_in_progress = project_assignments.filter(
+            status=TaskAssignment.Status.IN_PROGRESS
+        ).count()
+
+        project_evaluations = TaskEvaluation.objects.filter(assignment__in=project_assignments)
+        project_avg_score = project_evaluations.aggregate(avg=Avg("final_score"))["avg"] or 0
+        project_acceptance_rate = (
+            (project_accepted / project_total) * 100 if project_total else 0
+        )
+
+        project_items.append({
+            "projectId": project.id,
+            "projectName": getattr(project, "name", None)
+                or getattr(project, "title", None)
+                or f"Project #{project.id}",
+            "totalAssigned": project_total,
+            "acceptedCount": project_accepted,
+            "rejectedCount": project_rejected,
+            "submittedCount": project_submitted,
+            "inProgressCount": project_in_progress,
+            "acceptanceRate": round(project_acceptance_rate, 2),
+            "averageScore": round(float(project_avg_score), 2),
+        })
+
+    recent_items = []
+    for assignment in assignments[:8]:
+        recent_items.append({
+            "assignmentId": assignment.id,
+            "projectId": assignment.project_id,
+            "projectName": getattr(assignment.project, "name", None)
+                or getattr(assignment.project, "title", None)
+                or f"Project #{assignment.project_id}",
+            "status": assignment.status,
+            "assignedAt": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            "startedAt": assignment.started_at.isoformat() if assignment.started_at else None,
+            "submittedAt": assignment.submitted_at.isoformat() if assignment.submitted_at else None,
+            "reviewedAt": assignment.reviewed_at.isoformat() if assignment.reviewed_at else None,
+            "task": {
+                "id": assignment.bpmn_task.id,
+                "taskId": assignment.bpmn_task.task_id,
+                "name": assignment.bpmn_task.name,
+                "description": assignment.bpmn_task.description,
+            },
+            "evaluation": _serialize_evaluation(getattr(assignment, "evaluation", None)),
+        })
+
+    all_dev_memberships = (
+        ProjectMembership.objects
+        .select_related("user")
+        .filter(role="DEVELOPER")
+    )
+
+    developer_map = {}
+
+    for membership in all_dev_memberships:
+        dev_user = membership.user
+
+        if dev_user.id not in developer_map:
+            developer_map[dev_user.id] = {
+                "userId": dev_user.id,
+                "username": dev_user.username,
+                "email": dev_user.email,
+                "projects": set(),
+                "totalAssigned": 0,
+                "acceptedCount": 0,
+                "evaluationScores": [],
+            }
+
+        entry = developer_map[dev_user.id]
+        entry["projects"].add(membership.project_id)
+
+        dev_assignments = TaskAssignment.objects.filter(developer_membership=membership)
+        entry["totalAssigned"] += dev_assignments.count()
+        entry["acceptedCount"] += dev_assignments.filter(
+            status=TaskAssignment.Status.ACCEPTED
+        ).count()
+
+        dev_evaluations = TaskEvaluation.objects.filter(assignment__in=dev_assignments)
+        entry["evaluationScores"].extend(
+            list(dev_evaluations.values_list("final_score", flat=True))
+        )
+
+    ranking_items = []
+    for entry in developer_map.values():
+        avg_score = (
+            round(
+                sum(float(score) for score in entry["evaluationScores"]) / len(entry["evaluationScores"]),
+                2,
+            )
+            if entry["evaluationScores"]
+            else 0.0
+        )
+
+        total_dev_assigned = entry["totalAssigned"]
+        dev_acceptance_rate = (
+            round((entry["acceptedCount"] / total_dev_assigned) * 100, 2)
+            if total_dev_assigned
+            else 0.0
+        )
+
+        ranking_items.append({
+            "userId": entry["userId"],
+            "username": entry["username"],
+            "email": entry["email"],
+            "projectsCount": len(entry["projects"]),
+            "totalAssigned": total_dev_assigned,
+            "acceptedCount": entry["acceptedCount"],
+            "acceptanceRate": dev_acceptance_rate,
+            "averageScore": avg_score,
+        })
+
+    ranking_items.sort(
+        key=lambda x: (-x["averageScore"], -x["acceptedCount"], x["username"].lower())
+    )
+
+    my_rank = None
+    for index, item in enumerate(ranking_items, start=1):
+        item["rank"] = index
+        if item["userId"] == user.id:
+            my_rank = item
+
+    top_developers = ranking_items[:5]
+
+    project_items.sort(
+        key=lambda x: (-x["averageScore"], -x["acceptedCount"], x["projectName"].lower())
+    )
+
+    return JsonResponse({
+        "summary": {
+            "userId": user.id,
+            "username": user.username,
+            "email": user.email,
+            "projectsCount": memberships.count(),
+            "totalAssigned": total_assigned,
+            "acceptedCount": accepted_count,
+            "rejectedCount": rejected_count,
+            "submittedCount": submitted_count,
+            "inProgressCount": in_progress_count,
+            "acceptanceRate": round(acceptance_rate, 2),
+            "averageScore": round(float(avg_final_score), 2),
+        },
+        "projects": project_items,
+        "recentAssignments": recent_items,
+        "ranking": {
+            "myRank": my_rank,
+            "totalDevelopers": len(ranking_items),
+            "topDevelopers": top_developers,
+        },
+    })

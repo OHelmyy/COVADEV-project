@@ -1,9 +1,9 @@
-// frontend/src/pages/ProjectCreatePage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
 import { createProject } from "../api/projects";
 import { adminListUsers, type AdminUser } from "../api/adminUsers";
+import { buttonBase, cardBase, inputBase, ui } from "../theme/ui";
 
 type State = "idle" | "loadingUsers" | "saving" | "error";
 
@@ -79,8 +79,6 @@ export default function ProjectCreatePage() {
         name,
         description,
         similarity_threshold: Number(threshold),
-
-        // ✅ backend expects these:
         evaluatorEmail: evaluator.email.trim().toLowerCase(),
         developerEmails: devEmails,
       });
@@ -93,110 +91,176 @@ export default function ProjectCreatePage() {
   }
 
   return (
-    <div style={{ maxWidth: 760 }}>
-      <h1 style={{ marginTop: 0 }}>Create Project</h1>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 880 }}>
+      <div
+        style={{
+          ...cardBase,
+          padding: 20,
+          background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
+          color: "#fff",
+        }}
+      >
+        <h1 style={{ marginTop: 0, marginBottom: 8 }}>Create Project</h1>
+        <div style={{ opacity: 0.96, maxWidth: 760, lineHeight: 1.7 }}>
+          Configure a new COVADEV workspace, assign its evaluator, and choose the participating developers.
+        </div>
+      </div>
 
       {state === "error" ? <StatusMessage title="Create failed" message={error} /> : null}
-      {state === "loadingUsers" ? <StatusMessage title="Loading users..." message="Fetching evaluators & developers..." /> : null}
+      {state === "loadingUsers" ? (
+        <StatusMessage title="Loading users..." message="Fetching evaluators & developers..." />
+      ) : null}
 
-      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div>
-          <label style={{ color: "#555" }}>Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-          />
-        </div>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ ...cardBase, padding: 18 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 12 }}>Project Information</h3>
 
-        <div>
-          <label style={{ color: "#555" }}>Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd", minHeight: 90 }}
-          />
-        </div>
+          <div style={{ display: "grid", gap: 14 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ color: ui.colors.textSoft, fontWeight: 700 }}>Name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                style={{ ...inputBase, width: "100%" }}
+                placeholder="Enter project name"
+              />
+            </label>
 
-        <div>
-          <label style={{ color: "#555" }}>Similarity threshold (0–1)</label>
-          <input
-            value={threshold}
-            onChange={(e) => setThreshold(e.target.value)}
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-          />
-        </div>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ color: ui.colors.textSoft, fontWeight: 700 }}>Description</span>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{
+                  ...inputBase,
+                  width: "100%",
+                  minHeight: 110,
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
+                placeholder="Enter project description"
+              />
+            </label>
 
-        {/* Evaluator dropdown */}
-        <div>
-          <label style={{ color: "#555" }}>Evaluator</label>
-          <select
-            value={evaluatorId}
-            onChange={(e) => setEvaluatorId(e.target.value ? Number(e.target.value) : "")}
-            required
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}
-          >
-            <option value="">Select evaluator...</option>
-            {evaluators.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.fullName ? `${u.fullName} — ${u.email}` : u.email}
-              </option>
-            ))}
-          </select>
-
-          {evaluators.length === 0 ? (
-            <div style={{ marginTop: 6, fontSize: 12, color: "#777" }}>
-              No active evaluators found. Create evaluator users first from Admin → Users.
-            </div>
-          ) : null}
-        </div>
-
-        {/* Developers multi-select */}
-        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "#fff" }}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Developers</div>
-
-          {developers.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#777" }}>
-              No active developers found. Create developer users first from Admin → Users.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {developers.map((u) => {
-                const checked = developerIds.includes(u.id);
-                const disabled = evaluatorId === u.id; // just in case
-
-                return (
-                  <label
-                    key={u.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      opacity: disabled ? 0.5 : 1,
-                      cursor: disabled ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleDev(u.id)} />
-                    <span>{u.fullName ? `${u.fullName} — ${u.email}` : u.email}</span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-
-          <div style={{ marginTop: 8, fontSize: 12, color: "#777" }}>
-            Selected: <b>{developerIds.length}</b>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ color: ui.colors.textSoft, fontWeight: 700 }}>
+                Similarity threshold (0–1)
+              </span>
+              <input
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+                style={{ ...inputBase, width: "100%" }}
+              />
+            </label>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={state === "saving" || state === "loadingUsers"}
-          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-        >
-          {state === "saving" ? "Creating..." : "Create"}
-        </button>
+        <div style={{ ...cardBase, padding: 18 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 12 }}>Project Assignment</h3>
+
+          <div style={{ display: "grid", gap: 16 }}>
+            <div>
+              <label style={{ color: ui.colors.textSoft, fontWeight: 700 }}>Evaluator</label>
+              <select
+                value={evaluatorId}
+                onChange={(e) => setEvaluatorId(e.target.value ? Number(e.target.value) : "")}
+                required
+                style={{
+                  ...inputBase,
+                  width: "100%",
+                  background: "#fff",
+                  marginTop: 6,
+                }}
+              >
+                <option value="">Select evaluator...</option>
+                {evaluators.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.fullName ? `${u.fullName} — ${u.email}` : u.email}
+                  </option>
+                ))}
+              </select>
+
+              {evaluators.length === 0 ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: ui.colors.textMuted }}>
+                  No active evaluators found. Create evaluator users first from Admin → Users.
+                </div>
+              ) : null}
+            </div>
+
+            <div
+              style={{
+                border: `1px solid ${ui.colors.border}`,
+                borderRadius: ui.radius.lg,
+                padding: 14,
+                background: ui.colors.bgSoft,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 10, color: ui.colors.text }}>
+                Developers
+              </div>
+
+              {developers.length === 0 ? (
+                <div style={{ fontSize: 13, color: ui.colors.textMuted }}>
+                  No active developers found. Create developer users first from Admin → Users.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {developers.map((u) => {
+                    const checked = developerIds.includes(u.id);
+                    const disabled = evaluatorId === u.id;
+
+                    return (
+                      <label
+                        key={u.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          opacity: disabled ? 0.5 : 1,
+                          cursor: disabled ? "not-allowed" : "pointer",
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          background: checked ? "#ffffff" : "transparent",
+                          border: `1px solid ${checked ? "#bfdbfe" : "transparent"}`,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleDev(u.id)}
+                        />
+                        <span>{u.fullName ? `${u.fullName} — ${u.email}` : u.email}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={{ marginTop: 10, fontSize: 12, color: ui.colors.textMuted }}>
+                Selected: <b>{developerIds.length}</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="submit"
+            disabled={state === "saving" || state === "loadingUsers"}
+            style={{
+              ...buttonBase,
+              border: "1px solid transparent",
+              background: ui.colors.primary,
+              color: "#fff",
+              minWidth: 150,
+              fontWeight: 800,
+            }}
+          >
+            {state === "saving" ? "Creating..." : "Create"}
+          </button>
+        </div>
       </form>
     </div>
   );

@@ -8,13 +8,13 @@ export default function ProjectDetailLayout({ sidebar, children }: Props) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "240px 1fr",
-        gap: 14,
+        gridTemplateColumns: "280px 1fr",
+        gap: 18,
         alignItems: "start",
       }}
     >
       {sidebar}
-      <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {children}
       </section>
     </div>

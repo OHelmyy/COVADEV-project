@@ -1,10 +1,10 @@
-// frontend/src/pages/ProjectsPage.tsx
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
 import { fetchProjects } from "../api/projects";
 import type { ProjectSummaryApi } from "../api/types";
 import { useAuth } from "../app/auth";
+import { buttonBase, cardBase, ui } from "../theme/ui";
 
 type LoadState = "idle" | "loading" | "success" | "error";
 
@@ -32,59 +32,92 @@ export default function ProjectsPage() {
     load();
   }, []);
 
-  
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
-        {user?.role === "ADMIN" ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div
+        style={{
+          ...cardBase,
+          padding: 20,
+          background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
+          color: "#fff",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "end",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
-          <h1 style={{ margin: 0 }}>All Projects</h1>
+          {user?.role === "ADMIN" ? (
+            <h1 style={{ margin: 0 }}>All Projects</h1>
+          ) : (
+            <h1 style={{ margin: 0 }}>Your Projects</h1>
+          )}
+
+          <div style={{ marginTop: 8, opacity: 0.96 }}>
+            Manage and access COVADEV project workspaces.
+          </div>
         </div>
-        ) : 
-        <div>
-          <h1 style={{ margin: 0 }}>Your Projects</h1>
-        </div>}
-        {/* ✅ Only Admin can see Create Project */}
+
         {user?.role === "ADMIN" ? (
           <Link to="/projects/create" style={{ textDecoration: "none" }}>
-            <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+            <button
+              style={{
+                ...buttonBase,
+                border: "1px solid rgba(255,255,255,0.25)",
+                background: "#fff",
+                color: ui.colors.primary,
+                fontWeight: 900,
+              }}
+            >
               + Create Project
             </button>
           </Link>
         ) : null}
       </div>
 
-      {state === "loading" || state === "idle" ? <StatusMessage title="Loading projects..." /> : null}
+      {state === "loading" || state === "idle" ? (
+        <StatusMessage title="Loading projects..." />
+      ) : null}
 
       {state === "error" ? (
         <StatusMessage title="Failed to load projects" message={errorText} onRetry={load} />
       ) : null}
 
       {state === "success" ? (
-        <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff" }}>
+        <div style={{ ...cardBase, overflow: "hidden" }}>
           {rows.length === 0 ? (
-            <div style={{ padding: 16, color: "#777" }}>No projects yet.</div>
+            <div style={{ padding: 20, color: ui.colors.textMuted }}>No projects yet.</div>
           ) : (
-            rows.map((p) => (
+            rows.map((p, index) => (
               <div
                 key={p.id}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  padding: "14px 16px",
-                  borderBottom: "1px solid #f3f3f3",
+                  padding: "18px 18px",
+                  borderBottom: index !== rows.length - 1 ? `1px solid ${ui.colors.border}` : "none",
                   alignItems: "center",
+                  gap: 14,
+                  flexWrap: "wrap",
                 }}
               >
-                <div>
-                  <div style={{ fontWeight: 800 }}>{p.name}</div>
-                  <div style={{ color: "#666", marginTop: 4 }}>{p.description || "No description"}</div>
-                  <div style={{ color: "#888", marginTop: 6, fontSize: 13 }}>
+                <div style={{ flex: 1, minWidth: 280 }}>
+                  <div style={{ fontWeight: 900, color: ui.colors.text, fontSize: 18 }}>{p.name}</div>
+                  <div style={{ color: ui.colors.textSoft, marginTop: 6, lineHeight: 1.6 }}>
+                    {p.description || "No description"}
                   </div>
                 </div>
 
                 <Link to={`/projects/${p.id}`} style={{ textDecoration: "none" }}>
-                  <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+                  <button
+                    style={{
+                      ...buttonBase,
+                      border: `1px solid ${ui.colors.borderStrong}`,
+                      background: "#fff",
+                      color: ui.colors.text,
+                    }}
+                  >
                     Open
                   </button>
                 </Link>

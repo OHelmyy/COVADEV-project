@@ -110,4 +110,86 @@ export function getDeveloperPerformanceOverview() {
   );
 }
 
+export type MyPerformanceProjectItem = {
+  projectId: number;
+  projectName: string;
+  totalAssigned: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  submittedCount: number;
+  inProgressCount: number;
+  acceptanceRate: number;
+  averageScore: number;
+};
+
+export type MyPerformanceRecentAssignmentItem = {
+  assignmentId: number;
+  projectId: number;
+  projectName: string;
+  status: string;
+  assignedAt: string | null;
+  startedAt: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  task: {
+    id: number;
+    taskId: string;
+    name: string;
+    description?: string;
+  };
+  evaluation: {
+    id: number;
+    evaluator?: {
+      id: number;
+      username: string;
+    } | null;
+    correctnessScore: number;
+    qualityScore: number;
+    timelinessScore: number;
+    communicationScore: number;
+    finalScore: number;
+    comments: string;
+    evaluatedAt: string | null;
+  } | null;
+};
+
+export type DeveloperRankingItem = {
+  rank: number;
+  userId: number;
+  username: string;
+  email: string;
+  projectsCount: number;
+  totalAssigned: number;
+  acceptedCount: number;
+  acceptanceRate: number;
+  averageScore: number;
+};
+
+
+export type MyPerformanceInsightsResponse = {
+  summary: {
+    userId: number;
+    username: string;
+    email: string;
+    projectsCount: number;
+    totalAssigned: number;
+    acceptedCount: number;
+    rejectedCount: number;
+    submittedCount: number;
+    inProgressCount: number;
+    acceptanceRate: number;
+    averageScore: number;
+  };
+  projects: MyPerformanceProjectItem[];
+  recentAssignments: MyPerformanceRecentAssignmentItem[];
+  ranking: {
+    myRank: DeveloperRankingItem | null;
+    totalDevelopers: number;
+    topDevelopers: DeveloperRankingItem[];
+  };
   
+};
+
+export function getMyPerformanceInsights() {
+  return apiJson<MyPerformanceInsightsResponse>("/api/task-management/my-insights/");
+}

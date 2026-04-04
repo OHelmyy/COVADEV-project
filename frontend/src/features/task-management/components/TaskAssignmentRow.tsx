@@ -1,10 +1,16 @@
 import { useState } from "react";
-import { assignTask, evaluateTaskAssignment, reviewTaskAssignment } from "../api/taskManagementApi";
+import {
+  assignTask,
+  evaluateTaskAssignment,
+  reviewTaskAssignment,
+} from "../api/taskManagementApi";
 
 import type { Developer, TaskInfo, Assignment } from "../types";
 import { getStatusLabel } from "../utils";
 
 import EvaluationForm from "./EvaluationForm";
+import { buttonBase, inputBase, ui } from "../../../theme/ui";
+
 type Props = {
   projectId: number;
   task: TaskInfo;
@@ -21,12 +27,9 @@ export default function TaskAssignmentRow({
   onChanged,
 }: Props) {
   const [developerMembershipId, setDeveloperMembershipId] = useState<string>(
-    assignment?.developer?.membershipId
-      ? String(assignment.developer.membershipId)
-      : ""
+    assignment?.developer?.membershipId ? String(assignment.developer.membershipId) : ""
   );
   const [saving, setSaving] = useState(false);
-
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
 
   async function handleAssign() {
@@ -67,173 +70,187 @@ export default function TaskAssignmentRow({
     }
   }
 
-  async function handleEvaluateClick() {
-  if (!assignment) return;
+  async function handleEvaluationSubmit(payload: {
+    correctnessScore: number;
+    qualityScore: number;
+    timelinessScore: number;
+    communicationScore: number;
+    comments: string;
+  }) {
+    if (!assignment) return;
 
-  const correctnessScore = Number(prompt("Correctness score (0-100)", "80"));
-  const qualityScore = Number(prompt("Quality score (0-100)", "80"));
-  const timelinessScore = Number(prompt("Timeliness score (0-100)", "80"));
-  const communicationScore = Number(prompt("Communication score (0-100)", "80"));
-  const comments = prompt("Comments", "") || "";
-
-  if (
-    Number.isNaN(correctnessScore) ||
-    Number.isNaN(qualityScore) ||
-    Number.isNaN(timelinessScore) ||
-    Number.isNaN(communicationScore)
-  ) {
-    alert("Invalid scores.");
-    return;
+    setSaving(true);
+    try {
+      await evaluateTaskAssignment(assignment.assignmentId, payload);
+      setShowEvaluationForm(false);
+      await onChanged();
+    } catch (error: any) {
+      alert(error.message || "Failed to evaluate task.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  try {
-    await evaluateTaskAssignment(assignment.assignmentId, {
-      correctnessScore,
-      qualityScore,
-      timelinessScore,
-      communicationScore,
-      comments,
-    });
-    await onChanged();
-  } catch (error: any) {
-    alert(error.message || "Failed to evaluate task.");
-  }
-}
+  function statusBadge() {
+    const status = assignment?.status;
+    const label = getStatusLabel(status);
 
-async function handleEvaluationSubmit(payload: {
-  correctnessScore: number;
-  qualityScore: number;
-  timelinessScore: number;
-  communicationScore: number;
-  comments: string;
-}) {
-  if (!assignment) return;
+    const tone =
+      status === "ACCEPTED"
+        ? { bg: ui.colors.successSoft, color: ui.colors.success }
+        : status === "REJECTED"
+        ? { bg: ui.colors.dangerSoft, color: ui.colors.danger }
+        : status === "SUBMITTED"
+        ? { bg: ui.colors.warningSoft, color: ui.colors.warning }
+        : { bg: ui.colors.primarySoft, color: ui.colors.primary };
 
-  setSaving(true);
-  try {
-    await evaluateTaskAssignment(assignment.assignmentId, payload);
-    setShowEvaluationForm(false);
-    await onChanged();
-  } catch (error: any) {
-    alert(error.message || "Failed to evaluate task.");
-  } finally {
-    setSaving(false);
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          padding: "6px 10px",
+          borderRadius: 999,
+          background: tone.bg,
+          color: tone.color,
+          border: `1px solid ${ui.colors.border}`,
+          fontWeight: 800,
+          fontSize: 12,
+        }}
+      >
+        {label}
+      </span>
+    );
   }
-}
 
   return (
     <>
-    <tr style={{ borderTop: "1px solid #eee" }}>
-      <td style={{ padding: 10 }}>{task.name}</td>
-      <td style={{ padding: 10 }}>
-        <select
-          value={developerMembershipId}
-          onChange={(e) => setDeveloperMembershipId(e.target.value)}
-          style={{ padding: "8px 10px", borderRadius: 8, minWidth: 180 }}
-        >
-          <option value="">Select developer</option>
-          {developers.map((dev) => (
-            <option key={dev.membershipId} value={dev.membershipId}>
-              {dev.username}
-            </option>
-          ))}
-        </select>
-      </td>
-     <td style={{ padding: 10 }}>
-      <div>{getStatusLabel(assignment?.status)}</div>
-      {assignment?.evaluation && (
-        <div style={{ marginTop: 6, fontSize: 12, color: "#555" }}>
-          Score: <strong>{assignment.evaluation.finalScore}</strong>
-        </div>
-      )}
-    </td>
-      <td style={{ padding: 10 }}>
-        <button
-          onClick={handleAssign}
-          disabled={saving}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #ccc",
-            cursor: "pointer",
-            marginRight: 8,
-          }}
-        >
-          {saving ? "Saving..." : assignment ? "Reassign" : "Assign"}
-        </button>
+      <tr>
+        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+          <div style={{ fontWeight: 800, color: ui.colors.text }}>{task.name}</div>
+          <div style={{ color: ui.colors.textMuted, fontSize: 12, marginTop: 4 }}>
+            {task.id}
+          </div>
+        </td>
 
-        {assignment?.status === "SUBMITTED" && (
-          <>
-            <button
-              onClick={() => handleReview(true)}
-              disabled={saving}
-              style={{
-                marginRight: 6,
-                background: "#e6f7e6",
-                border: "1px solid #b7e4c7",
-                borderRadius: 6,
-                padding: "6px 10px",
-                cursor: "pointer",
-              }}
-            >
-              Accept
-            </button>
-
-            <button
-              onClick={() => handleReview(false)}
-              disabled={saving}
-              style={{
-                background: "#fdeaea",
-                border: "1px solid #f5c2c7",
-                borderRadius: 6,
-                padding: "6px 10px",
-                cursor: "pointer",
-              }}
-            >
-              Reject
-            </button>
-          </>
-        )}
-        {assignment &&
-        (assignment.status === "ACCEPTED" || assignment.status === "REJECTED") && (
-          <button
-            onClick={() => setShowEvaluationForm((v) => !v)}
-            disabled={saving}
+        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+          <select
+            value={developerMembershipId}
+            onChange={(e) => setDeveloperMembershipId(e.target.value)}
             style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: "1px solid #ccc",
-              cursor: "pointer",
+              ...inputBase,
+              minWidth: 200,
+              padding: "10px 12px",
             }}
           >
-            {assignment.evaluation ? "Update Evaluation" : "Evaluate"}
-          </button>
-        )}
-      </td>
-    </tr>
-    
-    {showEvaluationForm && assignment && (
-    <tr>
-      <td colSpan={5} style={{ padding: 10 }}>
-        <EvaluationForm
-          initialValues={
-            assignment.evaluation
-              ? {
-                  correctnessScore: assignment.evaluation.correctnessScore,
-                  qualityScore: assignment.evaluation.qualityScore,
-                  timelinessScore: assignment.evaluation.timelinessScore,
-                  communicationScore: assignment.evaluation.communicationScore,
-                  comments: assignment.evaluation.comments,
-                }
-              : null
-          }
-          onSubmit={handleEvaluationSubmit}
-          onCancel={() => setShowEvaluationForm(false)}
-          saving={saving}
-        />
-      </td>
-    </tr>
-  )}
-  </>
+            <option value="">Select developer</option>
+            {developers.map((dev) => (
+              <option key={dev.membershipId} value={dev.membershipId}>
+                {dev.username}
+              </option>
+            ))}
+          </select>
+        </td>
+
+        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+          <div>{statusBadge()}</div>
+          {assignment?.evaluation && (
+            <div style={{ marginTop: 8, fontSize: 12, color: ui.colors.textMuted }}>
+              Score: <strong style={{ color: ui.colors.text }}>{assignment.evaluation.finalScore}</strong>
+            </div>
+          )}
+        </td>
+
+        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button
+              onClick={handleAssign}
+              disabled={saving}
+              style={{
+                ...buttonBase,
+                padding: "8px 12px",
+                border: `1px solid ${ui.colors.borderStrong}`,
+                background: "#fff",
+                color: ui.colors.text,
+              }}
+            >
+              {saving ? "Saving..." : assignment ? "Reassign" : "Assign"}
+            </button>
+
+            {assignment?.status === "SUBMITTED" && (
+              <>
+                <button
+                  onClick={() => handleReview(true)}
+                  disabled={saving}
+                  style={{
+                    ...buttonBase,
+                    padding: "8px 12px",
+                    background: ui.colors.successSoft,
+                    border: "1px solid #bbf7d0",
+                    color: ui.colors.success,
+                  }}
+                >
+                  Accept
+                </button>
+
+                <button
+                  onClick={() => handleReview(false)}
+                  disabled={saving}
+                  style={{
+                    ...buttonBase,
+                    padding: "8px 12px",
+                    background: ui.colors.dangerSoft,
+                    border: "1px solid #fecaca",
+                    color: ui.colors.danger,
+                  }}
+                >
+                  Reject
+                </button>
+              </>
+            )}
+
+            {assignment &&
+            (assignment.status === "ACCEPTED" || assignment.status === "REJECTED") ? (
+              <button
+                onClick={() => setShowEvaluationForm((v) => !v)}
+                disabled={saving}
+                style={{
+                  ...buttonBase,
+                  padding: "8px 12px",
+                  background: ui.colors.primarySoft,
+                  border: "1px solid #bfdbfe",
+                  color: ui.colors.primary,
+                }}
+              >
+                {assignment.evaluation ? "Update Evaluation" : "Evaluate"}
+              </button>
+            ) : null}
+          </div>
+        </td>
+      </tr>
+
+      {showEvaluationForm && assignment ? (
+        <tr>
+          <td colSpan={5} style={{ padding: 14, background: ui.colors.bgSoft }}>
+            <EvaluationForm
+              initialValues={
+                assignment.evaluation
+                  ? {
+                      correctnessScore: assignment.evaluation.correctnessScore,
+                      qualityScore: assignment.evaluation.qualityScore,
+                      timelinessScore: assignment.evaluation.timelinessScore,
+                      communicationScore: assignment.evaluation.communicationScore,
+                      comments: assignment.evaluation.comments,
+                    }
+                  : null
+              }
+              onSubmit={handleEvaluationSubmit}
+              onCancel={() => setShowEvaluationForm(false)}
+              saving={saving}
+            />
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
