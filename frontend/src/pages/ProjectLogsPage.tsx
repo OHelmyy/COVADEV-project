@@ -1,10 +1,9 @@
-// frontend/src/pages/ProjectLogsPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import StatusMessage from "../components/StatusMessage";
 import { fetchLogs, fetchProjectDetail } from "../api/projects";
 import type { ProjectDetailApi } from "../api/types";
-
+import { buttonBase, cardBase, ui } from "../theme/ui";
 
 type LoadState = "idle" | "loading" | "success" | "error";
 
@@ -39,20 +38,32 @@ export default function ProjectLogsPage() {
   useEffect(() => {
     if (!Number.isFinite(id)) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  if (state === "loading" || state === "idle") return <StatusMessage title="Loading..." />;
-  if (state === "error") return <StatusMessage title="Failed" message={errorText} onRetry={load} />;
+  if (state === "loading" || state === "idle") {
+    return <StatusMessage title="Loading..." />;
+  }
+
+  if (state === "error") {
+    return <StatusMessage title="Failed" message={errorText} onRetry={load} />;
+  }
+
   if (!detail) return null;
 
   const isEvaluator = detail.membership.role === "EVALUATOR";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 14 }}>
-        <h2 style={{ marginTop: 0 }}>Upload Logs</h2>
-        <div style={{ color: "#666" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div
+        style={{
+          ...cardBase,
+          padding: 18,
+          background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
+          color: "#fff",
+        }}
+      >
+        <h2 style={{ marginTop: 0, marginBottom: 6 }}>Upload Logs</h2>
+        <div style={{ opacity: 0.96 }}>
           Project: <b>{detail.project.name}</b>
         </div>
       </div>
@@ -60,38 +71,55 @@ export default function ProjectLogsPage() {
       {!isEvaluator ? (
         <StatusMessage title="Forbidden" message="Only evaluator can view upload logs." />
       ) : (
-        <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 14 }}>
+        <div style={{ ...cardBase, padding: 18 }}>
           <h3 style={{ marginTop: 0 }}>File Upload History</h3>
 
           {logs.length === 0 ? (
-            <div style={{ color: "#777", marginTop: 10 }}>No uploads yet.</div>
+            <div style={{ color: ui.colors.textMuted, marginTop: 10 }}>No uploads yet.</div>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #eee" }}>
-                  <th style={{ textAlign: "left", padding: 8 }}>Type</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>File Name</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>Uploaded By</th>
-                  <th style={{ textAlign: "left", padding: 8 }}>Uploaded At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((f) => (
-                  <tr key={f.id} style={{ borderBottom: "1px solid #f3f3f3" }}>
-                    <td style={{ padding: 8, fontWeight: 700 }}>{f.fileType}</td>
-                    <td style={{ padding: 8 }}>{f.originalName}</td>
-                    <td style={{ padding: 8 }}>{f.uploadedBy ?? "Unknown"}</td>
-                    <td style={{ padding: 8 }}>{f.createdAt}</td>
+            <div style={{ overflowX: "auto", marginTop: 12 }}>
+              <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+                <thead>
+                  <tr style={{ background: ui.colors.bgSoft }}>
+                    <th style={{ textAlign: "left", padding: 12 }}>Type</th>
+                    <th style={{ textAlign: "left", padding: 12 }}>File Name</th>
+                    <th style={{ textAlign: "left", padding: 12 }}>Uploaded By</th>
+                    <th style={{ textAlign: "left", padding: 12 }}>Uploaded At</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {logs.map((f) => (
+                    <tr key={f.id}>
+                      <td style={{ padding: 12, fontWeight: 800, borderBottom: `1px solid ${ui.colors.border}` }}>
+                        {f.fileType}
+                      </td>
+                      <td style={{ padding: 12, borderBottom: `1px solid ${ui.colors.border}` }}>
+                        {f.originalName}
+                      </td>
+                      <td style={{ padding: 12, borderBottom: `1px solid ${ui.colors.border}` }}>
+                        {f.uploadedBy ?? "Unknown"}
+                      </td>
+                      <td style={{ padding: 12, borderBottom: `1px solid ${ui.colors.border}` }}>
+                        {f.createdAt}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
 
-      <Link to={`/projects/${id}`} style={{ textDecoration: "none" }}>
-        <button style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}>
+      <Link to={`/projects/${id}`} style={{ textDecoration: "none", alignSelf: "flex-start" }}>
+        <button
+          style={{
+            ...buttonBase,
+            border: `1px solid ${ui.colors.borderStrong}`,
+            background: "#fff",
+            color: ui.colors.text,
+          }}
+        >
           ← Back to Project
         </button>
       </Link>

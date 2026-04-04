@@ -7,6 +7,8 @@ import {
   adminUpdateUser,
   type AdminUser,
 } from "../api/adminUsers";
+import ConfirmModal from "../components/ConfirmModal";
+import { buttonBase, cardBase, inputBase, ui } from "../theme/ui";
 
 function Modal({
   open,
@@ -27,52 +29,53 @@ function Modal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.35)",
+        background: ui.colors.overlay,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: 16,
         zIndex: 999,
+        backdropFilter: "blur(6px)",
       }}
     >
       <div
         onMouseDown={(e) => e.stopPropagation()}
         style={{
-          width: "min(560px, 100%)",
+          width: "min(620px, 100%)",
           background: "#fff",
-          borderRadius: 12,
-          border: "1px solid #eee",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
+          borderRadius: ui.radius.xl,
+          border: `1px solid ${ui.colors.border}`,
+          boxShadow: ui.shadow.lg,
           overflow: "hidden",
         }}
       >
         <div
           style={{
-            padding: "14px 16px",
-            borderBottom: "1px solid #eee",
+            padding: "16px 18px",
+            borderBottom: `1px solid ${ui.colors.border}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 12,
+            background: ui.colors.bgSoft,
           }}
         >
-          <div style={{ fontWeight: 800 }}>{title}</div>
+          <div style={{ fontWeight: 900, fontSize: 18, color: ui.colors.text }}>{title}</div>
           <button
             onClick={onClose}
             style={{
-              border: "1px solid #ddd",
+              ...buttonBase,
+              padding: "8px 10px",
+              border: `1px solid ${ui.colors.borderStrong}`,
               background: "#fff",
-              borderRadius: 10,
-              padding: "6px 10px",
-              cursor: "pointer",
-              fontWeight: 700,
+              color: ui.colors.text,
             }}
           >
             ✕
           </button>
         </div>
 
-        <div style={{ padding: 16 }}>{children}</div>
+        <div style={{ padding: 18 }}>{children}</div>
       </div>
     </div>
   );
@@ -83,10 +86,9 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // modal state
   const [openCreate, setOpenCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
 
-  // create form fields
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<Role>("DEVELOPER");
@@ -157,40 +159,50 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function remove(u: AdminUser) {
-    if (!confirm(`Delete user ${u.email}?`)) return;
+  async function removeConfirmed() {
+    if (!deleteTarget) return;
+
     setErr("");
     try {
-      await adminDeleteUser(u.id);
+      await adminDeleteUser(deleteTarget.id);
+      setDeleteTarget(null);
       await refresh();
     } catch (e: any) {
       setErr(e?.message || "Delete failed");
+      setDeleteTarget(null);
     }
   }
 
   return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div
         style={{
+          ...cardBase,
+          padding: 18,
+          background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
+          color: "#fff",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
-          marginBottom: 12,
+          flexWrap: "wrap",
         }}
       >
-        <h2 style={{ margin: 0 }}>Manage Users</h2>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 24 }}>Manage Users</h2>
+          <div style={{ marginTop: 8, opacity: 0.95 }}>
+            Create, manage, activate, and organize system users.
+          </div>
+        </div>
 
         <button
           onClick={() => setOpenCreate(true)}
           style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #094780",
-            background: "#094780",
-            color: "#fff",
-            fontWeight: 800,
-            cursor: "pointer",
+            ...buttonBase,
+            border: "1px solid rgba(255,255,255,0.25)",
+            background: "#fff",
+            color: ui.colors.primary,
+            fontWeight: 900,
             whiteSpace: "nowrap",
           }}
         >
@@ -198,152 +210,137 @@ export default function AdminUsersPage() {
         </button>
       </div>
 
-      {err && (
+      {err ? (
         <div
           style={{
-            background: "#fff3f3",
-            border: "1px solid #ffd0d0",
-            padding: 10,
-            borderRadius: 8,
-            marginBottom: 12,
+            ...cardBase,
+            padding: 14,
+            background: ui.colors.dangerSoft,
+            borderColor: "#fecaca",
+            color: ui.colors.danger,
+            fontWeight: 700,
           }}
         >
           {err}
         </div>
-      )}
+      ) : null}
 
       {loading ? (
-        <div>Loading...</div>
+        <div style={{ ...cardBase, padding: 18 }}>Loading...</div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #eee" }}>
-                <th style={{ padding: 10 }}>Email</th>
-                <th style={{ padding: 10 }}>Full Name</th>
-                <th style={{ padding: 10 }}>Role</th>
-                <th style={{ padding: 10 }}>Active</th>
-                <th style={{ padding: 10 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id} style={{ borderBottom: "1px solid #f2f2f2" }}>
-                  <td style={{ padding: 10 }}>{u.email}</td>
-                  <td style={{ padding: 10 }}>{u.fullName}</td>
-
-                  <td style={{ padding: 10 }}>
-                    <select
-                      value={u.role}
-                      onChange={(e) => changeRole(u, e.target.value as Role)}
-                      style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #ddd" }}
-                    >
-                      <option value="ADMIN">ADMIN</option>
-                      <option value="EVALUATOR">EVALUATOR</option>
-                      <option value="DEVELOPER">DEVELOPER</option>
-                    </select>
-                  </td>
-
-                  <td style={{ padding: 10 }}>
-                    <button
-                      onClick={() => toggleActive(u)}
-                      style={{
-                        border: "1px solid #ddd",
-                        background: "#fff",
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {u.isActive ? "Active" : "Disabled"}
-                    </button>
-                  </td>
-
-                  <td style={{ padding: 10 }}>
-                    <button
-                      onClick={() => remove(u)}
-                      style={{
-                        border: "1px solid #ff4d4f",
-                        color: "#ff4d4f",
-                        background: "transparent",
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                        fontWeight: 800,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </td>
+        <div style={{ ...cardBase, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+              <thead>
+                <tr style={{ textAlign: "left", background: ui.colors.bgSoft }}>
+                  <th style={{ padding: 14 }}>Email</th>
+                  <th style={{ padding: 14 }}>Full Name</th>
+                  <th style={{ padding: 14 }}>Role</th>
+                  <th style={{ padding: 14 }}>Active</th>
+                  <th style={{ padding: 14 }}>Actions</th>
                 </tr>
-              ))}
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      {u.email}
+                    </td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      {u.fullName}
+                    </td>
 
-              {users.length === 0 && (
-                <tr>
-                  <td style={{ padding: 10 }} colSpan={5}>
-                    No users found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      <select
+                        value={u.role}
+                        onChange={(e) => changeRole(u, e.target.value as Role)}
+                        style={{ ...inputBase, padding: "8px 10px" }}
+                      >
+                        <option value="ADMIN">ADMIN</option>
+                        <option value="EVALUATOR">EVALUATOR</option>
+                        <option value="DEVELOPER">DEVELOPER</option>
+                      </select>
+                    </td>
+
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      <button
+                        onClick={() => toggleActive(u)}
+                        style={{
+                          ...buttonBase,
+                          padding: "8px 12px",
+                          border: `1px solid ${u.isActive ? "#bbf7d0" : "#fecaca"}`,
+                          background: u.isActive ? ui.colors.successSoft : ui.colors.dangerSoft,
+                          color: u.isActive ? ui.colors.success : ui.colors.danger,
+                        }}
+                      >
+                        {u.isActive ? "Active" : "Disabled"}
+                      </button>
+                    </td>
+
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      <button
+                        onClick={() => setDeleteTarget(u)}
+                        style={{
+                          ...buttonBase,
+                          padding: "8px 12px",
+                          border: "1px solid #fecaca",
+                          background: ui.colors.dangerSoft,
+                          color: ui.colors.danger,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+
+                {users.length === 0 ? (
+                  <tr>
+                    <td style={{ padding: 20, color: ui.colors.textMuted, textAlign: "center" }} colSpan={5}>
+                      No users found.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* CREATE USER MODAL */}
       <Modal
         open={openCreate}
         title="Create User"
         onClose={() => {
           setOpenCreate(false);
-          // optional: reset form when closing
-          // resetCreateForm();
         }}
       >
-        <form onSubmit={createUser} style={{ display: "grid", gap: 10 }}>
-          <label>
-            Email
+        <form onSubmit={createUser} style={{ display: "grid", gap: 14 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontWeight: 700, color: ui.colors.textSoft }}>Email</span>
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                marginTop: 6,
-              }}
+              style={{ ...inputBase, width: "100%" }}
               required
             />
           </label>
 
-          <label>
-            Full Name
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontWeight: 700, color: ui.colors.textSoft }}>Full Name</span>
             <input
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                marginTop: 6,
-              }}
+              style={{ ...inputBase, width: "100%" }}
             />
           </label>
 
-          <label>
-            Role
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontWeight: 700, color: ui.colors.textSoft }}>Role</span>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                marginTop: 6,
-              }}
+              style={{ ...inputBase, width: "100%" }}
             >
               <option value="ADMIN">ADMIN</option>
               <option value="EVALUATOR">EVALUATOR</option>
@@ -351,24 +348,18 @@ export default function AdminUsersPage() {
             </select>
           </label>
 
-          <label>
-            Temporary Password
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontWeight: 700, color: ui.colors.textSoft }}>Temporary Password</span>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                marginTop: 6,
-              }}
+              style={{ ...inputBase, width: "100%" }}
               required
             />
           </label>
 
-          <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <label style={{ display: "flex", gap: 10, alignItems: "center", color: ui.colors.textSoft }}>
             <input
               type="checkbox"
               checked={isActive}
@@ -377,19 +368,15 @@ export default function AdminUsersPage() {
             Active
           </label>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
             <button
               type="button"
-              onClick={() => {
-                setOpenCreate(false);
-              }}
+              onClick={() => setOpenCreate(false)}
               style={{
-                border: "1px solid #ddd",
+                ...buttonBase,
+                border: `1px solid ${ui.colors.borderStrong}`,
                 background: "#fff",
-                padding: "10px 12px",
-                borderRadius: 10,
-                cursor: "pointer",
-                fontWeight: 700,
+                color: ui.colors.text,
               }}
             >
               Cancel
@@ -398,13 +385,11 @@ export default function AdminUsersPage() {
             <button
               type="submit"
               style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #094780",
-                background: "#094780",
+                ...buttonBase,
+                border: "1px solid transparent",
+                background: ui.colors.primary,
                 color: "#fff",
-                fontWeight: 800,
-                cursor: "pointer",
+                fontWeight: 900,
               }}
             >
               Create
@@ -412,6 +397,21 @@ export default function AdminUsersPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete user?"
+        message={
+          deleteTarget
+            ? `Delete "${deleteTarget.email}" permanently? This action cannot be undone.`
+            : ""
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={removeConfirmed}
+      />
     </div>
   );
 }

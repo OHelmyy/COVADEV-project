@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getDeveloperPerformanceOverview } from "../features/task-management/api/taskManagementApi";
 import type { DeveloperPerformanceOverviewItem } from "../features/task-management/api/taskManagementApi";
+import { cardBase, ui } from "../theme/ui";
 
 export default function DeveloperPerformancePage() {
   const [items, setItems] = useState<DeveloperPerformanceOverviewItem[]>([]);
@@ -26,62 +27,96 @@ export default function DeveloperPerformancePage() {
   }, []);
 
   if (loading) {
-    return <div>Loading developer performance...</div>;
+    return (
+      <div style={{ ...cardBase, padding: 18 }}>
+        <div style={{ fontWeight: 900 }}>Loading developer performance...</div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div style={{ color: "crimson" }}>{error}</div>;
+    return (
+      <div
+        style={{
+          ...cardBase,
+          padding: 18,
+          background: ui.colors.dangerSoft,
+          borderColor: "#fecaca",
+          color: ui.colors.danger,
+          fontWeight: 700,
+        }}
+      >
+        {error}
+      </div>
+    );
   }
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Developer Performance</h2>
-      <p style={{ color: "#666" }}>
-        Overview of developer progress and evaluation scores.
-      </p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div
+        style={{
+          ...cardBase,
+          padding: 20,
+          background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
+          color: "#fff",
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 28 }}>Developer Performance</h2>
+        <p style={{ marginTop: 8, opacity: 0.96 }}>
+          Overview of developer progress and evaluation scores across projects.
+        </p>
+      </div>
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #ddd" }}>
-              <th style={{ textAlign: "left", padding: 10 }}>Developer</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Projects</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Assigned</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Accepted</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Rejected</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Submitted</th>
-              <th style={{ textAlign: "left", padding: 10 }}>In Progress</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Acceptance Rate</th>
-              <th style={{ textAlign: "left", padding: 10 }}>Average Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 ? (
-              <tr>
-                <td colSpan={9} style={{ padding: 12, color: "#777" }}>
-                  No developer performance data found.
-                </td>
+      <div style={{ ...cardBase, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${ui.colors.border}`, background: ui.colors.bgSoft }}>
+                <th style={{ textAlign: "left", padding: 14 }}>Developer</th>
+                <th style={{ textAlign: "left", padding: 14 }}>Projects</th>
+                <th style={{ textAlign: "left", padding: 14 }}>Assigned</th>
+                <th style={{ textAlign: "left", padding: 14 }}>Accepted</th>
+                <th style={{ textAlign: "left", padding: 14 }}>Rejected</th>
+                <th style={{ textAlign: "left", padding: 14 }}>Submitted</th>
+                <th style={{ textAlign: "left", padding: 14 }}>In Progress</th>
+                <th style={{ textAlign: "left", padding: 14 }}>Acceptance Rate</th>
+                <th style={{ textAlign: "left", padding: 14 }}>Average Score</th>
               </tr>
-            ) : (
-              items.map((item) => (
-                <tr key={item.userId} style={{ borderTop: "1px solid #eee" }}>
-                  <td style={{ padding: 10 }}>
-                    <div>{item.username}</div>
-                    <div style={{ fontSize: 12, color: "#666" }}>{item.email}</div>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ padding: 20, color: ui.colors.textMuted, textAlign: "center" }}>
+                    No developer performance data found.
                   </td>
-                  <td style={{ padding: 10 }}>{item.projectsCount}</td>
-                  <td style={{ padding: 10 }}>{item.totalAssigned}</td>
-                  <td style={{ padding: 10 }}>{item.acceptedCount}</td>
-                  <td style={{ padding: 10 }}>{item.rejectedCount}</td>
-                  <td style={{ padding: 10 }}>{item.submittedCount}</td>
-                  <td style={{ padding: 10 }}>{item.inProgressCount}</td>
-                  <td style={{ padding: 10 }}>{item.acceptanceRate}%</td>
-                  <td style={{ padding: 10 }}>{item.averageScore}</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                items.map((item) => (
+                  <tr key={item.userId}>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      <div style={{ fontWeight: 800, color: ui.colors.text }}>{item.username}</div>
+                      <div style={{ fontSize: 12, color: ui.colors.textMuted, marginTop: 4 }}>
+                        {item.email}
+                      </div>
+                    </td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.projectsCount}</td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.totalAssigned}</td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.acceptedCount}</td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.rejectedCount}</td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.submittedCount}</td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.inProgressCount}</td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, fontWeight: 800 }}>
+                      {item.acceptanceRate}%
+                    </td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, fontWeight: 900 }}>
+                      {item.averageScore}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

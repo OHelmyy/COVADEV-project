@@ -19,6 +19,7 @@ import ExportPage from "../pages/ExportPage";
 import AdminDashboardPage from "../pages/AdminDashboardPage";
 import HomeRedirect from "./HomeRedirect";
 import DeveloperPerformancePage from "../pages/DeveloperPerformancePage";
+import MyInsightsPage from "../pages/MyInsightsPage";
 
 export const router = createBrowserRouter([
   {
@@ -126,6 +127,10 @@ export const router = createBrowserRouter([
             <DevelopersPage />
           </RequireAuth>
         ),
+      },
+      {
+        path: "/my-insights",
+        element: <MyInsightsPage />,
       },
       {
         path: "export",
