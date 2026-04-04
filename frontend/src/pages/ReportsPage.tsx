@@ -1,4 +1,3 @@
-// frontend/src/pages/ReportsPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -12,12 +11,13 @@ import StatusMessage from "../components/StatusMessage";
 import { fetchProjectReport } from "../api/reports";
 import { fetchProjects } from "../api/projects";
 import type { ProjectSummaryApi } from "../api/types";
+import { buttonBase, cardBase, ui } from "../theme/ui";
 
 type TraceRow = {
   taskId: string;
   taskName: string;
   bestMatch: string;
-  similarity: number; // 0..1
+  similarity: number;
   developer: string;
   note?: string;
 };
@@ -53,14 +53,10 @@ function toHtmlTable(headers: string[], rows: string[][]) {
 }
 
 export default function ReportsPage() {
-  // ✅ hooks must be inside component
   const [searchParams] = useSearchParams();
   const locked = searchParams.get("lock") === "1";
   const lockedProjectId = Number(searchParams.get("projectId") || "");
 
-  // -----------------------------
-  // Projects list (selector)
-  // -----------------------------
   const [projectsState, setProjectsState] = useState<LoadState>("idle");
   const [projectsError, setProjectsError] = useState("");
   const [projects, setProjects] = useState<ProjectSummaryApi[]>([]);
@@ -101,12 +97,8 @@ export default function ReportsPage() {
 
   useEffect(() => {
     loadProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // -----------------------------
-  // Report data
-  // -----------------------------
   const [reportState, setReportState] = useState<LoadState>("idle");
   const [reportError, setReportError] = useState("");
   const [report, setReport] = useState<ReportPayload>({
@@ -138,12 +130,8 @@ export default function ReportsPage() {
   useEffect(() => {
     if (!selectedProjectId) return;
     loadReport(selectedProjectId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId]);
 
-  // -----------------------------
-  // UI controls
-  // -----------------------------
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"similarity_desc" | "similarity_asc" | "task_az">("similarity_desc");
   const [lowOnly, setLowOnly] = useState(false);
@@ -187,15 +175,16 @@ export default function ReportsPage() {
 
   const badge = (x: number) => {
     const pct = x * 100;
-    const bg = pct >= 80 ? "#eef5ff" : pct >= 70 ? "#fff5e6" : "#ffecec";
-    const fg = pct >= 80 ? "#094780" : pct >= 70 ? "#8a5a00" : "#a00000";
+    const bg = pct >= 80 ? ui.colors.primarySoft : pct >= 70 ? ui.colors.warningSoft : ui.colors.dangerSoft;
+    const fg = pct >= 80 ? ui.colors.primary : pct >= 70 ? ui.colors.warning : ui.colors.danger;
+
     return (
       <span
         style={{
           background: bg,
           color: fg,
-          border: "1px solid #eee",
-          padding: "4px 10px",
+          border: `1px solid ${ui.colors.border}`,
+          padding: "6px 10px",
           borderRadius: 999,
           fontWeight: 800,
           fontSize: 12,
@@ -206,17 +195,21 @@ export default function ReportsPage() {
     );
   };
 
-  // -----------------------------
-  // Global states
-  // -----------------------------
   if (projectsState === "loading" || projectsState === "idle") {
     return <StatusMessage title="Loading projects..." message="Fetching your projects list." />;
   }
+
   if (projectsState === "error") {
     return <StatusMessage title="Failed to load projects" message={projectsError} onRetry={loadProjects} />;
   }
+
   if (!projects.length) {
-    return <EmptyState title="No projects yet" description="Create a project first, then you will see its report here." />;
+    return (
+      <EmptyState
+        title="No projects yet"
+        description="Create a project first, then you will see its report here."
+      />
+    );
   }
 
   if (!selectedProjectId) {
@@ -226,6 +219,7 @@ export default function ReportsPage() {
   if (reportState === "loading" || reportState === "idle") {
     return <StatusMessage title="Loading report..." message="Fetching report data from backend." />;
   }
+
   if (reportState === "error") {
     return (
       <StatusMessage
@@ -238,31 +232,38 @@ export default function ReportsPage() {
 
   const selectedProject = projects.find((p) => Number(p.id) === selectedProjectId);
 
-  // -----------------------------
-  // UI
-  // -----------------------------
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div
+        style={{
+          ...cardBase,
+          padding: 20,
+          background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
+          color: "#fff",
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           <h1 style={{ margin: 0 }}>Reports</h1>
-          <p style={{ marginTop: 6, color: "#555" }}>
+          <p style={{ marginTop: 8, opacity: 0.96 }}>
             {locked ? "Locked report view for selected project." : "Choose a project to view its report."}
           </p>
         </div>
 
-        {/* ✅ Selector hidden in locked mode */}
         {!locked ? (
           <div style={{ minWidth: 320 }}>
-            <div style={{ fontSize: 12, color: "#777", marginBottom: 6 }}>Project</div>
+            <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 6 }}>Project</div>
             <select
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(Number(e.target.value))}
               style={{
                 width: "100%",
                 padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.25)",
                 background: "#fff",
                 fontWeight: 700,
               }}
@@ -274,15 +275,15 @@ export default function ReportsPage() {
               ))}
             </select>
 
-            <div style={{ marginTop: 6, fontSize: 12, color: "#888" }}>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.92 }}>
               Threshold: <b>{selectedProject?.similarityThreshold}</b>
             </div>
           </div>
         ) : (
           <div style={{ minWidth: 320, textAlign: "right" }}>
-            <div style={{ fontSize: 12, color: "#777" }}>Project</div>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>Project</div>
             <div style={{ fontWeight: 900, marginTop: 6 }}>{selectedProject?.name}</div>
-            <div style={{ marginTop: 6, fontSize: 12, color: "#888" }}>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.92 }}>
               Locked view • Threshold: <b>{selectedProject?.similarityThreshold}</b>
             </div>
           </div>
@@ -298,7 +299,6 @@ export default function ReportsPage() {
         onShowLowOnly={setLowOnly}
       />
 
-      {/* Export Buttons */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button
           onClick={() => {
@@ -314,7 +314,7 @@ export default function ReportsPage() {
               }))
             );
           }}
-          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
+          style={{ ...buttonBase, border: `1px solid ${ui.colors.borderStrong}`, background: "#fff", color: ui.colors.text }}
         >
           Export Traceability CSV
         </button>
@@ -330,7 +330,7 @@ export default function ReportsPage() {
               }))
             );
           }}
-          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
+          style={{ ...buttonBase, border: `1px solid ${ui.colors.borderStrong}`, background: "#fff", color: ui.colors.text }}
         >
           Export Missing CSV
         </button>
@@ -348,7 +348,7 @@ export default function ReportsPage() {
               }))
             );
           }}
-          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
+          style={{ ...buttonBase, border: `1px solid ${ui.colors.borderStrong}`, background: "#fff", color: ui.colors.text }}
         >
           Export Extra CSV
         </button>
@@ -380,27 +380,26 @@ export default function ReportsPage() {
             `;
             exportToHtml("covadev_report.html", "COVADEV Report", body);
           }}
-          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
+          style={{ ...buttonBase, border: `1px solid ${ui.colors.borderStrong}`, background: "#fff", color: ui.colors.text }}
         >
           Export Full HTML
         </button>
 
         <button
           onClick={() => selectedProjectId && loadReport(selectedProjectId)}
-          style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", cursor: "pointer", fontWeight: 800 }}
+          style={{ ...buttonBase, border: "1px solid transparent", background: ui.colors.primary, color: "#fff" }}
         >
           Refresh from Backend
         </button>
       </div>
 
-      {/* Traceability */}
-      <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 16 }}>
+      <div style={{ ...cardBase, padding: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <h2 style={{ marginTop: 0, marginBottom: 0 }}>Task-level Traceability</h2>
           <InfoTip text="Maps each BPMN task to the most similar code element based on similarity score." />
         </div>
 
-        <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
+        <p style={{ marginTop: 6, color: ui.colors.textMuted, fontSize: 13 }}>
           Each BPMN task is mapped to the most similar code element with a similarity score.
         </p>
 
@@ -416,7 +415,7 @@ export default function ReportsPage() {
                 render: (r) => (
                   <div>
                     <div style={{ fontWeight: 800 }}>{r.taskName}</div>
-                    <div style={{ fontSize: 12, color: "#777", marginTop: 2 }}>{r.taskId}</div>
+                    <div style={{ fontSize: 12, color: ui.colors.textMuted, marginTop: 2 }}>{r.taskId}</div>
                   </div>
                 ),
               },
@@ -431,25 +430,24 @@ export default function ReportsPage() {
                 width: "12%",
                 render: (r) => <span style={{ fontWeight: 700 }}>{r.developer}</span>,
               },
-              { header: "Notes", render: (r) => <span style={{ color: "#555" }}>{r.note ?? "-"}</span> },
+              { header: "Notes", render: (r) => <span style={{ color: ui.colors.textSoft }}>{r.note ?? "-"}</span> },
             ]}
           />
         )}
       </div>
 
-      {/* Missing Tasks */}
-      <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 16 }}>
+      <div style={{ ...cardBase, padding: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <h2 style={{ marginTop: 0, marginBottom: 0 }}>Missing Tasks</h2>
           <InfoTip text="Tasks present in BPMN but not matched to code above the threshold." />
         </div>
 
-        <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
-          BPMN tasks with no confident code match (below threshold or not implemented).
+        <p style={{ marginTop: 6, color: ui.colors.textMuted, fontSize: 13 }}>
+          BPMN tasks with no confident code match.
         </p>
 
         {filteredMissing.length === 0 ? (
-          <EmptyState title="No missing tasks" description="Great! All BPMN tasks are matched (with current threshold)." />
+          <EmptyState title="No missing tasks" description="Great! All BPMN tasks are matched with current threshold." />
         ) : (
           <DataTable<MissingTask>
             rows={filteredMissing}
@@ -460,25 +458,24 @@ export default function ReportsPage() {
                 render: (m) => (
                   <div>
                     <div style={{ fontWeight: 800 }}>{m.taskName}</div>
-                    <div style={{ fontSize: 12, color: "#777", marginTop: 2 }}>{m.taskId}</div>
+                    <div style={{ fontSize: 12, color: ui.colors.textMuted, marginTop: 2 }}>{m.taskId}</div>
                   </div>
                 ),
               },
-              { header: "Reason", render: (m) => <span style={{ color: "#555" }}>{m.reason}</span> },
+              { header: "Reason", render: (m) => <span style={{ color: ui.colors.textSoft }}>{m.reason}</span> },
             ]}
           />
         )}
       </div>
 
-      {/* Extra Code */}
-      <div style={{ border: "1px solid #eee", borderRadius: 12, background: "#fff", padding: 16 }}>
+      <div style={{ ...cardBase, padding: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <h2 style={{ marginTop: 0, marginBottom: 0 }}>Extra Code</h2>
-          <InfoTip text="Code elements that don’t map to any BPMN task (potential over-implementation)." />
+          <InfoTip text="Code elements that don’t map to any BPMN task." />
         </div>
 
-        <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
-          Code elements that do not map to any BPMN task (potential over-implementation).
+        <p style={{ marginTop: 6, color: ui.colors.textMuted, fontSize: 13 }}>
+          Code elements that do not map to any BPMN task.
         </p>
 
         {filteredExtra.length === 0 ? (
@@ -494,7 +491,7 @@ export default function ReportsPage() {
                 render: (e) => (
                   <div>
                     <div style={{ fontFamily: "monospace", fontSize: 13 }}>{e.file}</div>
-                    <div style={{ fontFamily: "monospace", fontSize: 13, color: "#555", marginTop: 3 }}>
+                    <div style={{ fontFamily: "monospace", fontSize: 13, color: ui.colors.textSoft, marginTop: 3 }}>
                       {e.symbol}
                     </div>
                   </div>
@@ -505,7 +502,7 @@ export default function ReportsPage() {
                 width: "14%",
                 render: (e) => <span style={{ fontWeight: 700 }}>{e.developer}</span>,
               },
-              { header: "Reason", render: (e) => <span style={{ color: "#555" }}>{e.reason}</span> },
+              { header: "Reason", render: (e) => <span style={{ color: ui.colors.textSoft }}>{e.reason}</span> },
             ]}
           />
         )}
