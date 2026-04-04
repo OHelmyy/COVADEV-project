@@ -7,28 +7,39 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from .generator import build_generator_block
 
+# CODE_COMPARE_RULES = """Write ONE short technical sentence describing what this function does.
 
+# Rules:
+# - Describe actual system behavior (validate, fetch, update, save, return)
+# - Mention the main object (user, order, payment, database, request)
+# - Do NOT start with "This function", "The function", etc
+# - No explanation
+# - Make it useful for semantic matching with BPMN
+# """
 
-CODE_COMPARE_RULES = """Write ONE short technical sentence describing what this function does.
+CODE_COMPARE_RULES = """Read the CODE section and write ONE short sentence describing what this code actually does.
 
 Rules:
-- Describe actual system behavior (validate, fetch, update, save, return)
-- Mention the main object (user, order, payment, database, request)
-- Do NOT start with "This function", "The function", etc
-- No explanation
-- Make it useful for semantic matching with BPMN
-"""
+ - Describe what the code LITERALLY does — what it reads, checks, calculates, or returns
+ - Do NOT rephrase or repeat the function name as the summary
+ - If the code returns a value, say what it returns and from where
+ - If the code validates something, say what condition it checks
+ - If the code saves something, say what it saves and where
+ - Mention actual objects (dictionary, list, string, database record)
+ - Do NOT start with "This function", "The function", function name
+ - One sentence only, complete sentence, no cut off
+ - Make it useful for semantic matching with BPMN business tasks
+ """
 
 DETAILED_RULES = """You explain code behavior clearly for humans.
-Task: Write 2 to 4 short sentences explaining what the function does and how it does it.
-Rules:
-- Easy, human-friendly language.
-- Mention key actions (e.g., reads, validates, updates, saves, calls).
-- Mention important inputs/outputs if present.
-- Do NOT invent details not in the input.
-- Output plain text only (no bullets, no quotes).
+ Task: Write 2 to 4 short sentences explaining what the function does and how it does it.
+ Rules:
+ - Easy, human-friendly language.
+ - Mention key actions (e.g., reads, validates, updates, saves, calls).
+ - Mention important inputs/outputs if present.
+ - Do NOT invent details not in the input.
+ - Output plain text only (no bullets, no quotes).
 """
-
 
 def build_code_compare_prompt(structured_block: str) -> str:
     return CODE_COMPARE_RULES + "\nINPUT:\n" + structured_block
@@ -42,15 +53,24 @@ def clean_summary(text: str) -> str:
     if not text:
         return text
 
-    prefixes = [
-        "this function",
-        "the function",
-        "this method",
-        "the method",
-    ]
-
+    import re
     t = text.strip()
 
+    # Reject if LLM echoed the input block
+    if any(marker in t for marker in ["FUNCTION_NAME:", "PARAMETERS:", "RETURNS:", "CODE:", "CALLS:", "WRITES:"]):
+        return ""
+
+    # Remove backticks but keep the word inside
+    t = re.sub(r'`([^`]+)`', r'\1', t).strip()
+
+    # Remove _NAME: prefix
+    t = re.sub(r'^_?NAME\s*:\s*', '', t, flags=re.IGNORECASE).strip()
+
+    # Remove "The <function_name> function/method" pattern
+    t = re.sub(r'^[Tt]he\s+\w+\s+(function|method)\s+', '', t).strip()
+
+    # Remove leading prefixes
+    prefixes = ["this function", "the function", "this method", "the method"]
     for p in prefixes:
         if t.lower().startswith(p):
             t = t[len(p):].strip()
@@ -58,7 +78,13 @@ def clean_summary(text: str) -> str:
     if t.lower().startswith("is "):
         t = t[3:].strip()
 
+    # Keep only first sentence
+    if "." in t:
+        t = t.split(".")[0].strip() + "."
+
     return t[:1].upper() + t[1:] if t else t
+
+
 
 
 class SummaryService:
@@ -87,7 +113,7 @@ class SummaryService:
 
             short_prompt = build_code_compare_prompt(block)
 
-            short_raw = self._call_model(short_prompt, max_new_tokens=24)
+            short_raw = self._call_model(short_prompt, max_new_tokens=48)
 
             print("UID:", uid)
             print("SHORT RAW:", repr(short_raw))
@@ -99,12 +125,8 @@ class SummaryService:
                 print("VALIDATION FAILED FOR", uid, "RAW =", repr(short_raw), "ERROR =", str(e))
                 short_clean = ""
 
-            out[uid] = {
+            out[uid] = short_clean
 
-                "short": short_clean,
-                "detailed": "",
-
-            }
 
         return out
 

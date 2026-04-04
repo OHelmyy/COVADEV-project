@@ -5,6 +5,7 @@ import ast
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+FN_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 @dataclass
@@ -166,8 +167,12 @@ def extract_structured_functions(
     py_file: Path,
     project_root: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
+    
     src = py_file.read_text(encoding="utf-8", errors="ignore")
-    tree = ast.parse(src)
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return []
 
     rel = _rel_path(py_file, project_root)
     out: List[Dict[str, Any]] = []
@@ -178,13 +183,12 @@ def extract_structured_functions(
     # - top-level functions
     # - methods inside classes
     for top in tree.body:
-        if isinstance(top, ast.FunctionDef):
-            out.append(_build_one(top, src=src, rel=rel, class_name=None))
+        if isinstance(top, FN_TYPES):
+           out.append(_build_one(top, src=src, rel=rel, class_name=None))
         elif isinstance(top, ast.ClassDef):
             for item in top.body:
-                if isinstance(item, ast.FunctionDef):
-                 out.append(_build_one(item, src=src, rel=rel, class_name=top.name))
-
+                if isinstance(item, FN_TYPES):
+                    out.append(_build_one(item, src=src, rel=rel, class_name=top.name))
     return out
 
 

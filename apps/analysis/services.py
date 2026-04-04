@@ -2,7 +2,6 @@
 from __future__ import annotations
 from typing import Any, Dict, List
 from pathlib import Path
-from typing import Any, Dict, List
 from apps.analysis.models import BpmnTask
 from django.conf import settings
 from django.db import transaction
@@ -195,7 +194,6 @@ def run_analysis_for_project(
             top_k=int(top_k),
             include_debug=False,
             project=project,  # use saved CodeArtifact summaries
-            run=run,
         )
 
         # ---- 6) Convert engine output -> MatchResult storage schema ----
@@ -286,14 +284,12 @@ def run_semantic_pipeline_for_project(project_id: int, threshold: float = 0.7, t
     top_k=int(top_k),
     include_debug=False,
     project=project,
-    run=None,
 )
 
 
 
     # Build UI-friendly previews
     return {
-        "summary": result.get("summary_status") or {},
         "matching": result.get("matching") or {},
         "stats": result.get("stats") or {},
         "bpmn": result.get("bpmn") or {},

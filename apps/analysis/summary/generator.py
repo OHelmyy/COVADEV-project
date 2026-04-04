@@ -15,13 +15,10 @@ def _join(items: List[str], limit: int = 12) -> str:
 
 def build_generator_block(sf: Dict[str, Any]) -> str:
     """
-    Convert a structured_function dict into a compact, model-friendly block.
-    Only include fields we actually have to avoid hallucination.
+    Build the input block sent to the LLM.
+    Code snippet comes first so LLM focuses on actual logic not the name.
     """
     function_name = sf.get("function_name") or "unknown"
-    signature = sf.get("signature") or ""
-    file_path = sf.get("file_path") or ""
-    class_name = sf.get("class_name") or ""
     params = sf.get("parameters") or []
     calls = sf.get("calls") or []
     writes = sf.get("writes") or []
@@ -30,15 +27,16 @@ def build_generator_block(sf: Dict[str, Any]) -> str:
     snippet = (sf.get("raw_snippet") or "").strip()
 
     lines = []
-    lines.append(f"FUNCTION_NAME: {function_name}")
-    if signature:
-        lines.append(f"SIGNATURE: {signature}")
-    if class_name:
-        lines.append(f"CLASS: {class_name}")
-    if file_path:
-        lines.append(f"FILE: {file_path}")
-    if params:
-        lines.append(f"PARAMETERS: {_join(params)}")
+
+    # Code FIRST — LLM reads actual logic before seeing the name
+    if snippet:
+        if len(snippet) > 1200:
+            snippet = snippet[:1200] + "\n... (truncated)"
+        lines.append("CODE:")
+        lines.append(snippet)
+        lines.append("")
+
+    # Supporting signals
     if calls:
         lines.append(f"CALLS: {_join(calls)}")
     if writes:
@@ -46,14 +44,11 @@ def build_generator_block(sf: Dict[str, Any]) -> str:
     if returns:
         lines.append(f"RETURNS: {_join(returns)}")
     if exceptions:
-        lines.append(f"EXCEPTIONS: {_join(exceptions)}")
+        lines.append(f"RAISES: {_join(exceptions)}")
+    if params:
+        lines.append(f"PARAMETERS: {_join(params)}")
 
-    # give snippet last (most informative)
-    if snippet:
-        # keep it short-ish to reduce token usage
-        if len(snippet) > 1200:
-            snippet = snippet[:1200] + "\n... (truncated)"
-        lines.append("CODE_SNIPPET:")
-        lines.append(snippet)
+    # Name LAST — so LLM doesn't anchor summary on it
+    lines.append(f"FUNCTION_NAME: {function_name}")
 
     return "\n".join(lines)

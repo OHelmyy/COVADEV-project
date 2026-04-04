@@ -11,27 +11,11 @@ from django.core.files.storage import default_storage
 from django.db import transaction
 
 from .models import Project, ProjectFile, CodeFile
-
-# ✅ Analysis imports (for code summarization on upload)
 from apps.analysis.code.structured_extractor import extract_structured_from_directory
 from apps.analysis.summary.service import SummaryService
-from apps.analysis.summary.structured_summary import build_structured_summary
 from apps.analysis.models_code import CodeArtifact
+import traceback
 
-
-# ============================================================
-# Project creation (simple helper)
-# ============================================================
-
-def create_project(user, name, description: str = ""):
-    """
-    Create a new Project. (Membership role assignment is handled in views.)
-    """
-    return Project.objects.create(
-        name=name,
-        description=description,
-        created_by=user,
-    )
 
 
 # ============================================================
@@ -49,9 +33,8 @@ def save_bpmn_file(project: Project, uploaded_file, uploader):
     project_dir = Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "bpmn"
     project_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = project_dir / uploaded_file.name
-    stored_path = default_storage.save(str(file_path), uploaded_file)
-
+    rel_bpmn_path = Path("projects") / str(project.id) / "bpmn" / uploaded_file.name
+    stored_path = default_storage.save(str(rel_bpmn_path), uploaded_file)
     pf = ProjectFile.objects.create(
         project=project,
         file_type="BPMN",
@@ -149,55 +132,43 @@ def _index_code_files(project: Project, code_root_dir: Path, uploader):
 def _fallback_summary(sf: Dict[str, Any]) -> str:
     fn = (sf.get("function_name") or "function").replace("_", " ").strip()
     title = " ".join(w.capitalize() for w in fn.split()) or "Unnamed Function"
-
-    calls = sf.get("calls") or []
-    writes = sf.get("writes") or []
     returns = sf.get("returns") or []
+    writes = sf.get("writes") or []
+    calls = sf.get("calls") or []
 
-    actions = []
     if writes:
-        actions.append("store or update records")
-    if calls:
-        actions.append("invoke related operations")
+        return f"{title} updates and saves data to the system."
     if returns:
-        actions.append("produce an output")
-
-    action = " and ".join(actions) if actions else "implement its main behavior from available code signals"
-    desc = f"{action} for the target business object using only available static code context."
-
-    # keep within 12–22 words تقريبًا
-    # (لو عايز strict، قصّها أكتر)
-    return f"Task: {title}. Description: {desc}"
-
-
+        return f"{title} processes the request and returns a result."
+    if calls:
+        return f"{title} performs its main operation using related services."
+    return f"{title} executes its main business logic."
 def _persist_code_artifacts_with_summaries(
-    
     *,
     project: Project,
     code_root_dir: Path,
 ) -> Dict[str, Any]:
-    print("BBBB -> _persist_code_artifacts_with_summaries CALLED")
     """
     Extract structured functions from the extracted code folder,
-    generate summaries, and save/update CodeArtifact rows.
+    generate LLM summaries, and save/update CodeArtifact rows.
+
+    Returns a summary dict with counts and any errors encountered.
     """
     structured_functions = extract_structured_from_directory(
         code_root_dir,
         project_root=code_root_dir,
     )
 
-    summaries_by_uid: Dict[str, Dict[str, str]] = {}
+    summaries_by_uid: Dict[str, Any] = {}
     summary_errors: Dict[str, str] = {}
+    global_error: str = ""
 
     summarizer = SummaryService()
     try:
-        # returns: {uid: {"short": "...", "detailed": "..."}}
         summaries_by_uid = summarizer.summarize_many(structured_functions)
     except Exception as e:
-        import traceback
-        summary_errors["__GLOBAL__"] = str(e)
-        print("GLOBAL SUMMARY ERROR:", str(e))
-        traceback.print_exc()
+        global_error = str(e)
+        summary_errors["__GLOBAL__"] = global_error
         summaries_by_uid = {}
 
     saved = 0
@@ -210,11 +181,9 @@ def _persist_code_artifacts_with_summaries(
                 continue
 
             fn_name = (sf.get("function_name") or "").strip()
-            file_path = Path(file_path).as_posix().lstrip("/")
+            file_path = (sf.get("file_path") or "").strip()
 
-            val = summaries_by_uid.get(uid) or {}
-            short = (val.get("short") or "").strip() if isinstance(val, dict) else str(val).strip()
-            detailed = (val.get("detailed") or "").strip() if isinstance(val, dict) else ""
+            short = (summaries_by_uid.get(uid) or "").strip()
 
             if not short:
                 short = _fallback_summary(sf)
@@ -222,37 +191,37 @@ def _persist_code_artifacts_with_summaries(
                 if uid not in summary_errors:
                     summary_errors[uid] = "Empty/failed model summary (fallback used)"
 
-            try:
-                structured_ui = build_structured_summary(sf)
-            except Exception:
-                structured_ui = detailed or ""
+            structured_ui = ""
 
-            CodeArtifact.objects.update_or_create(
-                project=project,
-                code_uid=uid,
-                defaults={
-                    "file_path": file_path,
-                    "language": (sf.get("language") or "python").strip() or "python",
-                    "symbol": fn_name,
-                    "kind": (sf.get("kind") or "function").strip() or "function",
-                    "raw_snippet": sf.get("raw_snippet") or "",
-                    "calls": sf.get("calls") or [],
-                    "writes": sf.get("writes") or [],
-                    "returns": sf.get("returns") or [],
-                    "exceptions": sf.get("exceptions") or [],
-                    "summary_text": short,                 # ✅ for embeddings + compare
-                    "structured_summary": structured_ui,   # ✅ for UI/debug
-                },
-            )
-            saved += 1
-    print("CCCC -> structured_functions count:", len(structured_functions))
+            try:
+                CodeArtifact.objects.update_or_create(
+                    project=project,
+                    code_uid=uid,
+                    defaults={
+                        "file_path": file_path,
+                        "language": (sf.get("language") or "python").strip() or "python",
+                        "symbol": fn_name,
+                        "kind": (sf.get("kind") or "function").strip() or "function",
+                        "raw_snippet": sf.get("raw_snippet") or "",
+                        "calls": sf.get("calls") or [],
+                        "writes": sf.get("writes") or [],
+                        "returns": sf.get("returns") or [],
+                        "exceptions": sf.get("exceptions") or [],
+                        "summary_text": short,
+                        "structured_summary": structured_ui,
+                    },
+                )
+                saved += 1
+            except Exception as e:
+                summary_errors[uid] = f"DB save failed: {str(e)}"
+
     return {
         "structured_functions": len(structured_functions),
         "saved": saved,
         "failed_summaries": failed,
+        "global_error": global_error,
         "errors_sample": dict(list(summary_errors.items())[:5]),
     }
-
 
 # ============================================================
 # Code ZIP upload (project-based, no versions)
@@ -295,9 +264,9 @@ def save_code_zip_and_extract(project: Project, uploaded_zip, uploader):
         except Exception:
             pass
 
-    # Save ZIP file into code root (audit)
-    zip_path = code_root / uploaded_zip.name
-    stored_zip_path = default_storage.save(str(zip_path), uploaded_zip)
+    # Save ZIP file using RELATIVE path (relative to MEDIA_ROOT)
+    rel_zip_path = Path("projects") / str(project.id) / "code" / uploaded_zip.name
+    stored_zip_path = default_storage.save(str(rel_zip_path), uploaded_zip)
 
     # Absolute path for extraction
     zip_full_path = Path(settings.MEDIA_ROOT) / stored_zip_path

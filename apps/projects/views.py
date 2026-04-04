@@ -1,25 +1,21 @@
 # apps/projects/views.py
 from pathlib import Path
+
 from django.conf import settings
-from apps.analysis.bpmn.pipeline import run_bpmn_predev
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
-from apps.projects.services import _persist_code_artifacts_with_summaries
-from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
-from apps.analysis.services import run_analysis_for_project
-from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
-from apps.analysis.models import BpmnTask
-from apps.analysis.models_code import CodeArtifact
 
 from apps.accounts.rbac import is_admin, is_evaluator
+from apps.analysis.bpmn.pipeline import run_bpmn_predev
+from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
+from apps.analysis.models_code import CodeArtifact
+from apps.analysis.services import run_analysis_for_project
 from .models import Project, ProjectMembership, CodeFile, ProjectFile
 from .services import save_bpmn_file, save_code_zip_and_extract
-
 
 # ============================================================
 # Permission helpers (Option 1)
@@ -183,7 +179,9 @@ def upload_bpmn(request, project_id):
     """
     project = get_object_or_404(Project, id=project_id)
 
-    
+    if not _is_project_evaluator(project, request.user):
+        messages.error(request, "Evaluator only.")      # ← 3 spaces
+        return redirect("projects:detail", ...)
 
     uploaded_file = request.FILES.get("bpmn_file")
     if not uploaded_file:
@@ -440,50 +438,6 @@ def remove_member(request, project_id, membership_id):
     messages.success(request, "Member removed.")
     return redirect("projects:members", project_id=project.id)
 
-# ============================================================
-# viewss gededa
-# ============================================================
-# apps/projects/views.py
-
-
-# موجودة عندك فوق غالبًا:
-# from apps.accounts.rbac import is_admin, is_evaluator
-# from .models import Project, ProjectMembership
-# def _can_open_project(project, user): ...
-
-from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404
-
-from apps.analysis.models import BpmnTask
-from apps.analysis.models_code import CodeArtifact
-
-
-import re
-
-def _humanize_title(s: str) -> str:
-    s = (s or "").strip().replace("_", " ")
-    if not s:
-        return "Unnamed Function"
-    return " ".join(w.capitalize() for w in s.split())
-
-def _one_line(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip())
-
-def _ensure_task_desc(task_title: str, desc: str) -> str:
-    task_title = _humanize_title(task_title)
-    desc = _one_line(desc)
-
-    # If backend already formatted it correctly, keep it
-    if desc.startswith("Task:") and "Description:" in desc:
-        return desc
-
-    # If desc is empty, provide a neutral sentence (no hallucination)
-    if not desc:
-        desc = "No business description available for this function."
-
-    # Ensure final exact UI format
-    return f"Task: {task_title}. Description: {desc}"
 
 @login_required
 def compare_inputs_api(request, project_id: int):
