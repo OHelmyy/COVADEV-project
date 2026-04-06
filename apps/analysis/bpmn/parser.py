@@ -225,3 +225,48 @@ def extract_bpmn_graph(bpmn_input: Union[str, Path, bytes]) -> Dict[str, object]
         "gateways": gateways,
         "flows": flows,
     }
+
+def extract_tasks_with_context(bpmn_input: Union[str, Path, bytes]) -> List[Dict]:
+    """
+    Extract tasks with full context:
+    - task_id, name, description, task_type
+    - incoming_nodes: names of nodes that come before
+    - outgoing_nodes: names of nodes that come after
+    """
+    graph = extract_bpmn_graph(bpmn_input)
+
+    flows = graph.get("flows") or []
+    events = graph.get("events") or []
+    gateways = graph.get("gateways") or []
+    tasks = graph.get("tasks") or []
+
+    # build id -> name map for all nodes
+    node_names = {}
+    for t in tasks:
+        node_names[t["id"]] = t["name"]
+    for e in events:
+        node_names[e["id"]] = e["name"] or e["type"]
+    for g in gateways:
+        node_names[g["id"]] = g["name"] or g["type"]
+
+    # build incoming/outgoing per task id
+    task_incoming: Dict[str, List[str]] = {}
+    task_outgoing: Dict[str, List[str]] = {}
+    for f in flows:
+        src, tgt = f["source"], f["target"]
+        task_incoming.setdefault(tgt, []).append(node_names.get(src, src))
+        task_outgoing.setdefault(src, []).append(node_names.get(tgt, tgt))
+
+    result = []
+    for t in tasks:
+        tid = t["id"]
+        result.append({
+            "task_id": tid,
+            "name": t["name"],
+            "description": t["description"],
+            "task_type": t["type"],
+            "incoming_nodes": task_incoming.get(tid, []),
+            "outgoing_nodes": task_outgoing.get(tid, []),
+        })
+
+    return result

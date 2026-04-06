@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from apps.analysis.models import BpmnTask, MatchResult
+
+
+def _build_task_summary(name: str, desc: str, task_type: str, incoming: list, outgoing: list) -> str:
+    if desc:
+        # description exists → use directly, no LLM
+        parts = [desc]
+        skip_nodes = {"order received", "order confirmed", "start", "end", "startevent", "endevent"}
+        incoming_filtered = [n for n in incoming if n.lower() not in skip_nodes]
+        outgoing_filtered = [n for n in outgoing if n.lower() not in skip_nodes]
+        if incoming_filtered:
+            parts.append(f"Triggered after: {', '.join(incoming_filtered)}.")
+        if outgoing_filtered:
+            parts.append(f"Followed by: {', '.join(outgoing_filtered)}.")
+        return " ".join(parts).strip()
+    else:
+        # no description → LLM generates from name + context
+        from apps.analysis.summary.bpmn_task_summary import summarize_bpmn_task
+        return summarize_bpmn_task(
+            name=name,
+            description=desc,
+            task_type=task_type,
+            incoming=incoming,
+            outgoing=outgoing,
+        )
+
+def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
+    """
+    Replace all BPMN tasks for a project and regenerate task summaries.
+
+    Expected input:
+      [
+        {
+          "task_id": "...", "name": "...", "description": "...",
+          "task_type": "...", "incoming_nodes": [...], "outgoing_nodes": [...]
+        },
+        ...
+      ]
+    """
+    BpmnTask.objects.filter(project=project).delete()
+
+    objs: List[BpmnTask] = []
+    for t in tasks:
+        task_id = str(t.get("task_id", "")).strip()
+        name = str(t.get("name", "")).strip() or "Unnamed Task"
+        desc = str(t.get("description", "")).strip()
+        task_type = str(t.get("task_type", "")).strip()
+        incoming_nodes = t.get("incoming_nodes") or []
+        outgoing_nodes = t.get("outgoing_nodes") or []
+
+        if not task_id:
+            continue
+
+        summary = _build_task_summary(name, desc, task_type, incoming_nodes, outgoing_nodes)
+
+        objs.append(
+            BpmnTask(
+                project=project,
+                task_id=task_id,
+                name=name,
+                description=desc,
+                task_type=task_type,
+                incoming_nodes=incoming_nodes,
+                outgoing_nodes=outgoing_nodes,
+                summary_text=summary,
+            )
+        )
+
+    if objs:
+        BpmnTask.objects.bulk_create(objs)
+
+    return BpmnTask.objects.filter(project=project).count()
+
+
+def replace_match_results(project, results: List[Dict[str, Any]]) -> int:
+    """
+    Replace all stored match results for a project.
+
+    Expected input:
+      [
+        {
+          "status": "MATCHED|MISSING|EXTRA",
+          "task_id": "... optional ...",
+          "code_ref": "...",
+          "similarity_score": 0.82
+        },
+        ...
+      ]
+    """
+    MatchResult.objects.filter(project=project).delete()
+
+    task_map = {t.task_id: t for t in project.bpmn_tasks.all()}
+
+    objs: List[MatchResult] = []
+    for r in results:
+        status = str(r.get("status", "MATCHED")).upper().strip()
+        task_id = str(r.get("task_id", "")).strip()
+        task = task_map.get(task_id) if task_id else None
+
+        objs.append(
+            MatchResult(
+                project=project,
+                task=task,
+                code_ref=str(r.get("code_ref", "")).strip(),
+                similarity_score=float(r.get("similarity_score", 0.0) or 0.0),
+                status=status,
+            )
+        )
+
+    if objs:
+        MatchResult.objects.bulk_create(objs)
+
+    return MatchResult.objects.filter(project=project).count()

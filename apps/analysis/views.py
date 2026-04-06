@@ -14,7 +14,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from apps.projects.models import Project, ProjectMembership, ProjectFile
 from apps.analysis.models import AnalysisRun
 from apps.accounts.rbac import is_admin, is_evaluator
-from .services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
+from .services.services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
 
 # ============================================================
 # Helpers

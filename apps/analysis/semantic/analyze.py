@@ -5,12 +5,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
-
 from apps.analysis.bpmn.parser import extract_bpmn_graph, extract_tasks
-from apps.analysis.bpmn.pipeline import run_bpmn_predev
-
 from apps.analysis.embeddings.pipeline import embed_pipeline
-
 from apps.analysis.semantic.similarity import compute_similarity, top_k_matches
 from apps.analysis.semantic.matcher import greedy_one_to_one_match, best_per_task_match
 
@@ -81,14 +77,6 @@ def _artifact_rel_or_skip(artifact_file_path: str, code_root_path: Union[str, Pa
 # -------------------------------------------------
 # Text helpers
 # -------------------------------------------------
-
-def _to_bytes(bpmn_input: Union[str, Path, bytes]) -> bytes:
-    if isinstance(bpmn_input, (bytes, bytearray)):
-        return bytes(bpmn_input)
-    p = bpmn_input if isinstance(bpmn_input, Path) else Path(str(bpmn_input))
-    return p.read_bytes()
-
-
 def _humanize_symbol(symbol: str) -> str:
     s = (symbol or "").strip().replace("_", " ")
     if not s:
@@ -136,20 +124,36 @@ def analyze_project(
     # -------------------------------------------------
     # 1) BPMN parsing
     # -------------------------------------------------
+    # -------------------------------------------------
+# 1) BPMN parsing
+# -------------------------------------------------
     bpmn_graph = extract_bpmn_graph(bpmn_input)
-    bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
 
-    # -------------------------------------------------
-    # 2) BPMN workflow summary
-    # -------------------------------------------------
-    bpmn_summary = ""
-    try:
-        bpmn_bytes = _to_bytes(bpmn_input)
-        predev = run_bpmn_predev(bpmn_bytes, do_summary=True)
-        bpmn_summary = (predev.get("summary") or "").strip()
-    except Exception:
-        bpmn_summary = ""
+    if project is not None:
+        from apps.analysis.models import BpmnTask as BpmnTaskModel
+        db_tasks = BpmnTaskModel.objects.filter(project=project)
+        if db_tasks.exists():
+            bpmn_tasks = [
+                {
+                    "id": t.task_id,
+                    "name": t.name,
+                    "description": t.summary_text or t.description or "",
+                }
+                for t in db_tasks
+            ]
+        else:
+            bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
+    else:
+        bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
+        print("\n" + "="*60)
+    print("BPMN TASK SUMMARIES (going into embedder)")
+    print("="*60)
+    for t in bpmn_tasks:
+        print(f"  Task : {t.get('name')}")
+        print(f"  Text : {t.get('description')}")
+        print()
 
+    print("="*60)
     # -------------------------------------------------
     # 3) Load persisted CodeArtifacts from DB
     # -------------------------------------------------
@@ -158,6 +162,7 @@ def analyze_project(
 
     if project is not None:
         artifacts = list(CodeArtifact.objects.filter(project=project).order_by("file_path", "symbol"))
+
         if artifacts:
             filtered: List[CodeArtifact] = []
             for a in artifacts:
@@ -172,6 +177,10 @@ def analyze_project(
                 for a in filtered:
                     symbol = (a.symbol or "").strip() or _fallback_symbol_from_uid(a.code_uid)
                     summary_text = (a.summary_text or "").strip() or "Implements its main behavior based on available code context."
+                    print("\n----------- CODE SUMMARY -----------")
+                    print(f"Function: {symbol}")
+                    print(f"Summary: {summary_text}")
+                    print("------------------------------------")
                     human_title = _humanize_symbol(symbol) or "Unnamed Function"
 
                     code_items.append(
@@ -209,7 +218,13 @@ def analyze_project(
                 "extra": 0,
             },
         }
-
+    print("CODE SUMMARIES (going into embedder)")
+    print("="*60)
+    for item in code_items:
+        print(f"  Symbol  : {item.get('name')}")
+        print(f"  Summary : {item.get('summary_text')}")
+        print()
+    print("="*60 + "\n")
     # -------------------------------------------------
     # 4) Embed tasks + code
     # -------------------------------------------------
@@ -250,7 +265,6 @@ def analyze_project(
             "used_persisted_code_artifacts": bool(used_persisted),
         },
         "bpmn": bpmn_graph,
-        "bpmn_summary": bpmn_summary,
         "code": {"items": code_items},
         "matching": matching,
         "top_k": top_k_matches(similarity=similarity, k=int(top_k)),
