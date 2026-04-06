@@ -3,8 +3,30 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from apps.analysis.models import BpmnTask, MatchResult
-from apps.analysis.summary.bpmn_task_summary import summarize_bpmn_task
 
+
+def _build_task_summary(name: str, desc: str, task_type: str, incoming: list, outgoing: list) -> str:
+    if desc:
+        # description exists → use directly, no LLM
+        parts = [desc]
+        skip_nodes = {"order received", "order confirmed", "start", "end", "startevent", "endevent"}
+        incoming_filtered = [n for n in incoming if n.lower() not in skip_nodes]
+        outgoing_filtered = [n for n in outgoing if n.lower() not in skip_nodes]
+        if incoming_filtered:
+            parts.append(f"Triggered after: {', '.join(incoming_filtered)}.")
+        if outgoing_filtered:
+            parts.append(f"Followed by: {', '.join(outgoing_filtered)}.")
+        return " ".join(parts).strip()
+    else:
+        # no description → LLM generates from name + context
+        from apps.analysis.summary.bpmn_task_summary import summarize_bpmn_task
+        return summarize_bpmn_task(
+            name=name,
+            description=desc,
+            task_type=task_type,
+            incoming=incoming,
+            outgoing=outgoing,
+        )
 
 def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
     """
@@ -12,7 +34,10 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
 
     Expected input:
       [
-        {"task_id": "...", "name": "...", "description": "..."},
+        {
+          "task_id": "...", "name": "...", "description": "...",
+          "task_type": "...", "incoming_nodes": [...], "outgoing_nodes": [...]
+        },
         ...
       ]
     """
@@ -23,11 +48,14 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
         task_id = str(t.get("task_id", "")).strip()
         name = str(t.get("name", "")).strip() or "Unnamed Task"
         desc = str(t.get("description", "")).strip()
+        task_type = str(t.get("task_type", "")).strip()
+        incoming_nodes = t.get("incoming_nodes") or []
+        outgoing_nodes = t.get("outgoing_nodes") or []
 
         if not task_id:
             continue
 
-        summary = summarize_bpmn_task(name=name, description=desc)
+        summary = _build_task_summary(name, desc, task_type, incoming_nodes, outgoing_nodes)
 
         objs.append(
             BpmnTask(
@@ -35,6 +63,9 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
                 task_id=task_id,
                 name=name,
                 description=desc,
+                task_type=task_type,
+                incoming_nodes=incoming_nodes,
+                outgoing_nodes=outgoing_nodes,
                 summary_text=summary,
             )
         )
