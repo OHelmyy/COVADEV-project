@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from django.db import transaction
 from django.utils import timezone
 
-from apps.analysis.bpmn.parser import extract_tasks
+from apps.analysis.bpmn.parser import extract_tasks_with_context
 from apps.analysis.models import AnalysisRun
 from apps.analysis.models_code import CodeArtifact
 from apps.analysis.semantic.analyze import analyze_project
@@ -58,7 +58,6 @@ class PostDevPipeline(BasePipeline):
         self.bpmn_bytes: bytes = b""
         self.code_root: Optional[Path] = None
 
-        self.parsed_tasks: List[Dict[str, Any]] = []
         self.storage_tasks: List[Dict[str, Any]] = []
 
         self.threshold: float = 0.6
@@ -103,15 +102,7 @@ class PostDevPipeline(BasePipeline):
         self.code_root = self._resolve_code_root_from_project(self.project)
 
     def preprocess(self) -> None:
-        self.parsed_tasks = extract_tasks(self.bpmn_bytes)
-        self.storage_tasks = [
-            {
-                "task_id": t.get("id", ""),
-                "name": t.get("name", ""),
-                "description": t.get("description", ""),
-            }
-            for t in self.parsed_tasks
-        ]
+        self.storage_tasks = extract_tasks_with_context(self.bpmn_bytes)
 
     def execute(self) -> None:
         # 1) Store BPMN tasks
