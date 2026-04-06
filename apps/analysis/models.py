@@ -53,7 +53,10 @@ class BpmnTask(models.Model):
     description = models.TextField(blank=True, default="")
     summary_text = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
-
+    incoming_nodes = models.JSONField(default=list, blank=True)               # ← add
+    outgoing_nodes = models.JSONField(default=list, blank=True)
+    task_type = models.CharField(max_length=50, blank=True, default="")        # ← add
+               # ← add
     class Meta:
         # Task IDs are unique within the same project
         constraints = [
