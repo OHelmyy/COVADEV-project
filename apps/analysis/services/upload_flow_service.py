@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from apps.analysis.bpmn.pipeline import run_bpmn_predev
+from apps.analysis.bpmn.parser import extract_tasks_with_context
 from apps.projects.services import save_bpmn_file
 
 from .storage_service import replace_bpmn_tasks
@@ -15,10 +16,11 @@ def run_bpmn_upload_flow(project, uploaded_file, user) -> Dict[str, Any]:
     Orchestrates:
       1) read BPMN bytes
       2) save BPMN file
-      3) run pre-dev pipeline
-      4) replace project BPMN tasks
-      5) persist precheck + summary on active BPMN file
-      6) ensure project.active_bpmn is set
+      3) run pre-dev pipeline (precheck + T5 summary for UI)
+      4) extract tasks with rich context from parser
+      5) replace project BPMN tasks
+      6) persist precheck + summary on active BPMN file
+      7) ensure project.active_bpmn is set
     """
     bpmn_bytes = uploaded_file.read()
     uploaded_file.seek(0)
@@ -33,23 +35,11 @@ def run_bpmn_upload_flow(project, uploaded_file, user) -> Dict[str, Any]:
     if bpmn_obj is None:
         raise RuntimeError("BPMN file saved, but active BPMN was not set.")
 
+    # precheck + T5 summary (used in BPMN Check tab on UI)
     predev = run_bpmn_predev(bpmn_bytes, do_summary=True)
 
-    extracted_tasks = predev.get("tasks", []) or []
-
-    storage_tasks: List[Dict[str, Any]] = []
-    for t in extracted_tasks:
-        task_id = str(t.get("id", "") or "").strip()
-        if not task_id:
-            continue
-
-        storage_tasks.append(
-            {
-                "task_id": task_id,
-                "name": str(t.get("name", "") or "").strip(),
-                "description": str(t.get("description", "") or "").strip(),
-            }
-        )
+    # extract tasks with full context (type, incoming, outgoing)
+    storage_tasks = extract_tasks_with_context(bpmn_bytes)
 
     replace_bpmn_tasks(project, storage_tasks)
 
