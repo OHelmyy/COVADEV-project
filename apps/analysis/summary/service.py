@@ -17,20 +17,14 @@ from .generator import build_generator_block
 # - Make it useful for semantic matching with BPMN
 # """
 
-CODE_COMPARE_RULES = """Read the CODE section and write ONE short sentence describing what this code actually does.
+CODE_COMPARE_RULES = """Write one short sentence describing what the code does.
 
 Rules:
- - Describe what the code LITERALLY does — what it reads, checks, calculates, or returns
- - Do NOT rephrase or repeat the function name as the summary
- - If the code returns a value, say what it returns and from where
- - If the code validates something, say what condition it checks
- - If the code saves something, say what it saves and where
- - Mention actual objects (dictionary, list, string, database record)
- - Do NOT start with "This function", "The function", function name
- - One sentence only, complete sentence, no cut off
- - Make it useful for semantic matching with BPMN business tasks
- """
-
+- Mention the real action
+- Mention the main object
+- Do not repeat the function name
+- One sentence only
+"""
 DETAILED_RULES = """You explain code behavior clearly for humans.
  Task: Write 2 to 4 short sentences explaining what the function does and how it does it.
  Rules:
@@ -88,10 +82,9 @@ def clean_summary(text: str) -> str:
 
 
 class SummaryService:
-    MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+    MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
     def __init__(self) -> None:
-        print("DDDD -> SummaryService init")
         self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_NAME)
         self.model = AutoModelForCausalLM.from_pretrained(
             self.MODEL_NAME,
@@ -112,7 +105,7 @@ class SummaryService:
 
             short_prompt = build_code_compare_prompt(block)
 
-            short_raw = self._call_model(short_prompt, max_new_tokens=48)
+            short_raw = self._call_model(short_prompt, max_new_tokens=20)
 
             print("UID:", uid)
             print("SHORT RAW:", repr(short_raw))
