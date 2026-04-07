@@ -74,8 +74,9 @@ def generate_recommendations_local(summary: str) -> List[str]:
 
 def run_recommendation_pipeline(summary: str):
     """
-    Backward-compatible wrapper around the Template Method pipeline.
+    Factory-based wrapper for recommendation pipeline.
     """
-    from apps.analysis.pipelines.recommendation_pipeline import RecommendationPipeline
+    from apps.analysis.pipelines.pipeline_factory import PipelineFactory
 
-    return RecommendationPipeline(summary=summary).run()
+    pipeline = PipelineFactory.create_recommendation(summary=summary)
+    return pipeline.run()

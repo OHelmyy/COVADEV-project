@@ -3,25 +3,25 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from concurrent.futures import ThreadPoolExecutor
+
 from django.db import transaction
 from django.utils import timezone
 
 from apps.analysis.bpmn.parser import extract_tasks_with_context
 from apps.analysis.models import AnalysisRun
 from apps.analysis.models_code import CodeArtifact
-from apps.analysis.semantic.analyze import analyze_project
-from apps.projects.services import _persist_code_artifacts_with_summaries
-from concurrent.futures import ThreadPoolExecutor
-from .base_pipeline import BasePipeline
 from apps.analysis.semantic.analyze import (
     analyze_bpmn_side,
     analyze_code_side,
     match_bpmn_code,
 )
+from apps.projects.services import _persist_code_artifacts_with_summaries
 
-class PostDevPipeline(BasePipeline):
+
+class PostDevPipeline:
     """
-    Concrete Template Method pipeline for full project analysis.
+    Factory-based concrete pipeline for full project analysis.
 
     Keeps the same high-level behavior as the old run_analysis_for_project():
       - validate active BPMN/code
@@ -46,7 +46,6 @@ class PostDevPipeline(BasePipeline):
         replace_bpmn_tasks_func,
         replace_match_results_func,
     ) -> None:
-        super().__init__()
         self.project = project
         self.matcher = matcher
         self.top_k = int(top_k)
@@ -68,33 +67,25 @@ class PostDevPipeline(BasePipeline):
         self.engine_result: Dict[str, Any] = {}
         self.storage_results: List[Dict[str, Any]] = []
 
-        self._failed_early: bool = False
-        self._failure_message: str = ""
-
     def run(self) -> AnalysisRun:
-        """
-        Override the base run() because this pipeline must:
-          - return AnalysisRun (not dict)
-          - handle failure by marking the run FAILED
-        """
         try:
-            self.validate()
-            self.load()
-            self.preprocess()
-            self.execute()
-            self.save()
-            return self.build_response()
+            self._validate()
+            self._load()
+            self._preprocess()
+            self._execute()
+            self._save()
+            return self._build_response()
         except Exception as e:
             self._mark_failed(str(e))
-            return self.build_response()
+            return self._build_response()
 
-    def validate(self) -> None:
+    def _validate(self) -> None:
         if not getattr(self.project, "active_bpmn", None):
             raise ValueError("No active BPMN uploaded for this project.")
         if not getattr(self.project, "active_code", None):
             raise ValueError("No active Code ZIP uploaded for this project.")
 
-    def load(self) -> None:
+    def _load(self) -> None:
         with transaction.atomic():
             self.run_obj = AnalysisRun.objects.create(project=self.project, status="PENDING")
             self.run_obj.status = "RUNNING"
@@ -105,10 +96,10 @@ class PostDevPipeline(BasePipeline):
         self.bpmn_bytes = self.bpmn_abs.read_bytes()
         self.code_root = self._resolve_code_root_from_project(self.project)
 
-    def preprocess(self) -> None:
+    def _preprocess(self) -> None:
         self.storage_tasks = extract_tasks_with_context(self.bpmn_bytes)
 
-    def execute(self) -> None:
+    def _execute(self) -> None:
         CodeArtifact.objects.filter(project=self.project).delete()
 
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -127,10 +118,8 @@ class PostDevPipeline(BasePipeline):
             future_bpmn.result()
             future_code.result()
 
-        # 3) Threshold
         self.threshold = float(getattr(self.project, "similarity_threshold", 0.6) or 0.6)
 
-        # 4) Run BPMN side + Code side 
         bpmn_result = analyze_bpmn_side(
             bpmn_input=self.bpmn_bytes,
             project=self.project,
@@ -141,7 +130,6 @@ class PostDevPipeline(BasePipeline):
             project=self.project,
         )
 
-        # 5) Run matching after both finish
         match_result = match_bpmn_code(
             bpmn_tasks=bpmn_result["bpmn_tasks"],
             code_items=code_result["code_items"],
@@ -151,7 +139,6 @@ class PostDevPipeline(BasePipeline):
             batch_size=32,
         )
 
-        # keep engine_result shape close to old flow
         self.engine_result = {
             "meta": {
                 "matcher": match_result["matcher_norm"],
@@ -173,7 +160,6 @@ class PostDevPipeline(BasePipeline):
             },
         }
 
-        # 6) Convert matching result into storage schema
         matching = self.engine_result.get("matching") or {}
         matched = matching.get("matched") or []
         missing = matching.get("missing") or []
@@ -211,7 +197,7 @@ class PostDevPipeline(BasePipeline):
                 }
             )
 
-    def save(self) -> None:
+    def _save(self) -> None:
         self._replace_match_results(self.project, self.storage_results)
 
         if not self.run_obj:
@@ -222,14 +208,13 @@ class PostDevPipeline(BasePipeline):
         self.run_obj.error_message = ""
         self.run_obj.save(update_fields=["status", "finished_at", "error_message"])
 
-    def build_response(self) -> AnalysisRun:
+    def _build_response(self) -> AnalysisRun:
         if not self.run_obj:
             raise RuntimeError("AnalysisRun was not initialized.")
         return self.run_obj
 
     def _mark_failed(self, message: str) -> None:
         if not self.run_obj:
-            # validation failed before AnalysisRun creation
             with transaction.atomic():
                 self.run_obj = AnalysisRun.objects.create(
                     project=self.project,
