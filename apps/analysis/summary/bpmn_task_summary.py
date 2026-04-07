@@ -1,21 +1,14 @@
 from __future__ import annotations
 
 from typing import Optional, List
-from transformers import AutoTokenizer, AutoModelForCausalLM
+
 import torch
 
-MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+from .shared_model_singleton import ModelProvider
 
-tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME,
-    trust_remote_code=True,
-)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    dtype=torch.float16,
-    device_map="auto",
-    trust_remote_code=True,
-)
+provider = ModelProvider()
+tokenizer = provider.tokenizer
+model = provider.model
 
 
 def summarize_bpmn_task_text(prompt: str) -> str:
@@ -166,4 +159,4 @@ def clean_summary(text: str) -> str:
     if t.lower().startswith("is "):
         t = t[3:].strip()
 
-    return t[:1].upper() + t[1:]
+    return t[:1].upper() + t[1:] if t else t

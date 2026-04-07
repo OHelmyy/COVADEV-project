@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Dict, List
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from .generator import build_generator_block
+from .shared_model_singleton import ModelProvider
 
 # CODE_COMPARE_RULES = """Write ONE short technical sentence describing what this function does.
 
@@ -25,6 +25,7 @@ Rules:
 - Do not repeat the function name
 - One sentence only
 """
+
 DETAILED_RULES = """You explain code behavior clearly for humans.
  Task: Write 2 to 4 short sentences explaining what the function does and how it does it.
  Rules:
@@ -34,6 +35,7 @@ DETAILED_RULES = """You explain code behavior clearly for humans.
  - Do NOT invent details not in the input.
  - Output plain text only (no bullets, no quotes).
 """
+
 
 def build_code_compare_prompt(structured_block: str) -> str:
     return CODE_COMPARE_RULES + "\nINPUT:\n" + structured_block
@@ -79,18 +81,13 @@ def clean_summary(text: str) -> str:
     return t[:1].upper() + t[1:] if t else t
 
 
-
-
 class SummaryService:
     MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
     def __init__(self) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_NAME)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.MODEL_NAME,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            device_map="auto",
-        )
+        provider = ModelProvider()
+        self.tokenizer = provider.tokenizer
+        self.model = provider.model
 
     def summarize_many(self, structured_functions: List[Dict]) -> Dict[str, Dict[str, str]]:
         print("EEEE -> functions:", len(structured_functions))
@@ -102,9 +99,7 @@ class SummaryService:
                 continue
 
             block = build_generator_block(sf)
-
             short_prompt = build_code_compare_prompt(block)
-
             short_raw = self._call_model(short_prompt, max_new_tokens=20)
 
             print("UID:", uid)
@@ -118,7 +113,6 @@ class SummaryService:
                 short_clean = ""
 
             out[uid] = short_clean
-
 
         return out
 

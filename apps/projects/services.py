@@ -12,7 +12,7 @@ from django.db import transaction
 
 from .models import Project, ProjectFile, CodeFile
 from apps.analysis.code.structured_extractor import extract_structured_from_directory
-from apps.analysis.summary.service import SummaryService
+from apps.analysis.summary.code_summary_service import SummaryService
 from apps.analysis.models_code import CodeArtifact
 import traceback
 
