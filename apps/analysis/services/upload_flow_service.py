@@ -10,18 +10,6 @@ from .storage_service import replace_bpmn_tasks
 
 
 def run_bpmn_upload_flow(project, uploaded_file, user) -> Dict[str, Any]:
-    """
-    Application flow for BPMN upload.
-
-    Orchestrates:
-      1) read BPMN bytes
-      2) save BPMN file
-      3) run pre-dev pipeline (precheck + T5 summary for UI)
-      4) extract tasks with rich context from parser
-      5) replace project BPMN tasks
-      6) persist precheck + summary on active BPMN file
-      7) ensure project.active_bpmn is set
-    """
     bpmn_bytes = uploaded_file.read()
     uploaded_file.seek(0)
 
@@ -35,13 +23,9 @@ def run_bpmn_upload_flow(project, uploaded_file, user) -> Dict[str, Any]:
     if bpmn_obj is None:
         raise RuntimeError("BPMN file saved, but active BPMN was not set.")
 
-    # precheck + T5 summary (used in BPMN Check tab on UI)
     predev = run_bpmn_predev(bpmn_bytes, do_summary=True)
 
-    # extract tasks with full context (type, incoming, outgoing)
     storage_tasks = extract_tasks_with_context(bpmn_bytes)
-
-    replace_bpmn_tasks(project, storage_tasks)
 
     bpmn_obj.is_well_formed = bool(predev.get("ok", False))
     bpmn_obj.precheck_warnings = predev.get("warnings", []) or []
@@ -56,12 +40,11 @@ def run_bpmn_upload_flow(project, uploaded_file, user) -> Dict[str, Any]:
         ]
     )
 
-    if getattr(project, "active_bpmn_id", None) != bpmn_obj.id:
-        project.active_bpmn = bpmn_obj
-        project.save(update_fields=["active_bpmn"])
-
     return {
-        "ok": True,
+        "ok": bool(predev.get("ok", False)),
+        "warnings": predev.get("warnings", []) or [],
+        "errors": predev.get("errors", []) or [],
+        "summary": predev.get("summary", "") or "",
+        "taskCount": len(storage_tasks),
         "active_bpmn": bpmn_obj,
-        "predev": predev,
     }
