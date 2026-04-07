@@ -115,85 +115,17 @@ def analyze_project(
     project=None,
 ) -> Dict[str, Any]:
     """
-    Core semantic engine.
+    Refactored semantic engine.
     Compares BPMN TASKS ↔ Code function summaries.
     """
 
-    code_root_path = _norm_abs(_ensure_path(code_root))
+    bpmn_result = analyze_bpmn_side(
+        bpmn_input=bpmn_input,
+        project=project,
+    )
+    bpmn_graph = bpmn_result["bpmn_graph"]
+    bpmn_tasks = bpmn_result["bpmn_tasks"]
 
-    # -------------------------------------------------
-    # 1) BPMN parsing
-    # -------------------------------------------------
-    # -------------------------------------------------
-# 1) BPMN parsing
-# -------------------------------------------------
-    bpmn_graph = extract_bpmn_graph(bpmn_input)
-
-    if project is not None:
-        from apps.analysis.models import BpmnTask as BpmnTaskModel
-        db_tasks = BpmnTaskModel.objects.filter(project=project)
-        if db_tasks.exists():
-            bpmn_tasks = [
-                {
-                    "id": t.task_id,
-                    "name": t.name,
-                    "description": t.summary_text or t.description or "",
-                }
-                for t in db_tasks
-            ]
-        else:
-            bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
-    else:
-        bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
-        print("\n" + "="*60)
-    print("BPMN TASK SUMMARIES (going into embedder)")
-    print("="*60)
-    for t in bpmn_tasks:
-        print(f"  Task : {t.get('name')}")
-        print(f"  Text : {t.get('description')}")
-        print()
-
-    print("="*60)
-    # -------------------------------------------------
-    # 3) Load persisted CodeArtifacts from DB
-    # -------------------------------------------------
-    code_items: List[Dict[str, Any]] = []
-    used_persisted = False
-
-    if project is not None:
-        artifacts = list(CodeArtifact.objects.filter(project=project).order_by("file_path", "symbol"))
-
-        if artifacts:
-            filtered: List[CodeArtifact] = []
-            for a in artifacts:
-                rel = _artifact_rel_or_skip(a.file_path or "", code_root_path)
-                if not rel:
-                    continue
-                a.file_path = rel
-                filtered.append(a)
-
-            if filtered:
-                used_persisted = True
-                for a in filtered:
-                    symbol = (a.symbol or "").strip() or _fallback_symbol_from_uid(a.code_uid)
-                    summary_text = (a.summary_text or "").strip() or "Implements its main behavior based on available code context."
-                    print("\n----------- CODE SUMMARY -----------")
-                    print(f"Function: {symbol}")
-                    print(f"Summary: {summary_text}")
-                    print("------------------------------------")
-                    human_title = _humanize_symbol(symbol) or "Unnamed Function"
-
-                    code_items.append(
-                        {
-                            "id": a.code_uid,
-                            "type": a.kind or "function",
-                            "name": symbol,
-                            "source_path": a.file_path or "",
-                            "summary_text": summary_text,
-                            "text": f"Task: {human_title}. Description: {summary_text}",
-                        }
-                    )
-    # early exit if no BPMN tasks
     if not bpmn_tasks:
         return {
             "error": "No BPMN tasks found. Please check the uploaded BPMN.",
@@ -206,7 +138,14 @@ def analyze_project(
             },
         }
 
-    # early exit if no code artifacts
+    code_result = analyze_code_side(
+        code_root=code_root,
+        project=project,
+    )
+    code_root_path = code_result["code_root_path"]
+    code_items = code_result["code_items"]
+    used_persisted = code_result["used_persisted"]
+
     if not code_items:
         return {
             "error": "No code artifacts found. Please upload code first.",
@@ -218,40 +157,22 @@ def analyze_project(
                 "extra": 0,
             },
         }
-    print("CODE SUMMARIES (going into embedder)")
-    print("="*60)
-    for item in code_items:
-        print(f"  Symbol  : {item.get('name')}")
-        print(f"  Summary : {item.get('summary_text')}")
-        print()
-    print("="*60 + "\n")
-    # -------------------------------------------------
-    # 4) Embed tasks + code
-    # -------------------------------------------------
-    embedded = embed_pipeline(
-        tasks=bpmn_tasks,
+
+    match_result = match_bpmn_code(
+        bpmn_tasks=bpmn_tasks,
         code_items=code_items,
+        threshold=threshold,
+        matcher=matcher,
+        top_k=top_k,
         batch_size=batch_size,
     )
 
-    # -------------------------------------------------
-    # 5) Similarity + matching
-    # -------------------------------------------------
-    similarity = compute_similarity(
-        task_embeddings=embedded["task_embeddings"],
-        code_embeddings=embedded["code_embeddings"],
-    )
+    matching = match_result["matching"]
+    similarity = match_result["similarity"]
+    embedded = match_result["embedded"]
+    matcher_norm = match_result["matcher_norm"]
+    top_k_result = match_result["top_k"]
 
-    matcher_norm = (matcher or "").strip().lower()
-    if matcher_norm == "best_per_task":
-        matching = best_per_task_match(similarity=similarity, threshold=float(threshold))
-    else:
-        matcher_norm = "greedy"
-        matching = greedy_one_to_one_match(similarity=similarity, threshold=float(threshold))
-
-    # -------------------------------------------------
-    # 6) Build result
-    # -------------------------------------------------
     matched_list = matching.get("matched") or []
     missing_list = matching.get("missing") or []
     extra_list = matching.get("extra") or []
@@ -267,7 +188,7 @@ def analyze_project(
         "bpmn": bpmn_graph,
         "code": {"items": code_items},
         "matching": matching,
-        "top_k": top_k_matches(similarity=similarity, k=int(top_k)),
+        "top_k": top_k_result,
         "stats": {
             "tasks": len(bpmn_tasks),
             "code_count_embedded": len(code_items),
@@ -285,3 +206,154 @@ def analyze_project(
         }
 
     return result
+
+def analyze_bpmn_side(
+    *,
+    bpmn_input: Union[str, Path, bytes],
+    project=None,
+) -> Dict[str, Any]:
+    """
+    BPMN-only stage.
+    """
+    bpmn_graph = extract_bpmn_graph(bpmn_input)
+
+    if project is not None:
+        from apps.analysis.models import BpmnTask as BpmnTaskModel
+
+        db_tasks = BpmnTaskModel.objects.filter(project=project)
+        if db_tasks.exists():
+            bpmn_tasks = [
+                {
+                    "id": t.task_id,
+                    "name": t.name,
+                    "description": t.summary_text or t.description or "",
+                }
+                for t in db_tasks
+            ]
+        else:
+            bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
+    else:
+        bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
+
+    print("\n" + "=" * 60)
+    print("BPMN TASK SUMMARIES (going into embedder)")
+    print("=" * 60)
+    for t in bpmn_tasks:
+        print(f"  Task : {t.get('name')}")
+        print(f"  Text : {t.get('description')}")
+        print()
+    print("=" * 60)
+
+    return {
+        "bpmn_graph": bpmn_graph,
+        "bpmn_tasks": bpmn_tasks,
+    }
+
+def analyze_code_side(
+    *,
+    code_root: Union[str, Path],
+    project=None,
+) -> Dict[str, Any]:
+    """
+    Code-only stage.
+    """
+    code_root_path = _norm_abs(_ensure_path(code_root))
+
+    code_items: List[Dict[str, Any]] = []
+    used_persisted = False
+
+    if project is not None:
+        artifacts = list(
+            CodeArtifact.objects.filter(project=project).order_by("file_path", "symbol")
+        )
+
+        if artifacts:
+            filtered: List[CodeArtifact] = []
+            for a in artifacts:
+                rel = _artifact_rel_or_skip(a.file_path or "", code_root_path)
+                if not rel:
+                    continue
+                a.file_path = rel
+                filtered.append(a)
+
+            if filtered:
+                used_persisted = True
+                for a in filtered:
+                    symbol = (a.symbol or "").strip() or _fallback_symbol_from_uid(a.code_uid)
+                    summary_text = (a.summary_text or "").strip() or "Implements its main behavior based on available code context."
+
+                    print("\n----------- CODE SUMMARY -----------")
+                    print(f"Function: {symbol}")
+                    print(f"Summary: {summary_text}")
+                    print("------------------------------------")
+
+                    human_title = _humanize_symbol(symbol) or "Unnamed Function"
+
+                    code_items.append(
+                        {
+                            "id": a.code_uid,
+                            "type": a.kind or "function",
+                            "name": symbol,
+                            "source_path": a.file_path or "",
+                            "summary_text": summary_text,
+                            "text": f"Task: {human_title}. Description: {summary_text}",
+                        }
+                    )
+
+    print("CODE SUMMARIES (going into embedder)")
+    print("=" * 60)
+    for item in code_items:
+        print(f"  Symbol  : {item.get('name')}")
+        print(f"  Summary : {item.get('summary_text')}")
+        print()
+    print("=" * 60 + "\n")
+
+    return {
+        "code_root_path": code_root_path,
+        "code_items": code_items,
+        "used_persisted": used_persisted,
+    }
+
+def match_bpmn_code(
+    *,
+    bpmn_tasks: List[Dict[str, Any]],
+    code_items: List[Dict[str, Any]],
+    threshold: float = 0.6,
+    matcher: str = "greedy",
+    top_k: int = 3,
+    batch_size: int = 32,
+) -> Dict[str, Any]:
+    """
+    Embedding + similarity + matching only.
+    """
+    embedded = embed_pipeline(
+        tasks=bpmn_tasks,
+        code_items=code_items,
+        batch_size=batch_size,
+    )
+
+    similarity = compute_similarity(
+        task_embeddings=embedded["task_embeddings"],
+        code_embeddings=embedded["code_embeddings"],
+    )
+
+    matcher_norm = (matcher or "").strip().lower()
+    if matcher_norm == "best_per_task":
+        matching = best_per_task_match(
+            similarity=similarity,
+            threshold=float(threshold),
+        )
+    else:
+        matcher_norm = "greedy"
+        matching = greedy_one_to_one_match(
+            similarity=similarity,
+            threshold=float(threshold),
+        )
+
+    return {
+        "matcher_norm": matcher_norm,
+        "embedded": embedded,
+        "similarity": similarity,
+        "matching": matching,
+        "top_k": top_k_matches(similarity=similarity, k=int(top_k)),
+    }
