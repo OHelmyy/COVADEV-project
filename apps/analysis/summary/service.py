@@ -100,7 +100,6 @@ class SummaryService:
         )
 
     def summarize_many(self, structured_functions: List[Dict]) -> Dict[str, Dict[str, str]]:
-        print("EEEE -> summarize_many CALLED")
         print("EEEE -> functions:", len(structured_functions))
         out: Dict[str, Dict[str, str]] = {}
 

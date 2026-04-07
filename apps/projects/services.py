@@ -240,7 +240,6 @@ def save_code_zip_and_extract(project: Project, uploaded_zip, uploader):
     - Clears old extracted code folder content before extracting
     - Updates project.active_code pointer
     """
-    print("AAAA -> save_code_zip_and_extract CALLED")
     code_root = Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "code"
     code_root.mkdir(parents=True, exist_ok=True)
 

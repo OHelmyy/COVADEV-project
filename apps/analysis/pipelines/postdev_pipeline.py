@@ -11,9 +11,13 @@ from apps.analysis.models import AnalysisRun
 from apps.analysis.models_code import CodeArtifact
 from apps.analysis.semantic.analyze import analyze_project
 from apps.projects.services import _persist_code_artifacts_with_summaries
-
+from concurrent.futures import ThreadPoolExecutor
 from .base_pipeline import BasePipeline
-
+from apps.analysis.semantic.analyze import (
+    analyze_bpmn_side,
+    analyze_code_side,
+    match_bpmn_code,
+)
 
 class PostDevPipeline(BasePipeline):
     """
@@ -105,31 +109,71 @@ class PostDevPipeline(BasePipeline):
         self.storage_tasks = extract_tasks_with_context(self.bpmn_bytes)
 
     def execute(self) -> None:
-        # 1) Store BPMN tasks
-        self._replace_bpmn_tasks(self.project, self.storage_tasks)
-
-        # 2) Regenerate fresh code summaries / artifacts
         CodeArtifact.objects.filter(project=self.project).delete()
 
-        _persist_code_artifacts_with_summaries(
-            project=self.project,
-            code_root_dir=self.code_root,
-        )
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_bpmn = executor.submit(
+                self._replace_bpmn_tasks,
+                self.project,
+                self.storage_tasks,
+            )
 
-        # 3) Semantic engine
+            future_code = executor.submit(
+                _persist_code_artifacts_with_summaries,
+                project=self.project,
+                code_root_dir=self.code_root,
+            )
+
+            future_bpmn.result()
+            future_code.result()
+
+        # 3) Threshold
         self.threshold = float(getattr(self.project, "similarity_threshold", 0.6) or 0.6)
 
-        self.engine_result = analyze_project(
+        # 4) Run BPMN side + Code side 
+        bpmn_result = analyze_bpmn_side(
             bpmn_input=self.bpmn_bytes,
+            project=self.project,
+        )
+
+        code_result = analyze_code_side(
             code_root=self.code_root,
+            project=self.project,
+        )
+
+        # 5) Run matching after both finish
+        match_result = match_bpmn_code(
+            bpmn_tasks=bpmn_result["bpmn_tasks"],
+            code_items=code_result["code_items"],
             threshold=self.threshold,
             matcher=self.matcher,
             top_k=self.top_k,
-            include_debug=False,
-            project=self.project,
+            batch_size=32,
         )
 
-        # 4) Convert matching result into storage schema
+        # keep engine_result shape close to old flow
+        self.engine_result = {
+            "meta": {
+                "matcher": match_result["matcher_norm"],
+                "threshold": float(self.threshold),
+                "top_k": int(self.top_k),
+                "batch_size": 32,
+                "used_persisted_code_artifacts": bool(code_result["used_persisted"]),
+            },
+            "bpmn": bpmn_result["bpmn_graph"],
+            "code": {"items": code_result["code_items"]},
+            "matching": match_result["matching"],
+            "top_k": match_result["top_k"],
+            "stats": {
+                "tasks": len(bpmn_result["bpmn_tasks"]),
+                "code_count_embedded": len(code_result["code_items"]),
+                "matched": len((match_result["matching"].get("matched") or [])),
+                "missing": len((match_result["matching"].get("missing") or [])),
+                "extra": len((match_result["matching"].get("extra") or [])),
+            },
+        }
+
+        # 6) Convert matching result into storage schema
         matching = self.engine_result.get("matching") or {}
         matched = matching.get("matched") or []
         missing = matching.get("missing") or []
