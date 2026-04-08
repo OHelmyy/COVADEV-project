@@ -89,11 +89,14 @@ def api_projects_list_create(request):
     return JsonResponse(json_project_summary(project, request.user), status=201)
 
 
+
 @login_required
 @require_http_methods(["GET", "DELETE"])
 def api_project_detail_or_delete(request, project_id: int):
-    project = get_object_or_404(Project, id=project_id)
-
+    project = get_object_or_404(
+        Project.objects.select_related("active_bpmn", "active_code", "evaluator"),
+        id=project_id,
+    )
     if request.method == "DELETE":
         if not is_admin(request.user):
             return JsonResponse({"detail": "Admin only."}, status=403)
@@ -111,13 +114,8 @@ def api_project_detail_or_delete(request, project_id: int):
 def api_delete_project(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
-    membership = ProjectMembership.objects.filter(
-        project=project,
-        user=request.user,
-    ).first()
-
-    if not membership or membership.role != ProjectMembership.Role.EVALUATOR:
-        return JsonResponse({"detail": "Only evaluator can delete this project."}, status=403)
+    if not is_admin(request.user):
+        return JsonResponse({"detail": "Only admin can delete this project."}, status=403)
 
     project.delete()
     return JsonResponse({"ok": True})

@@ -9,7 +9,7 @@ from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
 from apps.projects.models import Project, ProjectFile
 
 from .permissions import can_open_project, is_project_evaluator, require_admin_or_evaluator
-
+import json
 
 @login_required
 @require_http_methods(["GET"])
@@ -49,9 +49,9 @@ def api_update_threshold(request, project_id: int):
     if not is_project_evaluator(project, request.user):
         return JsonResponse({"detail": "Only evaluator can update settings."}, status=403)
 
-    value = (request.POST.get("similarity_threshold") or "").strip()
     try:
-        v = float(value)
+        body = json.loads(request.body.decode("utf-8") or "{}")
+        v = float(body.get("similarityThreshold") or 0)
         if v <= 0 or v >= 1:
             raise ValueError()
         project.similarity_threshold = v
@@ -59,7 +59,6 @@ def api_update_threshold(request, project_id: int):
         return JsonResponse({"ok": True, "similarityThreshold": float(project.similarity_threshold)})
     except Exception:
         return JsonResponse({"detail": "Invalid threshold. Use 0..1 (e.g., 0.6)."}, status=400)
-
 
 @login_required
 def api_project_files(request, project_id: int):
@@ -164,8 +163,10 @@ def api_project_report(request, project_id: int):
                 "reason": m.get("status") or "Extra",
             })
 
+    already_missing_ids = {m["taskId"] for m in missingTasks}
+
     for t in tasks:
-        if t["task_id"] not in matched_task_ids:
+        if t["task_id"] not in matched_task_ids and t["task_id"] not in already_missing_ids:
             missingTasks.append({
                 "taskId": t["task_id"],
                 "taskName": t["name"] or "",
