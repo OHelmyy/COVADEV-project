@@ -1,32 +1,8 @@
 from __future__ import annotations
-
 from typing import Any, Dict
-
 from apps.analysis.bpmn.recommender_local import run_recommendation_pipeline
 from apps.analysis.models import BpmnRecommendations
-
-
-def get_project_bpmn_summary(project) -> str:
-    """
-    Shared helper for recommendation flow.
-    """
-    f = getattr(project, "active_bpmn", None)
-    if f and hasattr(f, "bpmn_summary"):
-        return (f.bpmn_summary or "").strip()
-
-    latest = (
-        project.files.filter(file_type="BPMN").order_by("-created_at").first()
-        if hasattr(project, "files")
-        else None
-    )
-    if latest and hasattr(latest, "bpmn_summary"):
-        return (latest.bpmn_summary or "").strip()
-
-    if hasattr(project, "bpmn_summary"):
-        return (project.bpmn_summary or "").strip()
-
-    return ""
-
+from apps.api.projects_api.helpers import get_project_bpmn_summary
 
 def run_recommendation_for_project(project, *, force: bool = False) -> Dict[str, Any]:
     """

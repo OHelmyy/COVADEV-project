@@ -1,10 +1,7 @@
 from __future__ import annotations
-
-from typing import Dict, List
-
+from typing import Any, Dict, List
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
 from .generator import build_generator_block
 
 # CODE_COMPARE_RULES = """Write ONE short technical sentence describing what this function does.
@@ -85,7 +82,20 @@ def clean_summary(text: str) -> str:
     return t[:1].upper() + t[1:] if t else t
 
 
+def fallback_summary(sf: Dict[str, Any]) -> str:
+    fn = (sf.get("function_name") or "function").replace("_", " ").strip()
+    title = " ".join(w.capitalize() for w in fn.split()) or "Unnamed Function"
+    returns = sf.get("returns") or []
+    writes = sf.get("writes") or []
+    calls = sf.get("calls") or []
 
+    if writes:
+        return f"{title} updates and saves data to the system."
+    if returns:
+        return f"{title} processes the request and returns a result."
+    if calls:
+        return f"{title} performs its main operation using related services."
+    return f"{title} executes its main business logic."
 
 class SummaryService:
     MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"

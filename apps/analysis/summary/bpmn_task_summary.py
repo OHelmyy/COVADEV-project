@@ -6,19 +6,28 @@ import torch
 
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
-tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME,
-    trust_remote_code=True,
-)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    dtype=torch.float16,
-    device_map="auto",
-    trust_remote_code=True,
-)
+_tokenizer = None
+_model = None
+
+def _get_model():
+    global _tokenizer, _model
+    if _tokenizer is None or _model is None:
+        _tokenizer = AutoTokenizer.from_pretrained(
+            MODEL_NAME,
+            trust_remote_code=True,
+        )
+        _model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+    return _tokenizer, _model
 
 
 def summarize_bpmn_task_text(prompt: str) -> str:
+    tokenizer, model = _get_model()
+
     messages = [
         {"role": "system", "content": "You are a precise business analyst."},
         {"role": "user", "content": prompt},

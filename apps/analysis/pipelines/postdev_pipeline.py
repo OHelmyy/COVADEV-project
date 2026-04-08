@@ -59,7 +59,7 @@ class PostDevPipeline(BasePipeline):
         self.code_root: Optional[Path] = None
 
         self.storage_tasks: List[Dict[str, Any]] = []
-
+        self.bpmn_graph: Dict[str, Any] = {}
         self.threshold: float = 0.6
         self.engine_result: Dict[str, Any] = {}
         self.storage_results: List[Dict[str, Any]] = []
@@ -103,18 +103,36 @@ class PostDevPipeline(BasePipeline):
 
     def preprocess(self) -> None:
         self.storage_tasks = extract_tasks_with_context(self.bpmn_bytes)
+        from apps.analysis.bpmn.parser import extract_bpmn_graph
+        self.bpmn_graph = extract_bpmn_graph(self.bpmn_bytes)
 
     def execute(self) -> None:
         # 1) Store BPMN tasks
         self._replace_bpmn_tasks(self.project, self.storage_tasks)
 
-        # 2) Regenerate fresh code summaries / artifacts
-        CodeArtifact.objects.filter(project=self.project).delete()
-
-        _persist_code_artifacts_with_summaries(
-            project=self.project,
-            code_root_dir=self.code_root,
+        # 2) Only regenerate code summaries if code was re-uploaded since last run
+        last_run = (
+            AnalysisRun.objects
+            .filter(project=self.project, status="DONE")
+            .exclude(id=self.run_obj.id)
+            .order_by("-finished_at")
+            .first()
         )
+        active_code_uploaded_at = getattr(self.project.active_code, "created_at", None)
+        last_run_finished_at = getattr(last_run, "finished_at", None)
+
+        code_changed = (
+            last_run_finished_at is None
+            or active_code_uploaded_at is None
+            or active_code_uploaded_at > last_run_finished_at
+        )
+
+        if code_changed:
+            CodeArtifact.objects.filter(project=self.project).delete()
+            _persist_code_artifacts_with_summaries(
+                project=self.project,
+                code_root_dir=self.code_root,
+            )
 
         # 3) Semantic engine
         self.threshold = float(getattr(self.project, "similarity_threshold", 0.6) or 0.6)
@@ -127,6 +145,7 @@ class PostDevPipeline(BasePipeline):
             top_k=self.top_k,
             include_debug=False,
             project=self.project,
+            bpmn_graph_override=self.bpmn_graph,
         )
 
         # 4) Convert matching result into storage schema
