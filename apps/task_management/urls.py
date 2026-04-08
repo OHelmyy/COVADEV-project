@@ -10,7 +10,11 @@ from apps.task_management.api import (
     evaluate_task_assignment_api,
     developer_performance_overview_api,
     my_performance_insights_api,
+    my_notifications_api,
+    mark_notification_read_api,
+    mark_all_notifications_read_api,
 )
+
 
 urlpatterns = [
     path("projects/<int:project_id>/developers/", project_developers_api, name="project_developers_api"),
@@ -23,4 +27,7 @@ urlpatterns = [
     path("task-assignments/<int:assignment_id>/evaluate/", evaluate_task_assignment_api, name="evaluate_task_assignment_api"),
     path("task-management/developer-performance/",developer_performance_overview_api,name="developer_performance_overview_api"),
     path("task-management/my-insights/", my_performance_insights_api, name="my_performance_insights_api"),
+    path("task-management/my-notifications/", my_notifications_api, name="my_notifications_api"),
+    path("task-management/notifications/<int:notification_id>/read/", mark_notification_read_api, name="mark_notification_read_api"),
+    path("task-management/notifications/read-all/", mark_all_notifications_read_api, name="mark_all_notifications_read_api"),
 ]

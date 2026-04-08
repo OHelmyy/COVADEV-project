@@ -129,3 +129,50 @@ class TaskEvaluation(models.Model):
         self.calculate_final_score()
         self.full_clean()
         super().save(*args, **kwargs)
+
+class Notification(models.Model):
+    class Type(models.TextChoices):
+        TASK_ASSIGNED = "TASK_ASSIGNED", "Task Assigned"
+        TASK_REVIEWED = "TASK_REVIEWED", "Task Reviewed"
+        TASK_EVALUATED = "TASK_EVALUATED", "Task Evaluated"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+
+    project = models.ForeignKey(
+        Project,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+
+    assignment = models.ForeignKey(
+        TaskAssignment,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+
+    type = models.CharField(
+        max_length=30,
+        choices=Type.choices,
+    )
+
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} | {self.type} | {self.title}"
