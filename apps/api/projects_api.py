@@ -131,26 +131,6 @@ def _json_project_summary(p: Project, user: User):
         "membership": {"role": role} if role else None,
     }
 
-
-def _require_admin_or_evaluator(project, user):
-    # Admin always allowed
-    if is_admin(user):
-        return True
-
-    membership = ProjectMembership.objects.filter(
-        project=project,
-        user=user
-    ).first()
-
-    if not membership:
-        return False
-
-    return str(membership.role).upper() == "EVALUATOR"
-
-
-    
-
-
 def _json_file_payload(f: ProjectFile | None):
     if not f:
         return None
@@ -376,10 +356,10 @@ def api_project_detail_or_delete(request, project_id: int):
 def api_project_members(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
-    if not _is_project_evaluator(project, request.user):
-        return JsonResponse({"detail": "Only evaluator can manage members."}, status=403)
-
     if request.method == "GET":
+        if not _can_open_project(project, request.user):
+            return JsonResponse({"detail": "Forbidden"}, status=403)
+
         members = (
             ProjectMembership.objects
             .select_related("user")
@@ -404,7 +384,10 @@ def api_project_members(request, project_id: int):
             } if project.evaluator_id else None,
         })
 
-    # POST: add developer by email
+    # POST = add member → admin only
+    if not is_admin(request.user):
+        return JsonResponse({"detail": "Only admin can manage members."}, status=403)
+
     email = (request.POST.get("email") or "").strip().lower()
     if not email:
         return JsonResponse({"detail": "Enter an email."}, status=400)
@@ -413,7 +396,6 @@ def api_project_members(request, project_id: int):
     if not user:
         return JsonResponse({"detail": "No user found with that email."}, status=404)
 
-    # don't add evaluator as developer
     if user.id == project.evaluator_id:
         return JsonResponse({"detail": "This user is already the evaluator."}, status=400)
 
@@ -421,25 +403,36 @@ def api_project_members(request, project_id: int):
     if existing:
         return JsonResponse({"detail": "User is already a member."}, status=400)
 
+    profile = getattr(user, "profile", None)
+    if profile and getattr(profile, "role", None) != "DEVELOPER":
+        return JsonResponse({"detail": "Only users with DEVELOPER role can be added as members."}, status=400)
+
     m = ProjectMembership.objects.create(project=project, user=user)
     return JsonResponse(
-        {"id": m.id, "username": user.username, "email": user.email, "role": getattr(m, "role", "DEVELOPER")},
-        status=201
+        {
+            "id": m.id,
+            "username": m.user.username,
+            "email": m.user.email,
+            "role": getattr(m, "role", "DEVELOPER"),
+        },
+        status=201,
     )
-
 
 @login_required
 @require_POST
 def api_remove_member(request, project_id: int, membership_id: int):
     project = get_object_or_404(Project, id=project_id)
 
-    if not _is_project_evaluator(project, request.user):
-        return JsonResponse({"detail": "Only evaluator can manage members."}, status=403)
+    if not is_admin(request.user):
+        return JsonResponse({"detail": "Only admin can manage members."}, status=403)
 
     membership = get_object_or_404(ProjectMembership, id=membership_id, project=project)
+
+    if membership.user_id == project.evaluator_id:
+        return JsonResponse({"detail": "Cannot remove the project evaluator."}, status=400)
+
     membership.delete()
     return JsonResponse({"ok": True})
-
 
 # ---------------------------
 # Logs
@@ -784,19 +777,20 @@ def api_project_recommendations(request, project_id: int):
         })
 
     try:
-        print("✅ RECOMMENDER ENGINE: OLLAMA/LLAMA (force=%s)" % force)
-        items = generate_recommendations_local(summary)  # list of "- ..."
+        print(f"✅ RECOMMENDER ENGINE: QWEN (force={force})")
+        items = generate_recommendations_local(summary)
     except Exception as e:
-        return JsonResponse({"detail": f"Ollama failed: {type(e).__name__}: {e}"}, status=500)
+        return JsonResponse({"detail": f"Qwen failed: {type(e).__name__}: {e}"}, status=500)
 
     rec.recommendations_text = "\n".join(items)
-    rec.source_summary = summary  # ✅ correct
+    rec.source_summary = summary
     rec.save(update_fields=["recommendations_text", "source_summary", "updated_at"])
 
     return JsonResponse({
         "ok": True,
         "cached": False,
-        "engine": "ollama",
+        "engine": "qwen",
         "recommendations": rec.as_list(),
         "updatedAt": rec.updated_at.isoformat() if rec.updated_at else None,
     })
+
