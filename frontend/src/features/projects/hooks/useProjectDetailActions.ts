@@ -7,6 +7,7 @@ import {
   uploadBpmn,
   uploadCodeZip,
 } from "../../../api/projects";
+import { buildProjectError } from "../utils/projectError";
 
 type Params = {
   projectId: number;
@@ -15,6 +16,22 @@ type Params = {
   reloadResults: () => Promise<void>;
   reloadCompare: () => Promise<void>;
   reloadRecommendations: () => Promise<void>;
+};
+
+type ProjectErrorModalState = {
+  open: boolean;
+  title: string;
+  message: string;
+  cause: string;
+  details: string;
+};
+
+const EMPTY_ERROR_MODAL: ProjectErrorModalState = {
+  open: false,
+  title: "",
+  message: "",
+  cause: "",
+  details: "",
 };
 
 export function useProjectDetailActions({
@@ -31,6 +48,26 @@ export function useProjectDetailActions({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
 
+  const [errorModal, setErrorModal] = useState<ProjectErrorModalState>(EMPTY_ERROR_MODAL);
+
+  const openErrorModal = useCallback(
+    (operation: string, error: unknown, fallbackTitle?: string) => {
+      const info = buildProjectError(operation, error, fallbackTitle);
+      setErrorModal({
+        open: true,
+        title: info.title,
+        message: info.message,
+        cause: info.cause,
+        details: info.details,
+      });
+    },
+    []
+  );
+
+  const closeErrorModal = useCallback(() => {
+    setErrorModal(EMPTY_ERROR_MODAL);
+  }, []);
+
   const onUploadBpmn = useCallback(async () => {
     if (!bpmnFile) return;
 
@@ -45,10 +82,10 @@ export function useProjectDetailActions({
       await reloadResults();
       await reloadCompare();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      setActionMsg(`BPMN upload failed: ${message}`);
+      setActionMsg("");
+      openErrorModal("upload BPMN", error, "BPMN upload failed");
     }
-  }, [bpmnFile, projectId, reloadProject, reloadResults, reloadCompare]);
+  }, [bpmnFile, projectId, reloadProject, reloadResults, reloadCompare, openErrorModal]);
 
   const onUploadCode = useCallback(async () => {
     if (!codeZip) return;
@@ -64,10 +101,10 @@ export function useProjectDetailActions({
       await reloadResults();
       await reloadCompare();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      setActionMsg(`Code ZIP upload failed: ${message}`);
+      setActionMsg("");
+      openErrorModal("upload code ZIP", error, "Code upload failed");
     }
-  }, [codeZip, projectId, reloadProject, reloadResults, reloadCompare]);
+  }, [codeZip, projectId, reloadProject, reloadResults, reloadCompare, openErrorModal]);
 
   const onRunAnalysis = useCallback(async () => {
     setActionMsg("Running analysis...");
@@ -80,10 +117,10 @@ export function useProjectDetailActions({
       await reloadResults();
       await reloadCompare();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      setActionMsg(`Analysis failed: ${message}`);
+      setActionMsg("");
+      openErrorModal("run analysis", error, "Analysis failed");
     }
-  }, [projectId, reloadProject, reloadResults, reloadCompare]);
+  }, [projectId, reloadProject, reloadResults, reloadCompare, openErrorModal]);
 
   const onUpdateThreshold = useCallback(async () => {
     setActionMsg("Updating threshold...");
@@ -95,10 +132,10 @@ export function useProjectDetailActions({
       await reloadProject();
       await reloadResults();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      setActionMsg(`Update failed: ${message}`);
+      setActionMsg("");
+      openErrorModal("update threshold", error, "Threshold update failed");
     }
-  }, [projectId, thresholdInput, reloadProject, reloadResults]);
+  }, [projectId, thresholdInput, reloadProject, reloadResults, openErrorModal]);
 
   const onDeleteProject = useCallback(() => {
     setShowDeleteModal(true);
@@ -116,12 +153,12 @@ export function useProjectDetailActions({
       setActionMsg("");
       window.location.href = "/projects";
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      setActionMsg(`Delete failed: ${message}`);
+      setActionMsg("");
       setDeletingProject(false);
       setShowDeleteModal(false);
+      openErrorModal("delete project", error, "Project deletion failed");
     }
-  }, [deletingProject, projectId]);
+  }, [deletingProject, projectId, openErrorModal]);
 
   const onGenerateRecommendations = useCallback(async () => {
     setActionMsg("Generating recommendations...");
@@ -131,10 +168,10 @@ export function useProjectDetailActions({
       await reloadRecommendations();
       setActionMsg("Recommendations generated ✅");
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      setActionMsg(`Generate failed: ${message}`);
+      setActionMsg("");
+      openErrorModal("generate recommendations", error, "Recommendation generation failed");
     }
-  }, [projectId, reloadRecommendations]);
+  }, [projectId, reloadRecommendations, openErrorModal]);
 
   return {
     actionMsg,
@@ -153,5 +190,9 @@ export function useProjectDetailActions({
     onDeleteProject,
     confirmDeleteProject,
     onGenerateRecommendations,
+
+    errorModal,
+    openErrorModal,
+    closeErrorModal,
   };
 }
