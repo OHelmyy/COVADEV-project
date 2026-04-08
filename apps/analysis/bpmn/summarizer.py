@@ -1,5 +1,6 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+from typing import Optional, List
 
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"  # use 1.5B (fast)
 

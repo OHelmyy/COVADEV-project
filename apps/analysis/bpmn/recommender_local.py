@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 from typing import List
 import re
-import requests
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-MODEL = "llama3.2:3b"
+import torch
+
+from apps.analysis.llm.qwen_registry import get_qwen_bundle
+
+MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
 
 def build_prompt(summary: str) -> str:
@@ -33,16 +36,21 @@ def normalize(lines_text: str) -> List[str]:
         s = raw.strip()
         if not s:
             continue
+
         s = re.sub(r"^\d+\.\s*", "", s)
         s = s.lstrip("•*").strip()
+
         if s.startswith("-"):
             s = s[1:].strip()
+
         if not s:
             continue
+
         s = "- " + s
         k = s.lower()
         if k in seen:
             continue
+
         seen.add(k)
         out.append(s)
 
@@ -50,22 +58,38 @@ def normalize(lines_text: str) -> List[str]:
 
 
 def generate_recommendations_local(summary: str) -> List[str]:
+    tokenizer, model = get_qwen_bundle(MODEL_NAME)
+
     prompt = build_prompt(summary)
 
-    r = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.2,
-                "num_predict": 220,
-            },
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a senior software architect and process auditor.",
         },
-        timeout=360,
+        {
+            "role": "user",
+            "content": prompt,
+        },
+    ]
+
+    chat = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
     )
-    r.raise_for_status()
-    data = r.json()
-    text = data.get("response", "") or ""
+
+    inputs = tokenizer(chat, return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=220,
+            temperature=0.2,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+
+    generated = outputs[0][inputs["input_ids"].shape[1]:]
+    text = tokenizer.decode(generated, skip_special_tokens=True).strip()
     return normalize(text)
