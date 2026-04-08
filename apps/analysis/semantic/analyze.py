@@ -113,6 +113,8 @@ def analyze_project(
     batch_size: int = 32,
     include_debug: bool = False,
     project=None,
+    bpmn_graph_override: Dict[str, Any] = None,
+
 ) -> Dict[str, Any]:
     """
     Core semantic engine.
@@ -124,10 +126,7 @@ def analyze_project(
     # -------------------------------------------------
     # 1) BPMN parsing
     # -------------------------------------------------
-    # -------------------------------------------------
-# 1) BPMN parsing
-# -------------------------------------------------
-    bpmn_graph = extract_bpmn_graph(bpmn_input)
+    bpmn_graph = bpmn_graph_override if bpmn_graph_override is not None else extract_bpmn_graph(bpmn_input)
 
     if project is not None:
         from apps.analysis.models import BpmnTask as BpmnTaskModel
@@ -142,17 +141,19 @@ def analyze_project(
                 for t in db_tasks
             ]
         else:
+            print("WARNING: No BpmnTask rows found in DB for this project. "
+                  "Falling back to raw BPMN parsing — task descriptions will be empty, "
+                  "similarity scores may be unreliable.")
             bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
     else:
         bpmn_tasks = bpmn_graph.get("tasks") or extract_tasks(bpmn_input) or []
-        print("\n" + "="*60)
+    print("\n" + "="*60)
     print("BPMN TASK SUMMARIES (going into embedder)")
     print("="*60)
     for t in bpmn_tasks:
         print(f"  Task : {t.get('name')}")
         print(f"  Text : {t.get('description')}")
         print()
-
     print("="*60)
     # -------------------------------------------------
     # 3) Load persisted CodeArtifacts from DB
@@ -190,7 +191,7 @@ def analyze_project(
                             "name": symbol,
                             "source_path": a.file_path or "",
                             "summary_text": summary_text,
-                            "text": f"Task: {human_title}. Description: {summary_text}",
+                            "text": f"Description: {summary_text}.",
                         }
                     )
     # early exit if no BPMN tasks
