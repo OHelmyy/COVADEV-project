@@ -17,6 +17,7 @@ type Props = {
   assignment: Assignment | null;
   developers: Developer[];
   onChanged: () => Promise<void> | void;
+  onError: (operation: string, error: unknown, title?: string) => void;
 };
 
 export default function TaskAssignmentRow({
@@ -25,6 +26,7 @@ export default function TaskAssignmentRow({
   assignment,
   developers,
   onChanged,
+  onError,
 }: Props) {
   const [developerMembershipId, setDeveloperMembershipId] = useState<string>(
     assignment?.developer?.membershipId ? String(assignment.developer.membershipId) : ""
@@ -34,7 +36,11 @@ export default function TaskAssignmentRow({
 
   async function handleAssign() {
     if (!developerMembershipId) {
-      alert("Please select a developer first.");
+      onError(
+        "assign task",
+        new Error("No developer selected for this task."),
+        "Task assignment failed"
+      );
       return;
     }
 
@@ -47,7 +53,7 @@ export default function TaskAssignmentRow({
       });
       await onChanged();
     } catch (error: any) {
-      alert(error.message || "Failed to assign task.");
+      onError("assign task", error, "Task assignment failed");
     } finally {
       setSaving(false);
     }
@@ -64,7 +70,11 @@ export default function TaskAssignmentRow({
       });
       await onChanged();
     } catch (error: any) {
-      alert(error.message || "Failed to review task.");
+      onError(
+        accepted ? "accept submitted task" : "reject submitted task",
+        error,
+        accepted ? "Task accept failed" : "Task reject failed"
+      );
     } finally {
       setSaving(false);
     }
@@ -85,7 +95,7 @@ export default function TaskAssignmentRow({
       setShowEvaluationForm(false);
       await onChanged();
     } catch (error: any) {
-      alert(error.message || "Failed to evaluate task.");
+      onError("save task evaluation", error, "Task evaluation failed");
     } finally {
       setSaving(false);
     }
