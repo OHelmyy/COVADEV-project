@@ -35,8 +35,6 @@ def api_upload_bpmn(request, project_id: int):
 
     except Exception as e:
         return JsonResponse({"detail": f"BPMN upload failed: {e}"}, status=400)
-
-
 @login_required
 @require_POST
 def api_upload_code_zip(request, project_id: int):

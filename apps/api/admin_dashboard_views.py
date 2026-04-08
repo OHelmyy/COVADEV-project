@@ -1,13 +1,9 @@
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
-
 from django.contrib.auth.models import User
 from apps.projects.models import Project
 from apps.accounts.models import UserProfile
-
-
-def _is_admin(user):
-    return user.is_authenticated and getattr(getattr(user, "profile", None), "role", "") == UserProfile.Role.ADMIN
+from apps.accounts.rbac import is_admin as _is_admin
 
 
 @require_GET

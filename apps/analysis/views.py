@@ -119,7 +119,8 @@ def run_project(request, project_id: int):
 # ============================================================
 # ✅ Metrics endpoints
 # ============================================================
-
+# NOTE: These metrics endpoints compute precision, recall, F1 and alignment.
+# Not currently used by the frontend — available for future use or external tooling.
 @csrf_exempt
 @login_required
 @require_http_methods(["POST"])

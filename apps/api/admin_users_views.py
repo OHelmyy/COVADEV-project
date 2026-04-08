@@ -5,11 +5,7 @@ from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from apps.accounts.models import UserProfile
-
-
-def _is_admin(user) -> bool:
-    return user.is_authenticated and getattr(getattr(user, "profile", None), "role", "") == UserProfile.Role.ADMIN
-
+from apps.accounts.rbac import is_admin as _is_admin
 
 def _user_row(u: User):
     role = getattr(getattr(u, "profile", None), "role", UserProfile.Role.DEVELOPER)

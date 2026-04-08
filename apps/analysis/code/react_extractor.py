@@ -2,15 +2,15 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from apps.analysis.code.extractor import normalize_text
-
 
 JS_EXTS = {".js", ".jsx", ".ts", ".tsx"}
 
 
+def normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+
 def _make_id(source_path: str, item_type: str, name: str) -> str:
     return f"{source_path}:{item_type}:{name}"
-
 
 def _find_leading_comment(lines: List[str], start_line_index: int) -> str:
     """
