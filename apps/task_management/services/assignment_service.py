@@ -25,6 +25,13 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
             "developer_membership": membership,
             "assigned_by": assigned_by,
             "assignment_notes": notes,
+            "status": TaskAssignment.Status.ASSIGNED,
+            "submission_notes": "",
+            "review_notes": "",
+            "started_at": None,
+            "submitted_at": None,
+            "reviewed_at": None,
+            "reviewed_by": None,
         }
     )
     return assignment

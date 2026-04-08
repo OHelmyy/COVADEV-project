@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 from django.core.exceptions import ValidationError
-
+from django.db.models import Count, Avg, Q
 from apps.projects.models import Project, ProjectMembership
 from apps.analysis.models import BpmnTask
 from apps.task_management.models import TaskAssignment, TaskEvaluation
@@ -20,6 +20,7 @@ from apps.task_management.services.assignment_service import (
     assign_task,
     submit_assignment,
     review_assignment,
+    start_assignment,
 )
 from apps.accounts.rbac import is_admin, is_evaluator
 from apps.task_management.services.evaluation_service import evaluate_assignment
@@ -235,16 +236,6 @@ def submit_task_assignment_api(request, assignment_id: int):
         "message": "Assignment submitted successfully.",
         "assignment": _serialize_assignment(assignment),
     })
-
-
-def start_assignment(*, assignment):
-    if assignment.status == TaskAssignment.Status.ASSIGNED:
-        assignment.status = TaskAssignment.Status.IN_PROGRESS
-        assignment.started_at = timezone.now()
-        assignment.save()
-    return assignment
-
-
 @login_required
 @require_POST
 def review_task_assignment_api(request, assignment_id: int):
@@ -352,7 +343,6 @@ def evaluate_task_assignment_api(request, assignment_id: int):
     }, status=201)
 
 
-from django.db.models import Count, Avg, Q
 
 @login_required
 @require_GET
@@ -432,11 +422,29 @@ def developer_performance_overview_api(request):
             .select_related("user", "project")
             .filter(role="DEVELOPER", project__evaluator_id=user.id)
         )
+    membership_ids = list(memberships.values_list("id", flat=True))
+
+    assignment_counts = (
+        TaskAssignment.objects
+        .filter(developer_membership_id__in=membership_ids)
+        .values("developer_membership_id")
+        .annotate(
+            total=Count("id"),
+            accepted=Count("id", filter=Q(status=TaskAssignment.Status.ACCEPTED)),
+            rejected=Count("id", filter=Q(status=TaskAssignment.Status.REJECTED)),
+            submitted=Count("id", filter=Q(status=TaskAssignment.Status.SUBMITTED)),
+            in_progress=Count("id", filter=Q(status=TaskAssignment.Status.IN_PROGRESS)),
+            avg_score=Avg("evaluation__final_score"),
+        )
+    )
+
+    counts_by_membership = {r["developer_membership_id"]: r for r in assignment_counts}
 
     developer_map = {}
 
     for membership in memberships:
         dev_user = membership.user
+        counts = counts_by_membership.get(membership.id, {})
 
         if dev_user.id not in developer_map:
             developer_map[dev_user.id] = {
@@ -449,32 +457,20 @@ def developer_performance_overview_api(request):
                 "rejectedCount": 0,
                 "submittedCount": 0,
                 "inProgressCount": 0,
-                "evaluationScores": [],
+                "avgScores": [],
             }
 
         entry = developer_map[dev_user.id]
         entry["projects"].add(membership.project_id)
+        entry["totalAssigned"] += counts.get("total", 0)
+        entry["acceptedCount"] += counts.get("accepted", 0)
+        entry["rejectedCount"] += counts.get("rejected", 0)
+        entry["submittedCount"] += counts.get("submitted", 0)
+        entry["inProgressCount"] += counts.get("in_progress", 0)
 
-        assignments = TaskAssignment.objects.filter(developer_membership=membership)
-
-        entry["totalAssigned"] += assignments.count()
-        entry["acceptedCount"] += assignments.filter(
-            status=TaskAssignment.Status.ACCEPTED
-        ).count()
-        entry["rejectedCount"] += assignments.filter(
-            status=TaskAssignment.Status.REJECTED
-        ).count()
-        entry["submittedCount"] += assignments.filter(
-            status=TaskAssignment.Status.SUBMITTED
-        ).count()
-        entry["inProgressCount"] += assignments.filter(
-            status=TaskAssignment.Status.IN_PROGRESS
-        ).count()
-
-        evaluations = TaskEvaluation.objects.filter(assignment__in=assignments)
-        entry["evaluationScores"].extend(
-            list(evaluations.values_list("final_score", flat=True))
-        )
+        avg = counts.get("avg_score")
+        if avg is not None:
+            entry["avgScores"].append(float(avg))
 
     items = []
     for entry in developer_map.values():
@@ -482,12 +478,8 @@ def developer_performance_overview_api(request):
         accepted_count = entry["acceptedCount"]
 
         average_score = (
-            round(
-                sum(float(score) for score in entry["evaluationScores"])
-                / len(entry["evaluationScores"]),
-                2,
-            )
-            if entry["evaluationScores"]
+            round(sum(entry["avgScores"]) / len(entry["avgScores"]), 2)
+            if entry["avgScores"]
             else 0.0
         )
 
@@ -620,10 +612,28 @@ def my_performance_insights_api(request):
         .filter(role="DEVELOPER")
     )
 
+    all_membership_ids = list(all_dev_memberships.values_list("id", flat=True))
+
+    ranking_counts = (
+        TaskAssignment.objects
+        .filter(developer_membership_id__in=all_membership_ids)
+        .values("developer_membership_id")
+        .annotate(
+            total=Count("id"),
+            accepted=Count("id", filter=Q(status=TaskAssignment.Status.ACCEPTED)),
+            avg_score=Avg("evaluation__final_score"),
+        )
+    )
+
+    ranking_counts_by_membership = {
+        r["developer_membership_id"]: r for r in ranking_counts
+    }
+
     developer_map = {}
 
     for membership in all_dev_memberships:
         dev_user = membership.user
+        counts = ranking_counts_by_membership.get(membership.id, {})
 
         if dev_user.id not in developer_map:
             developer_map[dev_user.id] = {
@@ -633,31 +643,23 @@ def my_performance_insights_api(request):
                 "projects": set(),
                 "totalAssigned": 0,
                 "acceptedCount": 0,
-                "evaluationScores": [],
+                "avgScores": [],
             }
 
         entry = developer_map[dev_user.id]
         entry["projects"].add(membership.project_id)
+        entry["totalAssigned"] += counts.get("total", 0)
+        entry["acceptedCount"] += counts.get("accepted", 0)
 
-        dev_assignments = TaskAssignment.objects.filter(developer_membership=membership)
-        entry["totalAssigned"] += dev_assignments.count()
-        entry["acceptedCount"] += dev_assignments.filter(
-            status=TaskAssignment.Status.ACCEPTED
-        ).count()
-
-        dev_evaluations = TaskEvaluation.objects.filter(assignment__in=dev_assignments)
-        entry["evaluationScores"].extend(
-            list(dev_evaluations.values_list("final_score", flat=True))
-        )
+        avg = counts.get("avg_score")
+        if avg is not None:
+            entry["avgScores"].append(float(avg))
 
     ranking_items = []
     for entry in developer_map.values():
         avg_score = (
-            round(
-                sum(float(score) for score in entry["evaluationScores"]) / len(entry["evaluationScores"]),
-                2,
-            )
-            if entry["evaluationScores"]
+            round(sum(entry["avgScores"]) / len(entry["avgScores"]), 2)
+            if entry["avgScores"]
             else 0.0
         )
 
