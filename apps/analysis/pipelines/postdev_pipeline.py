@@ -11,7 +11,7 @@ from apps.analysis.models import AnalysisRun
 from apps.analysis.models_code import CodeArtifact
 from apps.analysis.semantic.analyze import analyze_project
 from apps.projects.services import _persist_code_artifacts_with_summaries
-
+from apps.analysis.models import CodeEmbedding, TaskEmbedding
 from .base_pipeline import BasePipeline
 
 
@@ -148,6 +148,12 @@ class PostDevPipeline(BasePipeline):
             bpmn_graph_override=self.bpmn_graph,
         )
 
+        # Save embeddings to DB for future runs
+        embedded = self.engine_result.get("_embedded")
+        if embedded:
+            self._save_embeddings(embedded)
+
+
         # 4) Convert matching result into storage schema
         matching = self.engine_result.get("matching") or {}
         matched = matching.get("matched") or []
@@ -186,6 +192,38 @@ class PostDevPipeline(BasePipeline):
                 }
             )
 
+    def _save_embeddings(self, embedded: dict) -> None:
+        task_embeddings = embedded.get("task_embeddings") or []
+        code_embeddings = embedded.get("code_embeddings") or []
+
+        task_map = {
+            t.task_id: t
+            for t in self.project.bpmn_tasks.all()
+        }
+
+        code_map = {
+            a.code_uid: a
+            for a in self.project.code_artifacts.all()
+        }
+
+        with transaction.atomic():
+            for emb in task_embeddings:
+                task = task_map.get(str(emb.get("id")))
+                if task:
+                    TaskEmbedding.objects.update_or_create(
+                        project=self.project,
+                        bpmn_task=task,
+                        defaults={"vector": emb.get("vector")},
+                    )
+
+            for emb in code_embeddings:
+                artifact = code_map.get(str(emb.get("id")))
+                if artifact:
+                    CodeEmbedding.objects.update_or_create(
+                        project=self.project,
+                        code_artifact=artifact,
+                        defaults={"vector": emb.get("vector")},
+                    )
     def save(self) -> None:
         self._replace_match_results(self.project, self.storage_results)
 

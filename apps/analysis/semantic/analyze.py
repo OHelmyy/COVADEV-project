@@ -227,13 +227,60 @@ def analyze_project(
         print()
     print("="*60 + "\n")
     # -------------------------------------------------
-    # 4) Embed tasks + code
+    # 4) Embed tasks + code (load from DB if available)
     # -------------------------------------------------
-    embedded = embed_pipeline(
-        tasks=bpmn_tasks,
-        code_items=code_items,
-        batch_size=batch_size,
-    )
+    cached_task_vecs = {}
+    cached_code_vecs = {}
+
+    if project is not None:
+        from apps.analysis.models import TaskEmbedding, CodeEmbedding
+
+        for emb in TaskEmbedding.objects.filter(project=project).select_related("bpmn_task"):
+            cached_task_vecs[emb.bpmn_task.task_id] = emb.vector
+
+        for emb in CodeEmbedding.objects.filter(project=project).select_related("code_artifact"):
+            cached_code_vecs[emb.code_artifact.code_uid] = emb.vector
+
+    tasks_to_embed = [t for t in bpmn_tasks if t["id"] not in cached_task_vecs]
+    code_to_embed = [c for c in code_items if c["id"] not in cached_code_vecs]
+
+    if tasks_to_embed or code_to_embed:
+        new_embedded = embed_pipeline(
+            tasks=tasks_to_embed,
+            code_items=code_to_embed,
+            batch_size=batch_size,
+        )
+    else:
+        new_embedded = {"task_embeddings": [], "code_embeddings": [], "meta": {}}
+
+    # Merge cached + newly computed
+    all_task_embeddings = []
+    for t in bpmn_tasks:
+        if t["id"] in cached_task_vecs:
+            all_task_embeddings.append({"id": t["id"], "vector": cached_task_vecs[t["id"]]})
+        else:
+            match = next(
+                (e for e in new_embedded["task_embeddings"] if e["id"] == t["id"]), None
+            )
+            if match:
+                all_task_embeddings.append(match)
+
+    all_code_embeddings = []
+    for c in code_items:
+        if c["id"] in cached_code_vecs:
+            all_code_embeddings.append({"id": c["id"], "vector": cached_code_vecs[c["id"]]})
+        else:
+            match = next(
+                (e for e in new_embedded["code_embeddings"] if e["id"] == c["id"]), None
+            )
+            if match:
+                all_code_embeddings.append(match)
+
+    embedded = {
+        "task_embeddings": all_task_embeddings,
+        "code_embeddings": all_code_embeddings,
+        "meta": new_embedded.get("meta", {}),
+    }
 
     # -------------------------------------------------
     # 5) Similarity + matching
@@ -276,6 +323,7 @@ def analyze_project(
             "missing": len(missing_list),
             "extra": len(extra_list),
         },
+        "_embedded": embedded,
     }
 
     if include_debug:
