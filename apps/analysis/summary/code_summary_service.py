@@ -3,30 +3,37 @@ from __future__ import annotations
 from typing import Dict, List
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from .generator import build_generator_block
+from .shared_model_singleton import ModelProvider
 
+# CODE_COMPARE_RULES = """Write ONE short technical sentence describing what this function does.
 
+# Rules:
+# - Describe actual system behavior (validate, fetch, update, save, return)
+# - Mention the main object (user, order, payment, database, request)
+# - Do NOT start with "This function", "The function", etc
+# - No explanation
+# - Make it useful for semantic matching with BPMN
+# """
 
-CODE_COMPARE_RULES = """Write ONE short technical sentence describing what this function does.
+CODE_COMPARE_RULES = """Write one short sentence describing what the code does.
 
 Rules:
-- Describe actual system behavior (validate, fetch, update, save, return)
-- Mention the main object (user, order, payment, database, request)
-- Do NOT start with "This function", "The function", etc
-- No explanation
-- Make it useful for semantic matching with BPMN
+- Mention the real action
+- Mention the main object
+- Do not repeat the function name
+- One sentence only
 """
 
 DETAILED_RULES = """You explain code behavior clearly for humans.
-Task: Write 2 to 4 short sentences explaining what the function does and how it does it.
-Rules:
-- Easy, human-friendly language.
-- Mention key actions (e.g., reads, validates, updates, saves, calls).
-- Mention important inputs/outputs if present.
-- Do NOT invent details not in the input.
-- Output plain text only (no bullets, no quotes).
+ Task: Write 2 to 4 short sentences explaining what the function does and how it does it.
+ Rules:
+ - Easy, human-friendly language.
+ - Mention key actions (e.g., reads, validates, updates, saves, calls).
+ - Mention important inputs/outputs if present.
+ - Do NOT invent details not in the input.
+ - Output plain text only (no bullets, no quotes).
 """
 
 
@@ -42,15 +49,24 @@ def clean_summary(text: str) -> str:
     if not text:
         return text
 
-    prefixes = [
-        "this function",
-        "the function",
-        "this method",
-        "the method",
-    ]
-
+    import re
     t = text.strip()
 
+    # Reject if LLM echoed the input block
+    if any(marker in t for marker in ["FUNCTION_NAME:", "PARAMETERS:", "RETURNS:", "CODE:", "CALLS:", "WRITES:"]):
+        return ""
+
+    # Remove backticks but keep the word inside
+    t = re.sub(r'`([^`]+)`', r'\1', t).strip()
+
+    # Remove _NAME: prefix
+    t = re.sub(r'^_?NAME\s*:\s*', '', t, flags=re.IGNORECASE).strip()
+
+    # Remove "The <function_name> function/method" pattern
+    t = re.sub(r'^[Tt]he\s+\w+\s+(function|method)\s+', '', t).strip()
+
+    # Remove leading prefixes
+    prefixes = ["this function", "the function", "this method", "the method"]
     for p in prefixes:
         if t.lower().startswith(p):
             t = t[len(p):].strip()
@@ -58,23 +74,22 @@ def clean_summary(text: str) -> str:
     if t.lower().startswith("is "):
         t = t[3:].strip()
 
+    # Keep only first sentence
+    if "." in t:
+        t = t.split(".")[0].strip() + "."
+
     return t[:1].upper() + t[1:] if t else t
 
 
 class SummaryService:
-    MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+    MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
     def __init__(self) -> None:
-        print("DDDD -> SummaryService init")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.MODEL_NAME)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.MODEL_NAME,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            device_map="auto",
-        )
+        provider = ModelProvider()
+        self.tokenizer = provider.tokenizer
+        self.model = provider.model
 
     def summarize_many(self, structured_functions: List[Dict]) -> Dict[str, Dict[str, str]]:
-        print("EEEE -> summarize_many CALLED")
         print("EEEE -> functions:", len(structured_functions))
         out: Dict[str, Dict[str, str]] = {}
 
@@ -84,10 +99,8 @@ class SummaryService:
                 continue
 
             block = build_generator_block(sf)
-
             short_prompt = build_code_compare_prompt(block)
-
-            short_raw = self._call_model(short_prompt, max_new_tokens=24)
+            short_raw = self._call_model(short_prompt, max_new_tokens=20)
 
             print("UID:", uid)
             print("SHORT RAW:", repr(short_raw))
@@ -99,12 +112,7 @@ class SummaryService:
                 print("VALIDATION FAILED FOR", uid, "RAW =", repr(short_raw), "ERROR =", str(e))
                 short_clean = ""
 
-            out[uid] = {
-
-                "short": short_clean,
-                "detailed": "",
-
-            }
+            out[uid] = short_clean
 
         return out
 

@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import json
 import traceback
-import uuid
-import zipfile
 from pathlib import Path
-
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -16,22 +13,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 from apps.projects.models import Project, ProjectMembership, ProjectFile
 from apps.analysis.models import AnalysisRun
-
 from apps.accounts.rbac import is_admin, is_evaluator
-from apps.projects.models import Project, ProjectMembership, ProjectFile
-from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
-from apps.analysis.models_code import CodeArtifact
-
-from .bpmn.parser import extract_tasks
-from .code.extractor import extract_python_from_directory
-from .embeddings.pipeline import embed_pipeline
-from .semantic.similarity import compute_similarity, top_k_matches
-from .services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
-
-# Used by compare endpoint
-from apps.analysis.services import replace_bpmn_tasks
-from apps.analysis.semantic.analyze import analyze_project
-
+from .services.services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
 
 # ============================================================
 # Helpers
@@ -75,29 +58,16 @@ def _forbidden():
 
 
 def _resolve_code_root_from_project(project: Project) -> Path:
-    """
-    Return the extracted code directory for the project's active code zip.
-    You must ensure your upload/extract step extracts zip into a stable folder.
-    """
-    if not getattr(project, "active_code", None):
+    active_code = getattr(project, "active_code", None)
+    if not active_code:
         raise ValueError("No active Code ZIP uploaded.")
 
-    # stored_path points to the ZIP itself under MEDIA
-    zip_abs = _abs_media_path(project.active_code.stored_path)
+    extracted_dir = str(getattr(active_code, "extracted_dir", "") or "").strip()
+    if extracted_dir:
+        p = Path(extracted_dir)
+        return p if p.is_absolute() else (Path(settings.MEDIA_ROOT) / p)
 
-    # choose a stable extraction folder (example)
-    extract_dir = (Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "code_extracted").resolve()
-    _ensure_dir(extract_dir)
-
-    # (Optional) if you already extract elsewhere, just return that folder instead
-    # If you want: always re-extract to keep fresh:
-    with zipfile.ZipFile(zip_abs, "r") as zf:
-        zf.extractall(extract_dir)
-
-    return extract_dir
-
-
-
+    raise ValueError("No extracted_dir found. Re-upload the code ZIP.")
 
 # ============================================================
 # ✅ Dashboard page (UI)
@@ -212,125 +182,6 @@ def metrics_developers(request, project_id: int):
 # ============================================================
 # Compare BPMN vs Code inputs endpoint
 # ============================================================
-
-@login_required
-@require_GET
-def compare_inputs_api(request, project_id: int):
-    print("COMPARE API 1")  # change 1 → 2 → 3 in each file
-    project = get_object_or_404(Project, id=project_id)
-
-    if not _can_open_project(project, request.user):
-        return JsonResponse({"detail": "Forbidden"}, status=403)
-
-    if not getattr(project, "active_bpmn", None):
-        return JsonResponse({"error": "No active BPMN uploaded."}, status=400)
-    if not getattr(project, "active_code", None):
-        return JsonResponse({"error": "No active Code ZIP uploaded."}, status=400)
-
-    bpmn_abs = _abs_media_path(project.active_bpmn.stored_path)
-    bpmn_bytes = bpmn_abs.read_bytes()
-
-    parsed = extract_tasks(bpmn_bytes)
-    storage_tasks = [
-        {
-            "task_id": (t.get("id") or "").strip(),
-            "name": (t.get("name") or "").strip(),
-            "description": (t.get("description") or "").strip(),
-        }
-        for t in (parsed or [])
-        if (t.get("id") or "").strip()
-    ]
-    replace_bpmn_tasks(project, storage_tasks)
-
-    MatchResult.objects.filter(project=project).delete()
-
-    code_root = _resolve_code_root_from_project(project)
-    analyze_project(
-        bpmn_input=bpmn_bytes,
-        code_root=code_root,
-        threshold=float(getattr(project, "similarity_threshold", 0.6) or 0.6),
-        matcher="greedy",
-        top_k=3,
-        include_debug=False,
-        project=project,
-        run=None,
-    )
-
-    tasks_qs = BpmnTask.objects.filter(project=project).order_by("name")
-    bpmn_tasks = []
-    for t in tasks_qs:
-        parts = []
-        if t.name:
-            parts.append(f"Task: {t.name}.")
-        if t.description:
-            parts.append(f"Description: {t.description}.")
-        bpmn_tasks.append(
-            {
-                "taskId": t.task_id,
-                "name": t.name,
-                "description": t.description,
-                "compareText": " ".join(parts).strip(),
-            }
-        )
-
-    artifacts_qs = (
-        CodeArtifact.objects.filter(project=project)
-        .exclude(file_path__startswith="bpmn\\")
-        .exclude(file_path__startswith="bpmn/")
-        .order_by("file_path", "symbol")
-    )
-
-    code_functions = []
-    for a in artifacts_qs:
-        symbol = (a.symbol or "").strip() or "Unnamed Function"
-        summary = (a.summary_text or "").strip()
-
-        title = symbol.replace("_", " ").strip()
-        title = title[:1].upper() + title[1:] if title else "Unnamed Function"
-
-        parts = [f"Task: {title}."]
-        if summary:
-            parts.append(f"Description: {summary}.")
-        compare_text = " ".join(parts).strip()
-
-        dev = request.user
-        dev_id = getattr(dev, "id", None)
-        dev_email = getattr(dev, "email", "") or ""
-        dev_name = (
-            getattr(dev, "get_username", lambda: "")()
-            or getattr(dev, "username", "")
-            or getattr(dev, "first_name", "")
-            or ""
-        )
-
-        code_functions.append(
-            {
-                "codeUid": a.code_uid,
-                "file": a.file_path,
-                "symbol": symbol,
-
-                "name": title,
-                "functionName": symbol,
-
-                "summary": summary,
-                "summary_text": summary,
-                "summaryText": summary,
-
-                "developerId": dev_id,
-                "developerEmail": dev_email,
-                "developerName": dev_name,
-                "developer": {"id": dev_id, "email": dev_email, "name": dev_name},
-
-                "compareText": compare_text,
-            }
-        )
-    print("BPMN SAMPLE:", bpmn_tasks[:2])
-    return JsonResponse(
-        {"projectId": project.id, "bpmnTasks": bpmn_tasks, "codeFunctions": code_functions},
-        safe=True,
-        json_dumps_params={"ensure_ascii": False},
-    )
-
 @login_required
 @require_GET
 def dashboard_stats(request):

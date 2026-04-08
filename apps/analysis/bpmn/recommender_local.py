@@ -93,3 +93,13 @@ def generate_recommendations_local(summary: str) -> List[str]:
     generated = outputs[0][inputs["input_ids"].shape[1]:]
     text = tokenizer.decode(generated, skip_special_tokens=True).strip()
     return normalize(text)
+
+
+def run_recommendation_pipeline(summary: str):
+    """
+    Factory-based wrapper for recommendation pipeline.
+    """
+    from apps.analysis.pipelines.pipeline_factory import PipelineFactory
+
+    pipeline = PipelineFactory.create_recommendation(summary=summary)
+    return pipeline.run()

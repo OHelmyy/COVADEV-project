@@ -1,8 +1,14 @@
+from __future__ import annotations
+from typing import List, Optional
+
+
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from typing import Optional, List
 
-MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"  # use 1.5B (fast)
+
+
+MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"  # use 1.5B (fast)
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(
