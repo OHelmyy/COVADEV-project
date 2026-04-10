@@ -24,7 +24,7 @@ from apps.task_management.services.assignment_service import (
 )
 from apps.accounts.rbac import is_admin, is_evaluator
 from apps.task_management.services.evaluation_service import evaluate_assignment
-
+from apps.task_management.models import TaskAssignment, TaskEvaluation, Notification
 
 def _parse_json_body(request):
     try:
@@ -32,6 +32,21 @@ def _parse_json_body(request):
     except Exception:
         return {}
 
+def _serialize_notification(notification: Notification) -> dict:
+    return {
+        "id": notification.id,
+        "type": notification.type,
+        "title": notification.title,
+        "message": notification.message,
+        "isRead": notification.is_read,
+        "readAt": notification.read_at.isoformat() if notification.read_at else None,
+        "createdAt": notification.created_at.isoformat() if notification.created_at else None,
+        "project": {
+            "id": notification.project.id,
+            "name": getattr(notification.project, "name", f"Project #{notification.project.id}"),
+        } if notification.project else None,
+        "assignmentId": notification.assignment_id,
+    }
 
 def _serialize_assignment(assignment: TaskAssignment) -> dict:
     membership = assignment.developer_membership
@@ -397,6 +412,55 @@ def project_developer_performance_api(request, project_id: int):
         "items": items,
     })
 
+@login_required
+@require_GET
+def my_notifications_api(request):
+    items = (
+        Notification.objects
+        .filter(user=request.user)
+        .select_related("project")
+        .order_by("-created_at")[:30]
+    )
+
+    unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+
+    return JsonResponse({
+        "items": [_serialize_notification(item) for item in items],
+        "unreadCount": unread_count,
+    })
+
+
+@login_required
+@require_POST
+def mark_notification_read_api(request, notification_id: int):
+    notification = get_object_or_404(
+        Notification,
+        id=notification_id,
+        user=request.user,
+    )
+
+    if not notification.is_read:
+        notification.is_read = True
+        notification.read_at = timezone.now()
+        notification.save(update_fields=["is_read", "read_at"])
+
+    return JsonResponse({
+        "message": "Notification marked as read.",
+        "notification": _serialize_notification(notification),
+    })
+
+
+@login_required
+@require_POST
+def mark_all_notifications_read_api(request):
+    unread_items = Notification.objects.filter(user=request.user, is_read=False)
+
+    now = timezone.now()
+    unread_items.update(is_read=True, read_at=now)
+
+    return JsonResponse({
+        "message": "All notifications marked as read.",
+    })
 
     
 

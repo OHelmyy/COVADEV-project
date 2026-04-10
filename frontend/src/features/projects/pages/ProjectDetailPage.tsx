@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import ConfirmModal from "../../../components/ConfirmModal";
+import ErrorModal from "../../../components/ErrorModal";
 import StatusMessage from "../../../components/StatusMessage";
 import TaskManagementTab from "../../task-management/components/TaskManagementTab";
 
@@ -18,6 +20,7 @@ import MembersTab from "../components/project-detail/tabs/MembersTab";
 
 import { useProjectDetail } from "../hooks/useProjectDetail";
 import { normalizeBpmnMeta } from "../utils/projectDetail";
+import { buildProjectErrorFromText } from "../utils/projectError";
 import { Card } from "../components/project-detail/ProjectUi";
 import { ui } from "../../../theme/ui";
 
@@ -26,6 +29,50 @@ export default function ProjectDetailPage() {
   const projectId = Number(projectIdParam);
 
   const vm = useProjectDetail(projectId);
+
+  useEffect(() => {
+    if (vm.compareError) {
+      const info = buildProjectErrorFromText(
+        "load compare inputs",
+        vm.compareError,
+        "Compare load failed"
+      );
+      vm.openErrorModal("load compare inputs", new Error(info.details), info.title);
+    }
+  }, [vm.compareError]);
+
+  useEffect(() => {
+    if (vm.resultsError) {
+      const info = buildProjectErrorFromText(
+        "load analysis results",
+        vm.resultsError,
+        "Results load failed"
+      );
+      vm.openErrorModal("load analysis results", new Error(info.details), info.title);
+    }
+  }, [vm.resultsError]);
+
+  useEffect(() => {
+    if (vm.reportError) {
+      const info = buildProjectErrorFromText(
+        "load report",
+        vm.reportError,
+        "Report load failed"
+      );
+      vm.openErrorModal("load report", new Error(info.details), info.title);
+    }
+  }, [vm.reportError]);
+
+  useEffect(() => {
+    if (vm.recError) {
+      const info = buildProjectErrorFromText(
+        "load recommendations",
+        vm.recError,
+        "Recommendations load failed"
+      );
+      vm.openErrorModal("load recommendations", new Error(info.details), info.title);
+    }
+  }, [vm.recError]);
 
   if (vm.state === "loading" || vm.state === "idle") {
     return <StatusMessage title="Loading project..." />;
@@ -43,7 +90,7 @@ export default function ProjectDetailPage() {
 
   if (!vm.data) return null;
 
-  const { bpmnMeta, isWellFormed, precheckWarnings, precheckErrors, bpmnSummary } =
+  const { isWellFormed, precheckWarnings, precheckErrors, bpmnSummary } =
     normalizeBpmnMeta(vm.data);
 
   return (
@@ -181,7 +228,13 @@ export default function ProjectDetailPage() {
         ) : null}
 
         {vm.activeTab === "runs" ? <RunsTab runs={vm.data.runs} /> : null}
-        {vm.activeTab === "members" ? <MembersTab members={vm.data.members} /> : null}
+        {vm.activeTab === "members" ? (
+          <MembersTab
+            projectId={vm.data.project.id}
+            initialMembers={vm.data.members}
+            currentUserRole={vm.data.membership?.role}
+          />
+        ) : null}
 
         <ConfirmModal
           open={vm.showDeleteModal}
@@ -195,6 +248,15 @@ export default function ProjectDetailPage() {
             vm.setShowDeleteModal(false);
           }}
           onConfirm={vm.confirmDeleteProject}
+        />
+
+        <ErrorModal
+          open={vm.errorModal.open}
+          title={vm.errorModal.title}
+          message={vm.errorModal.message}
+          cause={vm.errorModal.cause}
+          details={vm.errorModal.details}
+          onClose={vm.closeErrorModal}
         />
       </ProjectDetailLayout>
     </div>

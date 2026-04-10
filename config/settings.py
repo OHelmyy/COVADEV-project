@@ -138,4 +138,14 @@ LOGOUT_REDIRECT_URL = "accounts:login"
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+
+    
 ]
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_HOST_USER = "covadev.111@gmail.com"
+EMAIL_HOST_PASSWORD = "rqce peyi tqew qvma"
+EMAIL_USE_TLS = True
+DEFAULT_FROM_EMAIL = "COVADEV <covadev.111@gmail.com>"

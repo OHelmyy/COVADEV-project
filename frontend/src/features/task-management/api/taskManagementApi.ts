@@ -193,3 +193,44 @@ export type MyPerformanceInsightsResponse = {
 export function getMyPerformanceInsights() {
   return apiJson<MyPerformanceInsightsResponse>("/api/task-management/my-insights/");
 }
+export type NotificationItem = {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string | null;
+  project: {
+    id: number;
+    name: string;
+  } | null;
+  assignmentId: number | null;
+};
+
+export type MyNotificationsResponse = {
+  items: NotificationItem[];
+  unreadCount: number;
+};
+
+export function getMyNotifications() {
+  return apiJson<MyNotificationsResponse>("/api/task-management/my-notifications/");
+}
+
+export function markNotificationRead(notificationId: number) {
+  return apiJson<{ message: string; notification: NotificationItem }>(
+    `/api/task-management/notifications/${notificationId}/read/`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export function markAllNotificationsRead() {
+  return apiJson<{ message: string }>(
+    "/api/task-management/notifications/read-all/",
+    {
+      method: "POST",
+    }
+  );
+}

@@ -1,3 +1,5 @@
+import logging
+
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -5,6 +7,13 @@ from django.core.exceptions import ValidationError
 from apps.analysis.models import BpmnTask
 from apps.projects.models import ProjectMembership
 from apps.task_management.models import TaskAssignment
+from apps.task_management.services.notification_service import send_task_assignment_email
+from apps.task_management.services.notification_db_service import (
+    create_task_assigned_notification,
+    create_task_reviewed_notification,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, notes=""):
@@ -18,7 +27,12 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
     if membership.role != "DEVELOPER":
         raise ValidationError("Selected member is not a developer.")
 
-    assignment, _ = TaskAssignment.objects.update_or_create(
+    old_assignment = TaskAssignment.objects.filter(bpmn_task=task).select_related(
+        "developer_membership__user"
+    ).first()
+    old_developer_user_id = old_assignment.developer_membership.user_id if old_assignment else None
+
+    assignment, created = TaskAssignment.objects.update_or_create(
         bpmn_task=task,
         defaults={
             "project": project,
@@ -34,6 +48,20 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
             "reviewed_by": None,
         }
     )
+
+    should_notify = created or old_developer_user_id != membership.user_id
+
+    if should_notify:
+        create_task_assigned_notification(assignment)
+
+        try:
+            send_task_assignment_email(assignment)
+        except Exception:
+            logger.exception(
+                "Task was assigned successfully, but email notification failed for assignment_id=%s",
+                assignment.id,
+            )
+
     return assignment
 
 
@@ -54,7 +82,11 @@ def review_assignment(*, assignment: TaskAssignment, reviewed_by, accepted: bool
     assignment.review_notes = review_notes
     assignment.reviewed_at = timezone.now()
     assignment.save()
+
+    create_task_reviewed_notification(assignment)
+
     return assignment
+
 
 def start_assignment(*, assignment):
     if assignment.status == TaskAssignment.Status.ASSIGNED:

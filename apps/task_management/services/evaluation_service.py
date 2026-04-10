@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 
 from apps.task_management.models import TaskAssignment, TaskEvaluation
+from apps.task_management.services.notification_db_service import create_task_evaluated_notification
 
 
 def evaluate_assignment(
@@ -29,4 +30,7 @@ def evaluate_assignment(
             "comments": comments,
         },
     )
+
+    create_task_evaluated_notification(evaluation)
+
     return evaluation

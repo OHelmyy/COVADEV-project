@@ -5,6 +5,7 @@ import {
 } from "../features/task-management/api/taskManagementApi";
 import { cardBase, ui } from "../theme/ui";
 
+
 function statTone(value: number) {
   if (value >= 85) {
     return {
@@ -219,7 +220,15 @@ export default function MyInsightsPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 18 }}>
+     
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1fr",
+          gap: 18,
+        }}
+      >
         <div
           style={{
             ...cardBase,
@@ -329,7 +338,14 @@ export default function MyInsightsPage() {
         </div>
 
         <div style={{ ...cardBase, padding: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 12,
+            }}
+          >
             <div>
               <h3 style={{ margin: 0, color: ui.colors.text }}>Ranking vs Developers</h3>
               <div style={{ color: ui.colors.textMuted, marginTop: 6, fontSize: 14 }}>
@@ -393,7 +409,13 @@ export default function MyInsightsPage() {
                         </div>
                       </div>
 
-                      <div style={{ textAlign: "right", fontWeight: 900, color: ui.colors.text }}>
+                      <div
+                        style={{
+                          textAlign: "right",
+                          fontWeight: 900,
+                          color: ui.colors.text,
+                        }}
+                      >
                         {dev.averageScore}
                       </div>
                     </div>
@@ -425,8 +447,6 @@ export default function MyInsightsPage() {
         </div>
       </div>
 
-    
-
       <div style={{ ...cardBase, overflow: "hidden" }}>
         <div style={{ padding: 18, borderBottom: `1px solid ${ui.colors.border}` }}>
           <h3 style={{ margin: 0, color: ui.colors.text }}>Per Project Breakdown</h3>
@@ -452,7 +472,14 @@ export default function MyInsightsPage() {
             <tbody>
               {projects.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: 20, color: ui.colors.textMuted, textAlign: "center" }}>
+                  <td
+                    colSpan={8}
+                    style={{
+                      padding: 20,
+                      color: ui.colors.textMuted,
+                      textAlign: "center",
+                    }}
+                  >
                     No project performance data found yet.
                   </td>
                 </tr>
@@ -465,15 +492,37 @@ export default function MyInsightsPage() {
                         ID: {item.projectId}
                       </div>
                     </td>
-                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.totalAssigned}</td>
-                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.acceptedCount}</td>
-                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.rejectedCount}</td>
-                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.submittedCount}</td>
-                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>{item.inProgressCount}</td>
-                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, fontWeight: 800 }}>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      {item.totalAssigned}
+                    </td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      {item.acceptedCount}
+                    </td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      {item.rejectedCount}
+                    </td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      {item.submittedCount}
+                    </td>
+                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                      {item.inProgressCount}
+                    </td>
+                    <td
+                      style={{
+                        padding: 14,
+                        borderBottom: `1px solid ${ui.colors.border}`,
+                        fontWeight: 800,
+                      }}
+                    >
                       {item.acceptanceRate}%
                     </td>
-                    <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, fontWeight: 900 }}>
+                    <td
+                      style={{
+                        padding: 14,
+                        borderBottom: `1px solid ${ui.colors.border}`,
+                        fontWeight: 900,
+                      }}
+                    >
                       {item.averageScore}
                     </td>
                   </tr>
@@ -545,22 +594,30 @@ export default function MyInsightsPage() {
 
                     <div style={{ ...cardBase, padding: 12, background: ui.colors.bgSoft }}>
                       <div style={{ fontSize: 12, color: ui.colors.textMuted }}>Correctness</div>
-                      <div style={{ marginTop: 6, fontWeight: 800 }}>{item.evaluation.correctnessScore}</div>
+                      <div style={{ marginTop: 6, fontWeight: 800 }}>
+                        {item.evaluation.correctnessScore}
+                      </div>
                     </div>
 
                     <div style={{ ...cardBase, padding: 12, background: ui.colors.bgSoft }}>
                       <div style={{ fontSize: 12, color: ui.colors.textMuted }}>Quality</div>
-                      <div style={{ marginTop: 6, fontWeight: 800 }}>{item.evaluation.qualityScore}</div>
+                      <div style={{ marginTop: 6, fontWeight: 800 }}>
+                        {item.evaluation.qualityScore}
+                      </div>
                     </div>
 
                     <div style={{ ...cardBase, padding: 12, background: ui.colors.bgSoft }}>
                       <div style={{ fontSize: 12, color: ui.colors.textMuted }}>Timeliness</div>
-                      <div style={{ marginTop: 6, fontWeight: 800 }}>{item.evaluation.timelinessScore}</div>
+                      <div style={{ marginTop: 6, fontWeight: 800 }}>
+                        {item.evaluation.timelinessScore}
+                      </div>
                     </div>
 
                     <div style={{ ...cardBase, padding: 12, background: ui.colors.bgSoft }}>
                       <div style={{ fontSize: 12, color: ui.colors.textMuted }}>Communication</div>
-                      <div style={{ marginTop: 6, fontWeight: 800 }}>{item.evaluation.communicationScore}</div>
+                      <div style={{ marginTop: 6, fontWeight: 800 }}>
+                        {item.evaluation.communicationScore}
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -575,7 +632,13 @@ export default function MyInsightsPage() {
                       border: `1px solid ${ui.colors.border}`,
                     }}
                   >
-                    <div style={{ fontSize: 12, color: ui.colors.textMuted, marginBottom: 6 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: ui.colors.textMuted,
+                        marginBottom: 6,
+                      }}
+                    >
                       Evaluator Comments
                     </div>
                     <div style={{ color: ui.colors.text, lineHeight: 1.65 }}>

@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/auth";
 import { buttonBase, ui } from "../theme/ui";
+import NotificationsBell from "./NotificationsBell";
 
 const linkStyle = ({ isActive }: { isActive: boolean }) => ({
   textDecoration: "none",
@@ -103,7 +104,7 @@ export default function Navbar() {
 
         {isDeveloper ? (
           <>
-           <NavLink to="/my-insights" end style={linkStyle}>
+            <NavLink to="/my-insights" end style={linkStyle}>
               My Insights
             </NavLink>
             <NavLink to="/projects" end style={linkStyle}>
@@ -112,9 +113,10 @@ export default function Navbar() {
             <NavLink to="/myTasks" end style={linkStyle}>
               My Tasks
             </NavLink>
-           
           </>
         ) : null}
+
+        {isDeveloper ? <NotificationsBell /> : null}
 
         {user?.email ? (
           <span

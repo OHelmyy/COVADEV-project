@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
+    <div style="max-width: 640px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
+      <h2 style="margin-top: 0; color: #094780;">New Task Assigned</h2>
+
+      <p>Hello {{ developer_name }},</p>
+
+      <p>You have been assigned a new task in <strong>{{ project_name }}</strong>.</p>
+
+      <div style="background: #f8fafc; padding: 16px; border-radius: 10px; border: 1px solid #e5e7eb;">
+        <p style="margin: 0 0 8px;"><strong>Task Name:</strong> {{ task_name }}</p>
+        <p style="margin: 0 0 8px;"><strong>Task ID:</strong> {{ task_id }}</p>
+        <p style="margin: 0 0 8px;"><strong>Description:</strong> {{ task_description }}</p>
+        <p style="margin: 0;"><strong>Assignment Notes:</strong> {{ assignment_notes }}</p>
+      </div>
+
+      <p style="margin-top: 16px;">
+        Assigned by: <strong>{{ assigned_by }}</strong>
+      </p>
+
+      <p style="margin-top: 24px;">
+        Please log in to the system to review and start your task.
+      </p>
+
+      <p style="margin-top: 24px;">Regards,<br><strong>COVADEV Team</strong></p>
+    </div>
+  </body>
+</html>

@@ -361,8 +361,8 @@ def update_threshold(request, project_id):
 def project_members(request, project_id):
     project = get_object_or_404(Project, id=project_id)
 
-    if not _is_project_evaluator(project, request.user):
-        messages.error(request, "Evaluator only.")
+    if not is_admin(request.user):
+        messages.error(request, "Admin only.")
         return redirect("projects:detail", project_id=project.id)
 
     members = ProjectMembership.objects.filter(project=project).select_related("user").order_by("user__username")
@@ -375,7 +375,6 @@ def project_members(request, project_id):
 
         user = User.objects.filter(username=email).first() or User.objects.filter(email=email).first()
         if user:
-            # prevent adding evaluator as developer
             if user.id == project.evaluator_id:
                 messages.error(request, "This user is the evaluator already.")
             else:
@@ -394,11 +393,16 @@ def project_members(request, project_id):
 def remove_member(request, project_id, membership_id):
     project = get_object_or_404(Project, id=project_id)
 
-    if not _is_project_evaluator(project, request.user):
-        messages.error(request, "Evaluator only.")
+    if not is_admin(request.user):
+        messages.error(request, "Admin only.")
         return redirect("projects:detail", project_id=project.id)
 
     membership = get_object_or_404(ProjectMembership, id=membership_id, project=project)
+
+    if membership.user_id == project.evaluator_id:
+        messages.error(request, "Cannot remove the project evaluator.")
+        return redirect("projects:members", project_id=project.id)
+
     membership.delete()
 
     messages.success(request, "Member removed.")
