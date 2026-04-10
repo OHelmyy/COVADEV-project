@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from typing import Optional, List
-from transformers import AutoTokenizer, AutoModelForCausalLM
+
 import torch
 
+from .shared_model_singleton import ModelProvider
+
+provider = ModelProvider()
+tokenizer = provider.tokenizer
+model = provider.model
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
 _tokenizer = None
@@ -139,6 +144,7 @@ def summarize_bpmn_task(
     incoming: Optional[List[str]] = None,
     outgoing: Optional[List[str]] = None,
 ) -> str:
+    print(f"🔥 BPMN summarize called for: {name}")
     prompt = build_bpmn_task_summary_input(name, description, task_type, incoming, outgoing)
     summary = summarize_bpmn_task_text(prompt)
     summary = clean_summary(summary)
@@ -174,4 +180,4 @@ def clean_summary(text: str) -> str:
     if t.lower().startswith("is "):
         t = t[3:].strip()
 
-    return t[:1].upper() + t[1:]
+    return t[:1].upper() + t[1:] if t else t

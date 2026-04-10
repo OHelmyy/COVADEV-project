@@ -432,7 +432,6 @@ def compare_inputs_api(request, project_id: int):
         for c in CodeArtifact.objects.filter(project=project)
     ]
 
-    print("BPMN SAMPLE:", bpmn_tasks[:2])
 
     return JsonResponse({
         "projectId": project.id,

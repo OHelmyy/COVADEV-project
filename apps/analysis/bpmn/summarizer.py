@@ -4,7 +4,7 @@ from typing import List, Optional
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
-MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 
 _tokenizer = None
 _model = None

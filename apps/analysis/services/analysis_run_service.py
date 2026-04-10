@@ -7,7 +7,7 @@ from django.conf import settings
 
 from apps.analysis.metrics.evaluation import evaluate_traceability
 from apps.analysis.models import AnalysisRun
-from apps.analysis.pipelines.postdev_pipeline import PostDevPipeline
+from apps.analysis.pipelines.pipeline_factory import PipelineFactory
 from apps.analysis.semantic.analyze import analyze_project
 
 from .storage_service import replace_bpmn_tasks, replace_match_results
@@ -60,10 +60,11 @@ def run_analysis_for_project(
     top_k: int = 3,
 ) -> AnalysisRun:
     """
-    Backward-compatible wrapper around the PostDevPipeline.
+    Factory-based wrapper around PostDevPipeline.
     Keeps the same return type: AnalysisRun.
     """
-    pipeline = PostDevPipeline(
+
+    pipeline = PipelineFactory.create_postdev(
         project=project,
         matcher=matcher,
         top_k=top_k,
@@ -72,6 +73,7 @@ def run_analysis_for_project(
         replace_bpmn_tasks_func=replace_bpmn_tasks,
         replace_match_results_func=replace_match_results,
     )
+
     return pipeline.run()
 
 

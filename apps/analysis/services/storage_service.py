@@ -6,27 +6,15 @@ from apps.analysis.models import BpmnTask, MatchResult
 
 
 def _build_task_summary(name: str, desc: str, task_type: str, incoming: list, outgoing: list) -> str:
-    if desc:
-        # description exists → use directly, no LLM
-        parts = [desc]
-        skip_nodes = {"order received", "order confirmed", "start", "end", "startevent", "endevent"}
-        incoming_filtered = [n for n in incoming if n.lower() not in skip_nodes]
-        outgoing_filtered = [n for n in outgoing if n.lower() not in skip_nodes]
-        if incoming_filtered:
-            parts.append(f"Triggered after: {', '.join(incoming_filtered)}.")
-        if outgoing_filtered:
-            parts.append(f"Followed by: {', '.join(outgoing_filtered)}.")
-        return " ".join(parts).strip()
-    else:
-        # no description → LLM generates from name + context
-        from apps.analysis.summary.bpmn_task_summary import summarize_bpmn_task
-        return summarize_bpmn_task(
-            name=name,
-            description=desc,
-            task_type=task_type,
-            incoming=incoming,
-            outgoing=outgoing,
-        )
+    from apps.analysis.summary.bpmn_task_summary import summarize_bpmn_task
+
+    return summarize_bpmn_task(
+        name=name,
+        description=desc,
+        task_type=task_type,
+        incoming=incoming,
+        outgoing=outgoing,
+    )
 
 def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
     existing_task_ids = set()

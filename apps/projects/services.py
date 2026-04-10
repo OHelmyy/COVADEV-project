@@ -12,7 +12,7 @@ from django.db import transaction
 
 from .models import Project, ProjectFile, CodeFile
 from apps.analysis.code.structured_extractor import extract_structured_from_directory
-from apps.analysis.summary.service import SummaryService
+from apps.analysis.summary.code_summary_service import SummaryService
 from apps.analysis.models_code import CodeArtifact
 from apps.analysis.summary.service import fallback_summary as _fallback_summary
 
@@ -225,7 +225,6 @@ def save_code_zip_and_extract(project: Project, uploaded_zip, uploader):
     - Clears old extracted code folder content before extracting
     - Updates project.active_code pointer
     """
-    print("AAAA -> save_code_zip_and_extract CALLED")
     code_root = Path(settings.MEDIA_ROOT) / "projects" / str(project.id) / "code"
     code_root.mkdir(parents=True, exist_ok=True)
 

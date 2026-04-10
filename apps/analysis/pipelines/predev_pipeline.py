@@ -9,12 +9,10 @@ from apps.analysis.bpmn.summarizer import (
     summarize_bpmn_text,
 )
 
-from .base_pipeline import BasePipeline
 
-
-class PreDevPipeline(BasePipeline):
+class PreDevPipeline:
     """
-    Concrete Template Method pipeline for BPMN pre-development analysis.
+    Factory-based concrete pipeline for BPMN pre-development analysis.
 
     Current behavior matches the old run_bpmn_predev() flow:
       - precheck BPMN
@@ -26,7 +24,6 @@ class PreDevPipeline(BasePipeline):
     """
 
     def __init__(self, bpmn_bytes: bytes, *, do_summary: bool = True) -> None:
-        super().__init__()
         self.bpmn_bytes = bpmn_bytes
         self.do_summary = do_summary
 
@@ -37,13 +34,22 @@ class PreDevPipeline(BasePipeline):
         self.summary_input: str = ""
         self.summary: str = ""
 
-    def validate(self) -> None:
+    def run(self) -> Dict[str, Any]:
+        self._validate()
+
+        if not self.check or not self.check.ok:
+            return self._build_invalid_response()
+
+        self._load()
+        self._preprocess()
+        self._execute()
+
+        return self._build_success_response()
+
+    def _validate(self) -> None:
         self.check = precheck_bpmn_xml(self.bpmn_bytes)
 
-    def should_stop(self) -> bool:
-        return not bool(self.check and self.check.ok)
-
-    def load(self) -> None:
+    def _load(self) -> None:
         self.tasks = extract_tasks(self.bpmn_bytes)
 
         self.process_name = self.check.process_name if self.check else ""
@@ -55,7 +61,7 @@ class PreDevPipeline(BasePipeline):
             # Keep old behavior: ignore graph extraction failure here
             pass
 
-    def preprocess(self) -> None:
+    def _preprocess(self) -> None:
         if not self.do_summary:
             return
 
@@ -67,36 +73,31 @@ class PreDevPipeline(BasePipeline):
 
         self.summary_input = build_bpmn_summary_input(self.process_name, self.task_names)
 
-    def execute(self) -> None:
+    def _execute(self) -> None:
         if self.do_summary and self.summary_input:
             self.summary = summarize_bpmn_text(self.summary_input)
         else:
             self.summary = ""
 
-    def save(self) -> None:
-        # Pre-dev v1: no DB persistence here yet.
-        # Persistence can be added later without changing the run() template.
-        return None
+    def _build_invalid_response(self) -> Dict[str, Any]:
+        return {
+            "ok": False,
+            "errors": self.check.errors if self.check else ["Unknown BPMN validation error."],
+            "warnings": self.check.warnings if self.check else [],
+            "tasks": [],
+            "summary": "",
+            "meta": {},
+        }
 
-    def build_response(self) -> Dict[str, Any]:
-        if not self.check or not self.check.ok:
-            return {
-                "ok": False,
-                "errors": self.check.errors if self.check else ["Unknown BPMN validation error."],
-                "warnings": self.check.warnings if self.check else [],
-                "tasks": [],
-                "summary": "",
-                "meta": {},
-            }
-
+    def _build_success_response(self) -> Dict[str, Any]:
         return {
             "ok": True,
             "errors": [],
-            "warnings": self.check.warnings,
+            "warnings": self.check.warnings if self.check else [],
             "tasks": self.tasks,
             "summary": self.summary,
             "meta": {
                 "process_name": self.process_name,
-                "task_count": self.check.task_count,
+                "task_count": self.check.task_count if self.check else 0,
             },
         }

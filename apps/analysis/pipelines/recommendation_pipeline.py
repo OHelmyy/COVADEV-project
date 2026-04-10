@@ -7,12 +7,10 @@ from apps.analysis.bpmn.recommender_local import (
     generate_recommendations_local,
 )
 
-from .base_pipeline import BasePipeline
 
-
-class RecommendationPipeline(BasePipeline):
+class RecommendationPipeline:
     """
-    Template Method pipeline for BPMN-based recommendations.
+    Factory-based pipeline for BPMN-based recommendations.
 
     Flow:
       - validate summary
@@ -22,45 +20,44 @@ class RecommendationPipeline(BasePipeline):
     """
 
     def __init__(self, summary: str) -> None:
-        super().__init__()
         self.summary = (summary or "").strip()
 
         self.prompt: str = ""
         self.recommendations: List[str] = []
         self.error_message: str = ""
 
-    def validate(self) -> None:
+    def run(self) -> Dict[str, Any]:
+        self._validate()
+
+        if self.error_message:
+            return self._build_error_response()
+
+        self._preprocess()
+        self._execute()
+
+        return self._build_success_response()
+
+    def _validate(self) -> None:
         if not self.summary:
             self.error_message = "Workflow summary is empty."
 
-    def should_stop(self) -> bool:
-        return bool(self.error_message)
-
-    def load(self) -> None:
-        # No external loading needed right now.
-        return None
-
-    def preprocess(self) -> None:
+    def _preprocess(self) -> None:
         self.prompt = build_prompt(self.summary)
 
-    def execute(self) -> None:
+    def _execute(self) -> None:
         self.recommendations = generate_recommendations_local(self.summary)
 
-    def save(self) -> None:
-        # No DB persistence yet.
-        return None
+    def _build_error_response(self) -> Dict[str, Any]:
+        return {
+            "ok": False,
+            "error": self.error_message,
+            "recommendations": [],
+            "meta": {
+                "count": 0,
+            },
+        }
 
-    def build_response(self) -> Dict[str, Any]:
-        if self.error_message:
-            return {
-                "ok": False,
-                "error": self.error_message,
-                "recommendations": [],
-                "meta": {
-                    "count": 0,
-                },
-            }
-
+    def _build_success_response(self) -> Dict[str, Any]:
         return {
             "ok": True,
             "error": "",
