@@ -27,6 +27,7 @@ def _norm_abs(p: Path) -> Path:
 
 def _is_inside(child: Path, parent: Path) -> bool:
     child = _norm_abs(child)
+    
     parent = _norm_abs(parent)
     try:
         child.relative_to(parent)

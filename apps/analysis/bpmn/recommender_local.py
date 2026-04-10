@@ -53,24 +53,35 @@ def normalize(lines_text: str) -> List[str]:
 def generate_recommendations_local(summary: str) -> List[str]:
     prompt = build_prompt(summary)
 
-    r = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.2,
-                "num_predict": 220,
+    try:
+        r = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.2,
+                    "num_predict": 220,
+                },
             },
-        },
-        timeout=360,
-    )
-    r.raise_for_status()
-    data = r.json()
-    text = data.get("response", "") or ""
-    return normalize(text)
-
+            timeout=360,
+        )
+        r.raise_for_status()
+        data = r.json()
+        text = data.get("response", "") or ""
+        return normalize(text)
+    except requests.exceptions.ConnectionError:
+        raise ValueError(
+            f"Ollama is not running. Please start Ollama and make sure "
+            f"'{MODEL}' model is available at {OLLAMA_URL}."
+        )
+    except requests.exceptions.Timeout:
+        raise ValueError(
+            "Ollama request timed out. The model may be too slow or unresponsive."
+        )
+    except Exception as e:
+        raise ValueError(f"Recommendation generation failed: {str(e)}")
 
 def run_recommendation_pipeline(summary: str):
     """
