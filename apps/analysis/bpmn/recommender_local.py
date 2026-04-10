@@ -94,35 +94,35 @@ def generate_recommendations_local(summary: str) -> List[str]:
     text = tokenizer.decode(generated, skip_special_tokens=True).strip()
     return normalize(text)
 
-    try:
-        r = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.2,
-                    "num_predict": 220,
-                },
-            },
-            timeout=360,
-        )
-        r.raise_for_status()
-        data = r.json()
-        text = data.get("response", "") or ""
-        return normalize(text)
-    except requests.exceptions.ConnectionError:
-        raise ValueError(
-            f"Ollama is not running. Please start Ollama and make sure "
-            f"'{MODEL}' model is available at {OLLAMA_URL}."
-        )
-    except requests.exceptions.Timeout:
-        raise ValueError(
-            "Ollama request timed out. The model may be too slow or unresponsive."
-        )
-    except Exception as e:
-        raise ValueError(f"Recommendation generation failed: {str(e)}")
+    # try:
+    #     r = requests.post(
+    #         OLLAMA_URL,
+    #         json={
+    #             "model": MODEL,
+    #             "prompt": prompt,
+    #             "stream": False,
+    #             "options": {
+    #                 "temperature": 0.2,
+    #                 "num_predict": 220,
+    #             },
+    #         },
+    #         timeout=360,
+    #     )
+    #     r.raise_for_status()
+    #     data = r.json()
+    #     text = data.get("response", "") or ""
+    #     return normalize(text)
+    # except requests.exceptions.ConnectionError:
+    #     raise ValueError(
+    #         f"Ollama is not running. Please start Ollama and make sure "
+    #         f"'{MODEL}' model is available at {OLLAMA_URL}."
+    #     )
+    # except requests.exceptions.Timeout:
+    #     raise ValueError(
+    #         "Ollama request timed out. The model may be too slow or unresponsive."
+    #     )
+    # except Exception as e:
+    #     raise ValueError(f"Recommendation generation failed: {str(e)}")
 
 def run_recommendation_pipeline(summary: str):
     """
