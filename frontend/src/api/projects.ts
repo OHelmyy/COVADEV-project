@@ -140,8 +140,6 @@ export async function fetchCompareInputs(projectId: number) {
       summary?: string;
       summary_text?: string;
       summaryText?: string;
-      structured_summary?: string;
-      structuredSummary?: string;
       compareText?: string;
     }>;
   }>(`/api/projects/${projectId}/compare-inputs/`); // ✅ FIXED URL
@@ -181,17 +179,11 @@ export async function fetchCompareInputs(projectId: number) {
         (c.summaryText ?? "").trim() ||
         (c.summary_text ?? "").trim() ||
         (c.summary ?? "").trim();
-
-      const structured =
-        (c.structuredSummary ?? "").trim() ||
-        (c.structured_summary ?? "").trim();
-
       return {
         codeUid: c.codeUid,
         functionName: fnName,
         filePath: fp,
         summaryText: sumRaw,
-        structuredSummary: structured,
       };
     }),
   };

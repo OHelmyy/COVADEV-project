@@ -8,7 +8,7 @@ import InfoTip from "../components/InfoTip";
 import EmptyState from "../components/EmptyState";
 import StatusMessage from "../components/StatusMessage";
 
-import { fetchProjectReport } from "../api/reports";
+import { fetchProjectReport } from "../features/projects/api/projectReport";
 import { fetchProjects } from "../api/projects";
 import type { ProjectSummaryApi } from "../api/types";
 import { buttonBase, cardBase, ui } from "../theme/ui";
