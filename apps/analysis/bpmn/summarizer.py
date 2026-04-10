@@ -4,11 +4,12 @@ from typing import List, Optional
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
-MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
 _tokenizer = None
 _model = None
 
+<<<<<<< HEAD
 def _get_model():
     global _tokenizer, _model
     if _tokenizer is None or _model is None:
@@ -25,6 +26,9 @@ def _get_model():
             trust_remote_code=True,
         )
     return _tokenizer, _model
+=======
+MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"  # use 1.5B (fast)
+>>>>>>> feature/singelton-pattern
 
 
 def build_bpmn_summary_input(process_name: Optional[str], tasks: List[str]) -> str:
