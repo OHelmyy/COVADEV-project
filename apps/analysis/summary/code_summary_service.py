@@ -16,18 +16,36 @@ from .shared_model_singleton import ModelProvider
 # - Make it useful for semantic matching with BPMN
 # """
 
-CODE_COMPARE_RULES = """Write one short sentence describing what the code does.
+# CODE_COMPARE_RULES = """Write one short sentence describing what the code does.
 
+# Rules:
+# - Describe actual system behavior (validate, fetch, update, save, return)
+#  - Do NOT rephrase or repeat the function name as the summary
+#  - If the code returns a value, say what it returns and from where
+#  - If the code validates something, say what condition it checks
+#  - If the code saves something, say what it saves and where
+#  - Mention actual objects (dictionary, list, string, database record)
+#  - Do NOT start with "This function", "The function", function name
+#  - One sentence only, complete sentence, no cut off
+#  - Make it useful for semantic matching with BPMN business tasks
+# """
+CODE_COMPARE_RULES = """Analyze this code and write ONE sentence describing what it does.
+
+Focus:
+- 80% business purpose: what real-world action does this perform? (search, add, apply, confirm, charge, send)
+- 20% technical: what key mechanism does it use? (lookup, append, calculate, build, call, update)
 Rules:
-- Mention the real action
-- Mention the main object
-- Do not repeat the function name
-- One sentence only
+- Infer business meaning from the LOGIC, not from variable names
+- Never use technical terms like dictionary, list, array, object, variable, parameter
+- Ignore all parameter names (q, r, s, c, o, etc.)
+- Mention the real-world object (book, cart, order, payment, discount, email)
+- Start with a verb
+- One sentence only, ending with a period
 """
 
 DETAILED_RULES = """You explain code behavior clearly for humans.
  Task: Write 2 to 4 short sentences explaining what the function does and how it does it.
- Rules:
+ Rules: 
  - Easy, human-friendly language.
  - Mention key actions (e.g., reads, validates, updates, saves, calls).
  - Mention important inputs/outputs if present.
@@ -114,7 +132,7 @@ class SummaryService:
 
             block = build_generator_block(sf)
             short_prompt = build_code_compare_prompt(block)
-            short_raw = self._call_model(short_prompt, max_new_tokens=20)
+            short_raw = self._call_model(short_prompt, max_new_tokens=40)
 
             print("UID:", uid)
             print("SHORT RAW:", repr(short_raw))

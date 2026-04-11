@@ -14,7 +14,7 @@ from .models import Project, ProjectFile, CodeFile
 from apps.analysis.code.structured_extractor import extract_structured_from_directory
 from apps.analysis.summary.code_summary_service import SummaryService
 from apps.analysis.models_code import CodeArtifact
-from apps.analysis.summary.service import fallback_summary as _fallback_summary
+from apps.analysis.summary.code_summary_service import fallback_summary as _fallback_summary
 
 
 # ============================================================
@@ -176,8 +176,6 @@ def _persist_code_artifacts_with_summaries(
                 if uid not in summary_errors:
                     summary_errors[uid] = "Empty/failed model summary (fallback used)"
 
-            structured_ui = ""
-
             try:
                 CodeArtifact.objects.update_or_create(
                     project=project,
@@ -193,7 +191,6 @@ def _persist_code_artifacts_with_summaries(
                         "returns": sf.get("returns") or [],
                         "exceptions": sf.get("exceptions") or [],
                         "summary_text": short,
-                        "structured_summary": structured_ui,
                     },
                 )
                 saved += 1

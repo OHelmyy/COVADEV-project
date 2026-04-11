@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from concurrent.futures import ThreadPoolExecutor
-
 from django.db import transaction
 from django.utils import timezone
 
@@ -19,8 +16,6 @@ from apps.analysis.semantic.analyze import (
 from apps.projects.services import _persist_code_artifacts_with_summaries
 
 from apps.analysis.models import CodeEmbedding, TaskEmbedding
-from .base_pipeline import BasePipeline
-
 class PostDevPipeline:
     """
     Factory-based concrete pipeline for full project analysis.
@@ -104,21 +99,6 @@ class PostDevPipeline:
         self.bpmn_graph = extract_bpmn_graph(self.bpmn_bytes)
 
     def _execute(self) -> None:
-        CodeArtifact.objects.filter(project=self.project).delete()
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_bpmn = executor.submit(
-                self._replace_bpmn_tasks,
-                self.project,
-                self.storage_tasks,
-            )
-
-            future_code = executor.submit(
-                _persist_code_artifacts_with_summaries,
-                project=self.project,
-                code_root_dir=self.code_root,
-            )
-    def execute(self) -> None:
         # 1) Store BPMN tasks
         self._replace_bpmn_tasks(self.project, self.storage_tasks)
 
@@ -146,14 +126,13 @@ class PostDevPipeline:
                 code_root_dir=self.code_root,
             )
 
-            future_bpmn.result()
-            future_code.result()
 
         self.threshold = float(getattr(self.project, "similarity_threshold", 0.6) or 0.6)
 
         bpmn_result = analyze_bpmn_side(
             bpmn_input=self.bpmn_bytes,
             project=self.project,
+            bpmn_graph_override=self.bpmn_graph,
         )
 
         code_result = analyze_code_side(
@@ -168,6 +147,8 @@ class PostDevPipeline:
             matcher=self.matcher,
             top_k=self.top_k,
             batch_size=32,
+            project=self.project,
+
         )
 
         self.engine_result = {
@@ -189,12 +170,10 @@ class PostDevPipeline:
                 "missing": len((match_result["matching"].get("missing") or [])),
                 "extra": len((match_result["matching"].get("extra") or [])),
             },
+            "_embedded": match_result["embedded"],
+
         }
 
-            include_debug=False,
-            project=self.project,
-            bpmn_graph_override=self.bpmn_graph,
-        )
 
         # Save embeddings to DB for future runs
         embedded = self.engine_result.get("_embedded")
@@ -272,7 +251,6 @@ class PostDevPipeline:
                         code_artifact=artifact,
                         defaults={"vector": emb.get("vector")},
                     )
-    def save(self) -> None:
     def _save(self) -> None:
         self._replace_match_results(self.project, self.storage_results)
 

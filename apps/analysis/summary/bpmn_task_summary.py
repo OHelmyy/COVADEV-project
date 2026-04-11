@@ -1,37 +1,23 @@
 from __future__ import annotations
 
 from typing import Optional, List
-
 import torch
-
 from .shared_model_singleton import ModelProvider
 
-provider = ModelProvider()
-tokenizer = provider.tokenizer
-model = provider.model
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
-_tokenizer = None
-_model = None
+_provider = None
 
 def _get_model():
-    global _tokenizer, _model
-    if _tokenizer is None or _model is None:
-        _tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_NAME,
-            trust_remote_code=True,
-        )
-        _model = AutoModelForCausalLM.from_pretrained(
-            MODEL_NAME,
-            dtype=torch.float16,
-            device_map="auto",
-            trust_remote_code=True,
-        )
-    return _tokenizer, _model
-
+    global _provider
+    if _provider is None:
+        _provider = ModelProvider()
+    return _provider.tokenizer, _provider.model
 
 def summarize_bpmn_task_text(prompt: str) -> str:
-    tokenizer, model = _get_model()
+    provider = ModelProvider()
+    tokenizer = provider.tokenizer
+    model = provider.model
 
     messages = [
         {"role": "system", "content": "You are a precise business analyst."},
@@ -74,23 +60,19 @@ def build_bpmn_task_summary_input(
     leads_to = ", ".join(outgoing or []) or "None"
 
     return (
-        "Write ONE short technical sentence describing what this BPMN task does.\n\n"
+        "Write ONE short sentence describing the business action of this BPMN task.\n\n"
         "Rules:\n"
-        "- Base your answer primarily on the Task description\n"
-        "- If description is missing, use the task name only\n"
-        "- Describe actual system behavior (read, validate, update, process, generate, send)\n"
-        "- Mention the main object (order, payment, cart, discount, email)\n"
-        "- Do NOT mention what comes before or after the task\n"
+        "- Start with a verb (Searches, Adds, Applies, Confirms, Charges, Sends)\n"
+        "- Mention the main business object (book, cart, order, payment, email)\n"
+        "- Do NOT mention the actor (no 'Customer', 'System', 'User')\n"
+        "- Do NOT mention implementation details\n"
         "- Do NOT start with 'This task', 'The task', 'Task:'\n"
-        "- Do NOT ask for more details\n"
-        "- No explanation, output only the sentence\n"
-        "- Make it useful for semantic matching with code functions\n\n"
+        "- One sentence only, ending with a period\n\n"
         f"Task name: {name or 'Unknown'}\n"
-        f"Task type: {ttype if ttype else 'Not specified'}\n"
         f"Task description: {desc if desc else 'Missing'}\n"
         f"Comes after: {comes_after}\n"
         f"Leads to: {leads_to}"
-    )
+)
 
 
 def is_bad_bpmn_summary(summary: str, name: str) -> bool:
