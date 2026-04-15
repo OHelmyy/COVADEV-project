@@ -1,31 +1,19 @@
 from __future__ import annotations
 
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import os
+from groq import Groq
 
 
 class ModelProvider:
     _instance = None
-    MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+    MODEL_NAME = "llama-3.1-8b-instant"
 
     def __new__(cls):
+        
         if cls._instance is None:
-            print("Loading shared summary model once...")
-
+            print("Initializing Groq API client once...")
             instance = super().__new__(cls)
-
-            instance.tokenizer = AutoTokenizer.from_pretrained(
-                cls.MODEL_NAME,
-                trust_remote_code=True,
-            )
-
-            instance.model = AutoModelForCausalLM.from_pretrained(
-                cls.MODEL_NAME,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                device_map="auto",
-                trust_remote_code=True,
-            )
-
+            instance.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+            instance.model_name = cls.MODEL_NAME
             cls._instance = instance
-
         return cls._instance

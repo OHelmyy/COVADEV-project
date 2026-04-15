@@ -3,11 +3,7 @@ from __future__ import annotations
 from typing import List
 import re
 
-import torch
-
-from apps.analysis.llm.qwen_registry import get_qwen_bundle
-
-MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+from apps.analysis.summary.shared_model_singleton import ModelProvider
 
 
 def build_prompt(summary: str) -> str:
@@ -58,71 +54,31 @@ def normalize(lines_text: str) -> List[str]:
 
 
 def generate_recommendations_local(summary: str) -> List[str]:
-    tokenizer, model = get_qwen_bundle(MODEL_NAME)
-
+    provider = ModelProvider()
     prompt = build_prompt(summary)
 
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a senior software architect and process auditor.",
-        },
-        {
-            "role": "user",
-            "content": prompt,
-        },
-    ]
-
-    chat = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-
-    inputs = tokenizer(chat, return_tensors="pt").to(model.device)
-
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=220,
+    try:
+        response = provider.client.chat.completions.create(
+            model=provider.model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a senior software architect and process auditor.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
             temperature=0.2,
-            do_sample=False,
-            pad_token_id=tokenizer.eos_token_id,
+            max_tokens=400,
         )
+        text = response.choices[0].message.content.strip()
+        return normalize(text)
+    except Exception as e:
+        print(f"Groq API call failed: {e}")
+        return []
 
-    generated = outputs[0][inputs["input_ids"].shape[1]:]
-    text = tokenizer.decode(generated, skip_special_tokens=True).strip()
-    return normalize(text)
-
-    # try:
-    #     r = requests.post(
-    #         OLLAMA_URL,
-    #         json={
-    #             "model": MODEL,
-    #             "prompt": prompt,
-    #             "stream": False,
-    #             "options": {
-    #                 "temperature": 0.2,
-    #                 "num_predict": 220,
-    #             },
-    #         },
-    #         timeout=360,
-    #     )
-    #     r.raise_for_status()
-    #     data = r.json()
-    #     text = data.get("response", "") or ""
-    #     return normalize(text)
-    # except requests.exceptions.ConnectionError:
-    #     raise ValueError(
-    #         f"Ollama is not running. Please start Ollama and make sure "
-    #         f"'{MODEL}' model is available at {OLLAMA_URL}."
-    #     )
-    # except requests.exceptions.Timeout:
-    #     raise ValueError(
-    #         "Ollama request timed out. The model may be too slow or unresponsive."
-    #     )
-    # except Exception as e:
-    #     raise ValueError(f"Recommendation generation failed: {str(e)}")
 
 def run_recommendation_pipeline(summary: str):
     """
