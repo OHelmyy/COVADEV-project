@@ -1,8 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, List
-import torch
 
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from .generator import build_generator_block
 from .shared_model_singleton import ModelProvider
 
@@ -114,13 +112,12 @@ def fallback_summary(sf: Dict[str, Any]) -> str:
     return f"{title} executes its main business logic."
 
 class SummaryService:
-    MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
     def __init__(self) -> None:
         provider = ModelProvider()
-        self.tokenizer = provider.tokenizer
-        self.model = provider.model
-
+        self.client = provider.client
+        self.model_name = provider.model_name
+        
     def summarize_many(self, structured_functions: List[Dict]) -> Dict[str, Dict[str, str]]:
         print("EEEE -> functions:", len(structured_functions))
         out: Dict[str, Dict[str, str]] = {}
@@ -132,7 +129,7 @@ class SummaryService:
 
             block = build_generator_block(sf)
             short_prompt = build_code_compare_prompt(block)
-            short_raw = self._call_model(short_prompt, max_new_tokens=40)
+            short_raw = self._call_model(short_prompt)
 
             print("UID:", uid)
             print("SHORT RAW:", repr(short_raw))
@@ -148,29 +145,18 @@ class SummaryService:
 
         return out
 
-    def _call_model(self, prompt: str, max_new_tokens: int) -> str:
-        messages = [
-            {"role": "system", "content": "You are a precise software analyst."},
-            {"role": "user", "content": prompt},
-        ]
-
-        text = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-
-        inputs = self.tokenizer(text, return_tensors="pt").to(self.model.device)
-
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
+    def _call_model(self, prompt: str) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "You are a precise software analyst."},
+                    {"role": "user", "content": prompt},
+                ],
                 temperature=0.2,
-                do_sample=False,
-                pad_token_id=self.tokenizer.eos_token_id,
+                max_tokens=80,
             )
-
-        generated_ids = outputs[0][inputs["input_ids"].shape[1]:]
-        result = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
-        return result.strip()
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Groq API call failed: {e}")
+            return ""

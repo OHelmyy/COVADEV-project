@@ -1,51 +1,27 @@
 from __future__ import annotations
 
 from typing import Optional, List
-import torch
 from .shared_model_singleton import ModelProvider
 
-MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
-_provider = None
 
-def _get_model():
-    global _provider
-    if _provider is None:
-        _provider = ModelProvider()
-    return _provider.tokenizer, _provider.model
 
 def summarize_bpmn_task_text(prompt: str) -> str:
     provider = ModelProvider()
-    tokenizer = provider.tokenizer
-    model = provider.model
-
-    messages = [
-        {"role": "system", "content": "You are a precise business analyst."},
-        {"role": "user", "content": prompt},
-    ]
-
-    text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-
-    inputs = tokenizer(text, return_tensors="pt").to(model.device)
-
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=48,
+    try:
+        response = provider.client.chat.completions.create(
+            model=provider.model_name,
+            messages=[
+                {"role": "system", "content": "You are a precise business analyst."},
+                {"role": "user", "content": prompt},
+            ],
             temperature=0.2,
-            do_sample=False,
-            repetition_penalty=1.1,
-            pad_token_id=tokenizer.eos_token_id,
+            max_tokens=100,
         )
-
-    generated_ids = outputs[0][inputs["input_ids"].shape[1]:]
-    result = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-    return result
-
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Groq API call failed: {e}")
+        return ""
 
 def build_bpmn_task_summary_input(
     name,
@@ -60,19 +36,20 @@ def build_bpmn_task_summary_input(
     leads_to = ", ".join(outgoing or []) or "None"
 
     return (
-        "Write ONE short sentence describing the business action of this BPMN task.\n\n"
+        "Write exactly 1 clear sentence describing this BPMN task.\n\n"
         "Rules:\n"
-        "- Start with a verb (Searches, Adds, Applies, Confirms, Charges, Sends)\n"
-        "- Mention the main business object (book, cart, order, payment, email)\n"
+        "- Start with a verb (Searches, Adds, Applies, Confirms, Charges, Sends, Validates, Retrieves)\n"
+        "- Mention the main business object (book, cart, order, payment, email, inventory)\n"
+        "- Describe what is checked, updated, sent, or confirmed\n"
         "- Do NOT mention the actor (no 'Customer', 'System', 'User')\n"
         "- Do NOT mention implementation details\n"
         "- Do NOT start with 'This task', 'The task', 'Task:'\n"
-        "- One sentence only, ending with a period\n\n"
+        "- Exactly 2 sentences, each under 15 words, each ending with a period\n\n"
         f"Task name: {name or 'Unknown'}\n"
         f"Task description: {desc if desc else 'Missing'}\n"
         f"Comes after: {comes_after}\n"
         f"Leads to: {leads_to}"
-)
+    )
 
 
 def is_bad_bpmn_summary(summary: str, name: str) -> bool:
@@ -105,14 +82,15 @@ def is_bad_bpmn_summary(summary: str, name: str) -> bool:
 
 def build_bpmn_task_repair_input(name, description, bad_output):
     return (
-        "Rewrite the BPMN task summary as ONE short technical sentence.\n\n"
+        "Rewrite this BPMN task summary as exactly 2 short, concise sentences.\n\n"
         "Rules:\n"
-        "- Describe actual system behavior\n"
-        "- Mention the main object\n"
+        "- Start with a verb (Searches, Adds, Applies, Confirms, Charges, Sends, Validates, Retrieves)\n"
+        "- Mention the main business object (book, cart, order, payment, email, inventory)\n"
         "- Do NOT say the task is undefined, unknown, or missing context\n"
-        "- Do NOT ask for more details\n"
-        "- Do NOT explain limitations\n"
-        "- Output only the corrected sentence\n\n"
+        "- Do NOT ask for more details or explain limitations\n"
+        "- Do NOT mention the actor (no 'Customer', 'System', 'User')\n"
+        "- Exactly 1 sentence, under 20 words, ending with a period\n"
+        "- Use 'and' to connect two actions if needed\n\n"
         f"Task name: {name or 'Unknown'}\n"
         f"Task description: {description or 'Not provided'}\n"
         f"Bad summary to fix: {bad_output or ''}"
