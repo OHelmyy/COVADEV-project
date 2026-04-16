@@ -1,6 +1,6 @@
 # apps/analysis/models.py
 from django.db import models
-
+from apps.analysis.models_code import CodeArtifact
 
 class AnalysisRun(models.Model):
     """
@@ -136,3 +136,53 @@ class BpmnRecommendations(models.Model):
 
     def __str__(self):
         return f"BpmnRecommendations(Project={self.project_id})"
+    
+
+class CodeEmbedding(models.Model):
+    """
+    Stores the embedding vector for a code artifact.
+    Allows skipping re-embedding if code hasn't changed.
+    """
+    project = models.ForeignKey(
+        "projects.Project",
+        on_delete=models.CASCADE,
+        related_name="code_embeddings",
+    )
+    code_artifact = models.ForeignKey(
+        CodeArtifact,
+        on_delete=models.CASCADE,
+        related_name="embeddings",
+    )
+    vector = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("project", "code_artifact")]
+
+    def __str__(self):
+        return f"CodeEmbedding({self.code_artifact_id})"
+
+
+class TaskEmbedding(models.Model):
+    """
+    Stores the embedding vector for a BPMN task.
+    Allows skipping re-embedding if BPMN hasn't changed.
+    """
+    project = models.ForeignKey(
+        "projects.Project",
+        on_delete=models.CASCADE,
+        related_name="task_embeddings",
+    )
+    bpmn_task = models.ForeignKey(
+        BpmnTask,
+        on_delete=models.CASCADE,
+        related_name="embeddings",
+    )
+    vector = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("project", "bpmn_task")]
+
+    def __str__(self):
+        return f"TaskEmbedding({self.bpmn_task_id})"

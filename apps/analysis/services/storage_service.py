@@ -17,21 +17,8 @@ def _build_task_summary(name: str, desc: str, task_type: str, incoming: list, ou
     )
 
 def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
-    """
-    Replace all BPMN tasks for a project and regenerate task summaries.
+    existing_task_ids = set()
 
-    Expected input:
-      [
-        {
-          "task_id": "...", "name": "...", "description": "...",
-          "task_type": "...", "incoming_nodes": [...], "outgoing_nodes": [...]
-        },
-        ...
-      ]
-    """
-    BpmnTask.objects.filter(project=project).delete()
-
-    objs: List[BpmnTask] = []
     for t in tasks:
         task_id = str(t.get("task_id", "")).strip()
         name = str(t.get("name", "")).strip() or "Unnamed Task"
@@ -43,10 +30,26 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
         if not task_id:
             continue
 
-        summary = _build_task_summary(name, desc, task_type, incoming_nodes, outgoing_nodes)
+        existing = BpmnTask.objects.filter(project=project, task_id=task_id).first()
 
-        objs.append(
-            BpmnTask(
+        if existing:
+            should_refresh = True
+
+            if should_refresh:
+                summary = _build_task_summary(name, desc, task_type, incoming_nodes, outgoing_nodes)
+                existing.summary_text = summary
+
+            existing.name = name
+            existing.description = desc
+            existing.task_type = task_type
+            existing.incoming_nodes = incoming_nodes
+            existing.outgoing_nodes = outgoing_nodes
+            existing.save()
+            existing_task_ids.add(task_id)
+
+        else:
+            summary = _build_task_summary(name, desc, task_type, incoming_nodes, outgoing_nodes)
+            BpmnTask.objects.create(
                 project=project,
                 task_id=task_id,
                 name=name,
@@ -56,13 +59,14 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
                 outgoing_nodes=outgoing_nodes,
                 summary_text=summary,
             )
-        )
+            existing_task_ids.add(task_id)
 
-    if objs:
-        BpmnTask.objects.bulk_create(objs)
+    # Delete tasks that no longer exist in the BPMN
+    BpmnTask.objects.filter(project=project).exclude(
+        task_id__in=existing_task_ids
+    ).delete()
 
     return BpmnTask.objects.filter(project=project).count()
-
 
 def replace_match_results(project, results: List[Dict[str, Any]]) -> int:
     """

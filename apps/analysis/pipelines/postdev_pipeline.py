@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from concurrent.futures import ThreadPoolExecutor
-
 from django.db import transaction
 from django.utils import timezone
 
@@ -18,7 +15,7 @@ from apps.analysis.semantic.analyze import (
 )
 from apps.projects.services import _persist_code_artifacts_with_summaries
 
-
+from apps.analysis.models import CodeEmbedding, TaskEmbedding
 class PostDevPipeline:
     """
     Factory-based concrete pipeline for full project analysis.
@@ -62,7 +59,7 @@ class PostDevPipeline:
         self.code_root: Optional[Path] = None
 
         self.storage_tasks: List[Dict[str, Any]] = []
-
+        self.bpmn_graph: Dict[str, Any] = {}
         self.threshold: float = 0.6
         self.engine_result: Dict[str, Any] = {}
         self.storage_results: List[Dict[str, Any]] = []
@@ -98,31 +95,44 @@ class PostDevPipeline:
 
     def _preprocess(self) -> None:
         self.storage_tasks = extract_tasks_with_context(self.bpmn_bytes)
+        from apps.analysis.bpmn.parser import extract_bpmn_graph
+        self.bpmn_graph = extract_bpmn_graph(self.bpmn_bytes)
 
     def _execute(self) -> None:
-        CodeArtifact.objects.filter(project=self.project).delete()
+        # 1) Store BPMN tasks
+        self._replace_bpmn_tasks(self.project, self.storage_tasks)
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_bpmn = executor.submit(
-                self._replace_bpmn_tasks,
-                self.project,
-                self.storage_tasks,
-            )
+        # 2) Only regenerate code summaries if code was re-uploaded since last run
+        last_run = (
+            AnalysisRun.objects
+            .filter(project=self.project, status="DONE")
+            .exclude(id=self.run_obj.id)
+            .order_by("-finished_at")
+            .first()
+        )
+        active_code_uploaded_at = getattr(self.project.active_code, "created_at", None)
+        last_run_finished_at = getattr(last_run, "finished_at", None)
 
-            future_code = executor.submit(
-                _persist_code_artifacts_with_summaries,
+        code_changed = (
+            last_run_finished_at is None
+            or active_code_uploaded_at is None
+            or active_code_uploaded_at > last_run_finished_at
+        )
+
+        if code_changed:
+            CodeArtifact.objects.filter(project=self.project).delete()
+            _persist_code_artifacts_with_summaries(
                 project=self.project,
                 code_root_dir=self.code_root,
             )
 
-            future_bpmn.result()
-            future_code.result()
 
         self.threshold = float(getattr(self.project, "similarity_threshold", 0.6) or 0.6)
 
         bpmn_result = analyze_bpmn_side(
             bpmn_input=self.bpmn_bytes,
             project=self.project,
+            bpmn_graph_override=self.bpmn_graph,
         )
 
         code_result = analyze_code_side(
@@ -137,6 +147,8 @@ class PostDevPipeline:
             matcher=self.matcher,
             top_k=self.top_k,
             batch_size=32,
+            project=self.project,
+
         )
 
         self.engine_result = {
@@ -158,8 +170,18 @@ class PostDevPipeline:
                 "missing": len((match_result["matching"].get("missing") or [])),
                 "extra": len((match_result["matching"].get("extra") or [])),
             },
+            "_embedded": match_result["embedded"],
+
         }
 
+
+        # Save embeddings to DB for future runs
+        embedded = self.engine_result.get("_embedded")
+        if embedded:
+            self._save_embeddings(embedded)
+
+
+        # 4) Convert matching result into storage schema
         matching = self.engine_result.get("matching") or {}
         matched = matching.get("matched") or []
         missing = matching.get("missing") or []
@@ -197,6 +219,38 @@ class PostDevPipeline:
                 }
             )
 
+    def _save_embeddings(self, embedded: dict) -> None:
+        task_embeddings = embedded.get("task_embeddings") or []
+        code_embeddings = embedded.get("code_embeddings") or []
+
+        task_map = {
+            t.task_id: t
+            for t in self.project.bpmn_tasks.all()
+        }
+
+        code_map = {
+            a.code_uid: a
+            for a in self.project.code_artifacts.all()
+        }
+
+        with transaction.atomic():
+            for emb in task_embeddings:
+                task = task_map.get(str(emb.get("id")))
+                if task:
+                    TaskEmbedding.objects.update_or_create(
+                        project=self.project,
+                        bpmn_task=task,
+                        defaults={"vector": emb.get("vector")},
+                    )
+
+            for emb in code_embeddings:
+                artifact = code_map.get(str(emb.get("id")))
+                if artifact:
+                    CodeEmbedding.objects.update_or_create(
+                        project=self.project,
+                        code_artifact=artifact,
+                        defaults={"vector": emb.get("vector")},
+                    )
     def _save(self) -> None:
         self._replace_match_results(self.project, self.storage_results)
 

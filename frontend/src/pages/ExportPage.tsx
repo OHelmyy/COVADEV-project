@@ -1,9 +1,5 @@
+import { Navigate } from "react-router-dom";
+
 export default function ExportPage() {
-    return (
-      <>
-        <h1>Export</h1>
-        <p>Export (CSV/HTML) will come later.</p>
-      </>
-    );
-  }
-  
+  return <Navigate to="/reports" replace />;
+}

@@ -14,8 +14,7 @@ from .models import Project, ProjectFile, CodeFile
 from apps.analysis.code.structured_extractor import extract_structured_from_directory
 from apps.analysis.summary.code_summary_service import SummaryService
 from apps.analysis.models_code import CodeArtifact
-import traceback
-
+from apps.analysis.summary.code_summary_service import fallback_summary as _fallback_summary
 
 
 # ============================================================
@@ -129,20 +128,6 @@ def _index_code_files(project: Project, code_root_dir: Path, uploader):
 # ✅ Code Summarization helpers
 # ============================================================
 
-def _fallback_summary(sf: Dict[str, Any]) -> str:
-    fn = (sf.get("function_name") or "function").replace("_", " ").strip()
-    title = " ".join(w.capitalize() for w in fn.split()) or "Unnamed Function"
-    returns = sf.get("returns") or []
-    writes = sf.get("writes") or []
-    calls = sf.get("calls") or []
-
-    if writes:
-        return f"{title} updates and saves data to the system."
-    if returns:
-        return f"{title} processes the request and returns a result."
-    if calls:
-        return f"{title} performs its main operation using related services."
-    return f"{title} executes its main business logic."
 def _persist_code_artifacts_with_summaries(
     *,
     project: Project,
@@ -191,8 +176,6 @@ def _persist_code_artifacts_with_summaries(
                 if uid not in summary_errors:
                     summary_errors[uid] = "Empty/failed model summary (fallback used)"
 
-            structured_ui = ""
-
             try:
                 CodeArtifact.objects.update_or_create(
                     project=project,
@@ -208,7 +191,6 @@ def _persist_code_artifacts_with_summaries(
                         "returns": sf.get("returns") or [],
                         "exceptions": sf.get("exceptions") or [],
                         "summary_text": short,
-                        "structured_summary": structured_ui,
                     },
                 )
                 saved += 1

@@ -1,6 +1,6 @@
 // frontend/src/api/projects.ts
 
-import { apiGet, apiPost, apiUpload, apiDelete } from "./http";
+import { apiGet, apiPost, apiUpload, apiDelete, apiPostJson } from "./http";
 import type { ProjectDetailApi, ProjectSummaryApi } from "./types";
 
 export function fetchProjects() {
@@ -23,10 +23,10 @@ export function fetchProjectDetail(projectId: number) {
   return apiGet<ProjectDetailApi>(`/api/projects/${projectId}/`);
 }
 
-export function updateThreshold(projectId: number, similarity_threshold: number) {
-  return apiPost<{ ok: boolean; similarityThreshold: number }>(
+export function updateThreshold(projectId: number, similarityThreshold: number) {
+  return apiPostJson<{ ok: boolean; similarityThreshold: number }>(
     `/api/projects/${projectId}/settings/threshold/`,
-    { similarity_threshold }
+    { similarityThreshold }
   );
 }
 
@@ -38,10 +38,6 @@ export function addMember(projectId: number, email: string) {
 }
 
 export function removeMember(projectId: number, membershipId: number) {
-  return apiPost<{ ok: boolean }>(
-    `/api/projects/${projectId}/members/${membershipId}/remove/`,
-    {}
-  );
   return apiPost<{ ok: boolean }>(
     `/api/projects/${projectId}/members/${membershipId}/remove/`,
     {}
@@ -78,17 +74,9 @@ export function fetchFiles(projectId: number) {
     project_id: number;
     files: Array<{ relative_path: string; ext: string; size_bytes: number }>;
   }>(`/api/projects/${projectId}/files/`);
-  return apiGet<{
-    project_id: number;
-    files: Array<{ relative_path: string; ext: string; size_bytes: number }>;
-  }>(`/api/projects/${projectId}/files/`);
 }
 
 export function fetchTasks(projectId: number) {
-  return apiGet<{
-    project_id: number;
-    tasks: Array<{ task_id: string; name: string; description: string }>;
-  }>(`/api/projects/${projectId}/tasks/`);
   return apiGet<{
     project_id: number;
     tasks: Array<{ task_id: string; name: string; description: string }>;
@@ -152,8 +140,6 @@ export async function fetchCompareInputs(projectId: number) {
       summary?: string;
       summary_text?: string;
       summaryText?: string;
-      structured_summary?: string;
-      structuredSummary?: string;
       compareText?: string;
     }>;
   }>(`/api/projects/${projectId}/compare-inputs/`); // ✅ FIXED URL
@@ -193,17 +179,11 @@ export async function fetchCompareInputs(projectId: number) {
         (c.summaryText ?? "").trim() ||
         (c.summary_text ?? "").trim() ||
         (c.summary ?? "").trim();
-
-      const structured =
-        (c.structuredSummary ?? "").trim() ||
-        (c.structured_summary ?? "").trim();
-
       return {
         codeUid: c.codeUid,
         functionName: fnName,
         filePath: fp,
         summaryText: sumRaw,
-        structuredSummary: structured,
       };
     }),
   };

@@ -55,12 +55,10 @@ class CodeArtifact(models.Model):
     # Optional owner/developer attribution (if you later connect git blame, etc.)
     developer_id = models.CharField(max_length=128, blank=True, null=True)
 
-    # ✅ 1-sentence LLM summary (used for embedding)
+    #1-sentence LLM summary (used for embedding)
     summary_text = models.TextField(blank=True, default="")
 
-    # ✅ Human-friendly explanation of the structured function object (UI/debug)
-    structured_summary = models.TextField(blank=True, default="")
-
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

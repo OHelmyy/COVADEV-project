@@ -130,7 +130,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "/my-insights",
-        element: <MyInsightsPage />,
+        element: (
+          <RequireAuth>
+            <MyInsightsPage />
+          </RequireAuth>
+        ),
       },
       {
         path: "export",
@@ -142,7 +146,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "/developer-performance",
-        element: <DeveloperPerformancePage />,
+        element: (
+          <RequireAuth>
+            <DeveloperPerformancePage />
+          </RequireAuth>
+        ),
       }
     ],
   },
