@@ -115,97 +115,20 @@ def analyze_project(
     project=None,
 ) -> Dict[str, Any]:
     """
-    Refactored semantic engine.
-    Compares BPMN TASKS ↔ Code function summaries.
+    Backward-compatible wrapper around SemanticAnalysisFacade.
     """
+    from apps.analysis.semantic.facade import SemanticAnalysisFacade
 
-    bpmn_result = analyze_bpmn_side(
+    return SemanticAnalysisFacade.analyze_project(
         bpmn_input=bpmn_input,
-        project=project,
-    )
-    bpmn_graph = bpmn_result["bpmn_graph"]
-    bpmn_tasks = bpmn_result["bpmn_tasks"]
-
-    if not bpmn_tasks:
-        return {
-            "error": "No BPMN tasks found. Please check the uploaded BPMN.",
-            "stats": {
-                "tasks": 0,
-                "code_count_embedded": 0,
-                "matched": 0,
-                "missing": 0,
-                "extra": 0,
-            },
-        }
-
-    code_result = analyze_code_side(
         code_root=code_root,
-        project=project,
-    )
-    code_root_path = code_result["code_root_path"]
-    code_items = code_result["code_items"]
-    used_persisted = code_result["used_persisted"]
-
-    if not code_items:
-        return {
-            "error": "No code artifacts found. Please upload code first.",
-            "stats": {
-                "tasks": len(bpmn_tasks),
-                "code_count_embedded": 0,
-                "matched": 0,
-                "missing": 0,
-                "extra": 0,
-            },
-        }
-
-    match_result = match_bpmn_code(
-        bpmn_tasks=bpmn_tasks,
-        code_items=code_items,
         threshold=threshold,
         matcher=matcher,
         top_k=top_k,
         batch_size=batch_size,
+        include_debug=include_debug,
+        project=project,
     )
-
-    matching = match_result["matching"]
-    similarity = match_result["similarity"]
-    embedded = match_result["embedded"]
-    matcher_norm = match_result["matcher_norm"]
-    top_k_result = match_result["top_k"]
-
-    matched_list = matching.get("matched") or []
-    missing_list = matching.get("missing") or []
-    extra_list = matching.get("extra") or []
-
-    result: Dict[str, Any] = {
-        "meta": {
-            "matcher": matcher_norm,
-            "threshold": float(threshold),
-            "top_k": int(top_k),
-            "batch_size": int(batch_size),
-            "used_persisted_code_artifacts": bool(used_persisted),
-        },
-        "bpmn": bpmn_graph,
-        "code": {"items": code_items},
-        "matching": matching,
-        "top_k": top_k_result,
-        "stats": {
-            "tasks": len(bpmn_tasks),
-            "code_count_embedded": len(code_items),
-            "matched": len(matched_list),
-            "missing": len(missing_list),
-            "extra": len(extra_list),
-        },
-    }
-
-    if include_debug:
-        result["debug"] = {
-            "code_root": str(code_root_path),
-            "embedding_meta": embedded.get("meta"),
-            "similarity_meta": similarity.get("meta"),
-        }
-
-    return result
 
 def analyze_bpmn_side(
     *,
