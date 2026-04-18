@@ -15,12 +15,17 @@ class SimilarityMeta:
     task_count: int
     code_count: int
 
-
+#the vector we got from the embedder
 def _to_matrix(vectors: Sequence[Sequence[float]]) -> np.ndarray:
     """
     Convert list[list[float]] to numpy matrix of shape (N, D).
     """
     mat = np.asarray(vectors, dtype=float)
+    #array([
+    #[0.1, 0.2, 0.3],
+    #[0.4, 0.5, 0.6],
+    #[0.7, 0.8, 0.9]
+    #])
     if mat.ndim != 2:
         raise ValueError("vectors must be a 2D list/array with shape (N, D)")
     return mat
@@ -30,29 +35,22 @@ def cosine_similarity_matrix(
     task_vectors: Sequence[Sequence[float]],
     code_vectors: Sequence[Sequence[float]],
 ) -> np.ndarray:
-    """
-    Compute cosine similarity matrix between tasks and code items.
 
-    Assumptions:
-    - vectors are already L2-normalized (because embedder used normalize_embeddings=True)
-    - so cosine similarity = dot product
-
-    Returns:
-    - matrix S with shape (num_tasks, num_code_items)
-    """
-    T = _to_matrix(task_vectors)  # (N, D)
-    C = _to_matrix(code_vectors)  # (M, D)
+    T = _to_matrix(task_vectors)  # (N, D) Task vectors
+    C = _to_matrix(code_vectors)  # (M, D) Code vectors
 
     if T.shape[1] != C.shape[1]:
         raise ValueError(f"Vector dim mismatch: tasks dim={T.shape[1]} vs code dim={C.shape[1]}")
 
-    # If embeddings are normalized, cosine similarity is just dot product:
-    # S[i, j] = dot(T[i], C[j])
-    S = T @ C.T  # (N, M)
+    S = T @ C.T  # (N, M) #the second T flips rows and columns
 
-    # Numerical safety: clip to [-1, 1] (tiny float errors)
+    #          Code1   Code2
+    #       ----------------
+    #Task1     0.67    0.97
+    #Task2     0.80    0.40
+
     return np.clip(S, -1.0, 1.0)
-
+    #values should be between -1 and 1
 
 def compute_similarity(
     *,
@@ -62,17 +60,12 @@ def compute_similarity(
     """
     Compute similarity scores between embedded tasks and embedded code items.
 
-    Expected embedding record fields:
-      - id
-      - vector (list[float])
-      - (optional) text, kind
-
-    Returns JSON-friendly structure:
+    Returns 
     {
-      "meta": {...},
-      "task_ids": [...],
-      "code_ids": [...],
-      "matrix": [[...], [...], ...]   # shape (N, M)
+        "meta": {...},
+        "task_ids": [...],
+        "code_ids": [...],
+        "matrix": [[...], [...], ...]   # shape (N, M)
     }
     """
     task_ids: List[str] = [str(x.get("id")) for x in task_embeddings]
@@ -104,18 +97,10 @@ def compute_similarity(
 
 def top_k_matches(
     *,
-    similarity: Dict[str, Any],
-    k: int = 3,
+    similarity: Dict[str, Any], #output of compute_similarity
+    k: int = 3, #number of top matches to return per task
 ) -> Dict[str, List[Tuple[str, float]]]:
-    """
-    Utility: for each task, return top-k code ids with highest similarity.
 
-    Returns:
-    {
-      "<task_id>": [("<code_id>", score), ...],
-      ...
-    }
-    """
     task_ids: List[str] = list(similarity.get("task_ids") or [])
     code_ids: List[str] = list(similarity.get("code_ids") or [])
     matrix: List[List[float]] = list(similarity.get("matrix") or [])
@@ -124,7 +109,7 @@ def top_k_matches(
         return {tid: [] for tid in task_ids}
 
     S = np.asarray(matrix, dtype=float)  # (N, M)
-    N, M = S.shape
+    N, M = S.shape #N = number of tasks, M = number of code items
 
     k_eff = max(0, min(int(k), M))
 
@@ -134,5 +119,8 @@ def top_k_matches(
         # argsort ascending -> take last k -> reverse for descending
         idx = np.argsort(row)[-k_eff:][::-1]
         results[task_ids[i]] = [(code_ids[j], float(row[j])) for j in idx]
-
+        
+        #results["t1"] = [
+        #("c1", 0.9), ("c2", 0.8), ("c3", 0.3)
+        #]
     return results

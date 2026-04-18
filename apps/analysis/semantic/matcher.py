@@ -26,17 +26,7 @@ class MatchPair:
 
 
 def _validate_similarity(similarity: Dict[str, Any]) -> Tuple[List[str], List[str], np.ndarray]:
-    """
-    Validate and extract components from similarity dict.
 
-    Expected keys:
-      - task_ids: list[str]
-      - code_ids: list[str]
-      - matrix: list[list[float]] shape (N, M)
-
-    Returns:
-      - task_ids, code_ids, S (numpy matrix, shape (N, M))
-    """
     task_ids = list(similarity.get("task_ids") or [])
     code_ids = list(similarity.get("code_ids") or [])
     matrix = similarity.get("matrix") or []
@@ -83,6 +73,10 @@ def greedy_one_to_one_match(
     task_ids, code_ids, S = _validate_similarity(similarity)
 
     n_tasks, n_code = S.shape
+        #       c1     c2     c3
+        #t1     0.90   0.20   0.40
+        #t2     0.80   0.85   0.10
+        #t3     0.30   0.70   0.95
     thr = float(threshold)
 
     # 1) Build candidate list of all pairs above threshold
@@ -93,9 +87,22 @@ def greedy_one_to_one_match(
             if score >= thr:
                 candidates.append((score, i, j))
 
+                #candidates = [
+                #    (0.90, 0, 0),
+                #    (0.80, 1, 0),
+                #    (0.85, 1, 1),
+                #    (0.95, 2, 2),
+                #]
+
     # 2) Sort best-first
     candidates.sort(key=lambda x: x[0], reverse=True)
 
+                #[
+                #    (0.95, 2, 2),
+                #    (0.90, 0, 0),
+                #    (0.85, 1, 1),
+                #    (0.80, 1, 0),
+                #]
     # 3) Greedy assignment while preserving one-to-one constraint
     assigned_tasks = set()
     assigned_code = set()
@@ -146,16 +153,19 @@ def best_per_task_match(
 
     n_tasks, n_code = S.shape
     thr = float(threshold)
-
+        #       c1     c2     c3
+        #t1     0.90   0.20   0.40
+        #t2     0.85   0.70   0.10
+        #t3     0.30   0.95   0.80
     matches: List[MatchPair] = []
 
     for i in range(n_tasks):
         if n_code == 0:
             continue
-
+        #S[0] = [0.90, 0.20, 0.40]
         j = int(np.argmax(S[i]))  # best code index for this task
         score = float(S[i, j])
-
+        #np.argmax([0.90, 0.20, 0.40]) = 0
         if score >= thr:
             matches.append(MatchPair(task_id=task_ids[i], code_id=code_ids[j], score=score))
 

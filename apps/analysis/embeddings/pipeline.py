@@ -22,13 +22,14 @@ class EmbeddedRecord:
     vector: List[float]
 
 
-def build_bpmn_text(task: Dict[str, Any]) -> str:
+def build_bpmn_text(task: Dict[str, Any]) -> str: #analyze_bpmn_side
     """
     Build the semantic text for a BPMN task.
 
     Expected keys:
-      - id, name, description, type
+    - id, name, description, type
     """
+    #description here is llm generated summary 
     name = (task.get("name") or "").strip()
     desc = (task.get("description") or "").strip()
     ttype = (task.get("type") or "").strip()
@@ -42,9 +43,7 @@ def build_bpmn_text(task: Dict[str, Any]) -> str:
         parts.append(f"Type: {ttype}.")
 
     return " ".join(parts).strip()
-
-
-# apps/analysis/embeddings/pipeline.py
+    #"Task: Validate Order. Description: Check if order is valid. Type: service."
 
 _BAD_GENERIC = (
     "returns a result",
@@ -59,39 +58,40 @@ def _is_too_generic(s: str) -> bool:
     return any(p in s for p in _BAD_GENERIC)
 
 
-def build_code_text(item: Dict[str, Any]) -> str:
+def build_code_text(item: Dict[str, Any]) -> str: #analyze_code_side
     """
     Build semantic text for a code item, aligned with BPMN wording.
     """
 
-    # 1️⃣ Get name/title safely
+    #Get name/title safely
     name = (
         (item.get("name") or "").strip()
         or (item.get("symbol") or "").strip()
     )
+    #function name, class name, method name
     kind = (item.get("type") or "").strip()
 
-    # 2️⃣ Human-readable task title
+    #remove the _ "validate_order" → "validate order"
     task_title = name.replace("_", " ").strip()
     if task_title:
+        #"validate order" → "Validate Order"
         task_title = " ".join(w.capitalize() for w in task_title.split())
 
-    # 3️⃣ Candidate summary (LLM-generated)
+    #get summary
     summary = (item.get("summary_text") or "").strip()
 
-    # ✅ HERE IS THE IMPORTANT PART
     # Use summary ONLY if it's meaningful
     if summary and not _is_too_generic(summary):
         if task_title:
             return f"Task: {task_title}. Description: {summary}."
         return f"Description: {summary}."
 
-    # 4️⃣ Fallback: extractor text
+    #Fallback: extractor text lw too generic
     text = (item.get("text") or "").strip()
     if text:
         return text
 
-    # 5️⃣ Last resort fallback
+    #Last resort fallback
     if kind and name:
         return f"{kind}: {name}".strip()
 
@@ -146,28 +146,14 @@ def embed_pipeline(
     embedder: Optional[LocalEmbedder] = None,
     batch_size: int = 32,
 ) -> Dict[str, Any]:
-    """
-    Day 4 pipeline (analysis-only):
 
-    - takes parsed BPMN tasks + extracted code items
-    - builds semantic texts
-    - embeds both using LocalEmbedder
-    - returns structured, JSON-friendly results
-
-    Output:
-    {
-      "meta": {"model": "...", "dim": 384, "task_count": N, "code_count": M},
-      "task_embeddings": [ {id, kind, text, vector}, ... ],
-      "code_embeddings": [ {id, kind, text, vector}, ... ]
-    }
-    """
     embedder = embedder or LocalEmbedder()
 
     task_payloads, code_payloads = _collect_payloads(tasks, code_items)
 
-    # ---- Embed BPMN tasks ----
+    # Embed BPMN tasks 
     task_ids = [tid for tid, _ in task_payloads]
-    task_texts = [txt for _, txt in task_payloads]
+    task_texts = [txt for _, txt in task_payloads] #txt comes from build_bpmn_text
     task_vectors: List[EmbeddingResult] = embedder.embed_many(
         task_texts, batch_size=batch_size
     )
@@ -183,9 +169,9 @@ def embed_pipeline(
             )
         )
 
-    # ---- Embed code items ----
+    # Embed code items 
     code_ids = [cid for cid, _ in code_payloads]
-    code_texts = [txt for _, txt in code_payloads]
+    code_texts = [txt for _, txt in code_payloads] #txt comes from build_code_text
     code_vectors: List[EmbeddingResult] = embedder.embed_many(
         code_texts, batch_size=batch_size
     )
@@ -201,16 +187,17 @@ def embed_pipeline(
             )
         )
 
-    # Embedding dimension (safe query from the model)
+    # return the dimension of the embeddings for metadata which is 384
     dim = int(embedder.model.get_sentence_embedding_dimension())
 
     return {
         "meta": {
             "model": embedder.model_name,
             "dim": dim,
-            "task_count": len(embedded_tasks),
+            "task_count": len(embedded_tasks), 
             "code_count": len(embedded_code),
         },
+        #we convert the dataclass instances to dicts for simpler format
         "task_embeddings": [asdict(x) for x in embedded_tasks],
         "code_embeddings": [asdict(x) for x in embedded_code],
     }

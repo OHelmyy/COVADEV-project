@@ -224,7 +224,7 @@ def match_bpmn_code(
         )
     else:
         new_embedded = {"task_embeddings": [], "code_embeddings": [], "meta": {}}
-        print("✅ All embeddings loaded from DB — skipping embed_pipeline")
+        
 
     # Merge cached + newly computed
     all_task_embeddings = []
@@ -302,8 +302,8 @@ def analyze_project(
         project=project,
         bpmn_graph_override=bpmn_graph_override,
     )
-    bpmn_graph = bpmn_result["bpmn_graph"]
-    bpmn_tasks = bpmn_result["bpmn_tasks"]
+    bpmn_graph = bpmn_result["bpmn_graph"] #used for ui display
+    bpmn_tasks = bpmn_result["bpmn_tasks"] #used for embedding and matching
 
     if not bpmn_tasks:
         return {
@@ -322,7 +322,7 @@ def analyze_project(
         project=project,
     )
     code_root_path = code_result["code_root_path"]
-    code_items = code_result["code_items"]
+    code_items = code_result["code_items"] #used for embedding and matching
     used_persisted = code_result["used_persisted"]
 
     if not code_items:
@@ -357,6 +357,7 @@ def analyze_project(
     missing_list = matching.get("missing") or []
     extra_list = matching.get("extra") or []
 
+    #saving the results in a dict to be returned as JSON response to frontend
     result: Dict[str, Any] = {
         "meta": {
             "matcher": matcher_norm,
