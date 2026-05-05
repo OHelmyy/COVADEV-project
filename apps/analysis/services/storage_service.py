@@ -33,7 +33,15 @@ def replace_bpmn_tasks(project, tasks: List[Dict[str, Any]]) -> int:
         existing = BpmnTask.objects.filter(project=project, task_id=task_id).first()
 
         if existing:
-            should_refresh = True
+            # Only refresh if the task details changed or summary is missing
+            should_refresh = (
+                existing.name != name or
+                existing.description != desc or
+                existing.task_type != task_type or
+                existing.incoming_nodes != incoming_nodes or
+                existing.outgoing_nodes != outgoing_nodes or
+                not (existing.summary_text or "").strip()
+            )
 
             if should_refresh:
                 summary = _build_task_summary(name, desc, task_type, incoming_nodes, outgoing_nodes)
