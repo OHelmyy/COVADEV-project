@@ -26,6 +26,7 @@ def run_bpmn_upload_flow(project, uploaded_file, user) -> Dict[str, Any]:
     predev = run_bpmn_predev(bpmn_bytes, do_summary=True)
 
     storage_tasks = extract_tasks_with_context(bpmn_bytes)
+    replace_bpmn_tasks(project, storage_tasks)
 
     bpmn_obj.is_well_formed = bool(predev.get("ok", False))
     bpmn_obj.precheck_warnings = predev.get("warnings", []) or []
