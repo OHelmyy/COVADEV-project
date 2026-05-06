@@ -23,7 +23,7 @@ from apps.task_management.services.assignment_service import (
     start_assignment,
 )
 from apps.accounts.rbac import is_admin, is_evaluator
-from apps.task_management.services.evaluation_service import evaluate_assignment
+from apps.task_management.services.evaluation_service import evaluate_assignment, auto_evaluate_assignment
 from apps.task_management.models import TaskAssignment, TaskEvaluation, Notification
 
 def _parse_json_body(request):
@@ -354,6 +354,31 @@ def evaluate_task_assignment_api(request, assignment_id: int):
 
     return JsonResponse({
         "message": "Task evaluated successfully.",
+        "evaluation": _serialize_evaluation(evaluation),
+    }, status=201)
+
+
+@login_required
+@require_POST
+def auto_evaluate_task_assignment_api(request, assignment_id: int):
+    assignment = get_object_or_404(
+        TaskAssignment.objects.select_related("project"),
+        id=assignment_id
+    )
+
+    if not can_review_tasks(assignment.project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    try:
+        evaluation = auto_evaluate_assignment(
+            assignment_id=assignment.id,
+            evaluator=request.user,
+        )
+    except Exception as e:
+        return JsonResponse({"detail": str(e)}, status=400)
+
+    return JsonResponse({
+        "message": "Task auto-evaluated successfully.",
         "evaluation": _serialize_evaluation(evaluation),
     }, status=201)
 

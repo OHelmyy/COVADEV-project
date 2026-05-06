@@ -3,6 +3,7 @@ import {
   assignTask,
   evaluateTaskAssignment,
   reviewTaskAssignment,
+  autoEvaluateTaskAssignment,
 } from "../api/taskManagementApi";
 
 import type { Developer, TaskInfo, Assignment } from "../types";
@@ -101,6 +102,21 @@ export default function TaskAssignmentRow({
     }
   }
 
+  async function handleAutoEvaluate() {
+    if (!assignment) return;
+
+    setSaving(true);
+    try {
+      await autoEvaluateTaskAssignment(assignment.assignmentId);
+      await onChanged();
+      setShowEvaluationForm(false);
+    } catch (error: any) {
+      onError("auto evaluate task", error, "Auto evaluation failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function statusBadge() {
     const status = assignment?.status;
     const label = getStatusLabel(status);
@@ -109,10 +125,10 @@ export default function TaskAssignmentRow({
       status === "ACCEPTED"
         ? { bg: ui.colors.successSoft, color: ui.colors.success }
         : status === "REJECTED"
-        ? { bg: ui.colors.dangerSoft, color: ui.colors.danger }
-        : status === "SUBMITTED"
-        ? { bg: ui.colors.warningSoft, color: ui.colors.warning }
-        : { bg: ui.colors.primarySoft, color: ui.colors.primary };
+          ? { bg: ui.colors.dangerSoft, color: ui.colors.danger }
+          : status === "SUBMITTED"
+            ? { bg: ui.colors.warningSoft, color: ui.colors.warning }
+            : { bg: ui.colors.primarySoft, color: ui.colors.primary };
 
     return (
       <span
@@ -220,7 +236,7 @@ export default function TaskAssignmentRow({
             )}
 
             {assignment &&
-            (assignment.status === "ACCEPTED" || assignment.status === "REJECTED") ? (
+              (assignment.status === "ACCEPTED" || assignment.status === "REJECTED") ? (
               <button
                 onClick={() => setShowEvaluationForm((v) => !v)}
                 disabled={saving}
@@ -246,16 +262,17 @@ export default function TaskAssignmentRow({
               initialValues={
                 assignment.evaluation
                   ? {
-                      correctnessScore: assignment.evaluation.correctnessScore,
-                      qualityScore: assignment.evaluation.qualityScore,
-                      timelinessScore: assignment.evaluation.timelinessScore,
-                      communicationScore: assignment.evaluation.communicationScore,
-                      comments: assignment.evaluation.comments,
-                    }
+                    correctnessScore: assignment.evaluation.correctnessScore,
+                    qualityScore: assignment.evaluation.qualityScore,
+                    timelinessScore: assignment.evaluation.timelinessScore,
+                    communicationScore: assignment.evaluation.communicationScore,
+                    comments: assignment.evaluation.comments,
+                  }
                   : null
               }
               onSubmit={handleEvaluationSubmit}
               onCancel={() => setShowEvaluationForm(false)}
+              onAutoEvaluate={handleAutoEvaluate}
               saving={saving}
             />
           </td>
