@@ -17,7 +17,7 @@ type Props = {
   task: TaskInfo;
   assignment: Assignment | null;
   developers: Developer[];
-  onChanged: () => Promise<void> | void;
+  onChanged: (assignmentId?: number, newAssignment?: any) => Promise<void> | void;
   onError: (operation: string, error: unknown, title?: string) => void;
 };
 
@@ -92,9 +92,9 @@ export default function TaskAssignmentRow({
 
     setSaving(true);
     try {
-      await evaluateTaskAssignment(assignment.assignmentId, payload);
+      const resp = await evaluateTaskAssignment(assignment.assignmentId, payload);
       setShowEvaluationForm(false);
-      await onChanged();
+      await onChanged(assignment.assignmentId, resp.assignment);
     } catch (error: any) {
       onError("save task evaluation", error, "Task evaluation failed");
     } finally {
@@ -107,8 +107,8 @@ export default function TaskAssignmentRow({
 
     setSaving(true);
     try {
-      await autoEvaluateTaskAssignment(assignment.assignmentId);
-      await onChanged();
+      const resp = await autoEvaluateTaskAssignment(assignment.assignmentId);
+      await onChanged(assignment.assignmentId, resp.assignment);
       setShowEvaluationForm(false);
     } catch (error: any) {
       onError("auto evaluate task", error, "Auto evaluation failed");
