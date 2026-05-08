@@ -88,34 +88,57 @@ class AutomatedEvaluationService:
 
     def _build_prompt(self, context: Dict[str, Any]) -> str:
         return f"""
-Evaluate the following task completion by a developer.
+You are a Senior Software Architect and Technical Lead. Your task is to evaluate a developer's implementation of a specific business process task.
 
-### BPMN Task Requirements:
-- Name: {context['task_name']}
-- Description: {context['task_description']}
+### 1. CONTEXT
+**Business Process Task (BPMN):**
+- **Name:** {context['task_name']}
+- **Requirement Description:** {context['task_description']}
 
-### Developer's Submission:
-- Notes: {context['submission_notes']}
-- Time Taken: {context['duration']}
+**Developer's Submission:**
+- **Developer Notes:** {context['submission_notes']}
+- **Time Elapsed:** {context['duration']}
 
-### Code Implemented (Matched via Semantic Analysis):
-- Summary: {context['code_summary'] or "N/A"}
-- Snippet:
-{context['code_snippet'] if context['code_snippet'] else "No specific code snippet matched in the current analysis run."}
+### 2. CODE ARTIFACT (Matched via Semantic Traceability)
+This is the specific function identified in the codebase that corresponds to this task:
+- **Functional Intent:** {context['code_summary'] or "N/A"}
+- **Source Code Snippet:**
+```python
+{context['code_snippet'] if context['code_snippet'] else "# NO CODE SNIPPET MATCHED - BASE EVALUATION ON NOTES ONLY"}
+```
 
-### Evaluation Criteria (Score each 0-100):
-1. correctness: Does the implementation (or notes) indicate the requirements were met?
-2. quality: Based on the snippet (if available) or description, what is the code quality?
-3. timeliness: Is the duration reasonable for this type of task?
-4. communication: Are the submission notes clear?
+### 3. EVALUATION INSTRUCTIONS
+Analyze the code snippet (or notes if snippet is missing) strictly against the Business Process Task.
 
-Respond ONLY with a JSON object:
+**Scoring Rubric (0-100):**
+1. **correctness**: 
+   - Does the code logic actually perform what the BPMN task requires?
+   - Are the business rules handled correctly? 
+   - Deduct points for logic gaps or missing requirements.
+2. **quality**: 
+   - Evaluate code structure, naming conventions, and readability.
+   - Look for proper error handling and defensive programming.
+   - Is it efficient and follow best practices?
+3. **timeliness**: 
+   - Evaluate the 'Time Elapsed' ({context['duration']}) against the complexity of the task.
+   - **Simple tasks** (basic data mapping, simple UI changes, minor logic): Expected completion < 4 hours.
+   - **Moderate tasks** (multi-step logic, API integrations, complex business rules): Expected completion 4-12 hours.
+   - **Complex tasks** (architectural changes, deep refactoring, complex algorithms): Expected completion > 12 hours.
+   - If 'Time Elapsed' is 'Unknown', provide a neutral baseline score (75-80).
+   - Significant over-performance (finishing a complex task very quickly) should be rewarded with high scores *only if* the quality is also high.
+   - Significant under-performance (taking 12+ hours for a simple task) should be penalized.
+4. **communication**: 
+   - Are the developer's notes clear and do they accurately describe the implementation?
+
+### 4. OUTPUT FORMAT
+Respond ONLY with a JSON object. Ensure the 'comments' provide technical, actionable feedback based on the code analysis.
+
 {{
     "correctness": number,
     "quality": number,
     "timeliness": number,
     "communication": number,
-    "comments": "concise 1-2 sentence feedback"
+    "comments": "concise technical feedback (1-2 sentences)"
 }}
 """
 
