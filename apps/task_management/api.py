@@ -153,6 +153,7 @@ def project_task_assignments_api(request, project_id: int):
             "assigned_by",
             "reviewed_by",
             "bpmn_task",
+            "evaluation",
         ).filter(project=project)
     }
 
@@ -352,9 +353,10 @@ def evaluate_task_assignment_api(request, assignment_id: int):
     except Exception as e:
         return JsonResponse({"detail": str(e)}, status=400)
 
+    assignment.refresh_from_db()
     return JsonResponse({
         "message": "Task evaluated successfully.",
-        "evaluation": _serialize_evaluation(evaluation),
+        "assignment": _serialize_assignment(assignment),
     }, status=201)
 
 
@@ -377,9 +379,10 @@ def auto_evaluate_task_assignment_api(request, assignment_id: int):
     except Exception as e:
         return JsonResponse({"detail": str(e)}, status=400)
 
+    assignment.refresh_from_db()
     return JsonResponse({
         "message": "Task auto-evaluated successfully.",
-        "evaluation": _serialize_evaluation(evaluation),
+        "assignment": _serialize_assignment(assignment),
     }, status=201)
 
 
