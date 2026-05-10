@@ -50,6 +50,8 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
     )
 
     should_notify = created or old_developer_user_id != membership.user_id
+    is_new_ai_assignment = membership.is_ai_agent
+
 
     if should_notify:
         create_task_assigned_notification(assignment)
@@ -61,6 +63,13 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
                 "Task was assigned successfully, but email notification failed for assignment_id=%s",
                 assignment.id,
             )
+
+    if is_new_ai_assignment:
+        # Lazy import to avoid circular references at app startup
+        from django.db import transaction
+        from apps.task_management.signals import _schedule_executor
+
+        transaction.on_commit(lambda: _schedule_executor(assignment.id))
 
     return assignment
 
@@ -85,8 +94,22 @@ def review_assignment(*, assignment: TaskAssignment, reviewed_by, accepted: bool
 
     create_task_reviewed_notification(assignment)
 
-    return assignment
+    # When the evaluator accepts an AI submission, push it through
+    # semantic matching like uploaded code does. Failures here must NOT
+    # break the review flow — log and continue.
+    if accepted and assignment.developer_membership.is_ai_agent:
+        try:
+            from apps.task_management.services.ai_match_service import (
+                match_accepted_ai_submission,
+            )
+            match_accepted_ai_submission(assignment)
+        except Exception:
+            logger.exception(
+                "AI match generation failed for accepted assignment_id=%s",
+                assignment.id,
+            )
 
+    return assignment
 
 def start_assignment(*, assignment):
     if assignment.status == TaskAssignment.Status.ASSIGNED:
