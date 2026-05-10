@@ -53,10 +53,23 @@ class BpmnTask(models.Model):
     description = models.TextField(blank=True, default="")
     summary_text = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
-    incoming_nodes = models.JSONField(default=list, blank=True)               # ← add
+    incoming_nodes = models.JSONField(default=list, blank=True)              
     outgoing_nodes = models.JSONField(default=list, blank=True)
-    task_type = models.CharField(max_length=50, blank=True, default="")        # ← add
-               # ← add
+    task_type = models.CharField(max_length=50, blank=True, default="")       
+    # AI suitability classification (filled by AI suitability classifier service)
+    AI_SUITABILITY_CHOICES = (
+        ("RECOMMENDED", "Recommended"),
+        ("NEUTRAL", "Neutral"),
+        ("NOT_RECOMMENDED", "Not Recommended"),
+        ("UNKNOWN", "Unknown"),
+    )
+    ai_suitability = models.CharField(
+        max_length=20,
+        choices=AI_SUITABILITY_CHOICES,
+        default="UNKNOWN",
+    )
+    ai_suitability_reason = models.TextField(blank=True, default="")
+    ai_suitability_checked_at = models.DateTimeField(null=True, blank=True)           
     class Meta:
         # Task IDs are unique within the same project
         constraints = [
@@ -100,7 +113,7 @@ class MatchResult(models.Model):
 
     similarity_score = models.FloatField(default=0.0)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES)
-
+    is_ai_generated = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

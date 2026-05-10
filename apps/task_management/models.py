@@ -61,7 +61,9 @@ class TaskAssignment(models.Model):
     )
 
     updated_at = models.DateTimeField(auto_now=True)
-
+    # Number of times this AI assignment has been re-submitted to the AI
+    # (only meaningful when the developer_membership is an AI agent)
+    ai_retry_count = models.IntegerField(default=0)
     class Meta:
         ordering = ["-assigned_at"]
 
@@ -176,3 +178,93 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.user.username} | {self.type} | {self.title}"
+    
+
+# ---------------------------------------------------------------------------
+# AI Agent submissions
+# ---------------------------------------------------------------------------
+
+class AISubmission(models.Model):
+    """
+    Holds the AI agent's structured submission for a TaskAssignment.
+    One assignment can have multiple submissions if the evaluator
+    sends the work back for retry.
+    """
+
+    assignment = models.ForeignKey(
+        TaskAssignment,
+        on_delete=models.CASCADE,
+        related_name="ai_submissions",
+    )
+
+    explanation = models.TextField(blank=True, default="")
+    model_used = models.CharField(max_length=100, blank=True, default="")
+    tokens_used = models.IntegerField(default=0)
+    attempt_number = models.IntegerField(default=1)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"AISubmission(assignment={self.assignment_id}, attempt={self.attempt_number})"
+
+
+class AIGeneratedFile(models.Model):
+    """
+    A single file produced by the AI as part of an AISubmission.
+    The AI agent only produces Python files in this project.
+    """
+
+    submission = models.ForeignKey(
+        AISubmission,
+        on_delete=models.CASCADE,
+        related_name="files",
+    )
+
+    filename = models.CharField(max_length=255)
+    language = models.CharField(max_length=30, default="python")
+    content = models.TextField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["filename"]
+
+    def __str__(self):
+        return f"{self.filename} ({self.language})"
+
+
+class AIExecutionLog(models.Model):
+    """
+    Audit log of every LLM call made on behalf of a TaskAssignment.
+    Used for debugging and for the AI performance dashboard.
+    """
+
+    STATUS_CHOICES = (
+        ("SUCCESS", "Success"),
+        ("FAILED", "Failed"),
+    )
+
+    assignment = models.ForeignKey(
+        TaskAssignment,
+        on_delete=models.CASCADE,
+        related_name="ai_logs",
+    )
+
+    prompt = models.TextField()
+    response = models.TextField(blank=True, default="")
+    model = models.CharField(max_length=100, blank=True, default="")
+    tokens = models.IntegerField(default=0)
+    latency_ms = models.IntegerField(default=0)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="SUCCESS")
+    error_message = models.TextField(blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"AIExecutionLog(assignment={self.assignment_id}, status={self.status})"    

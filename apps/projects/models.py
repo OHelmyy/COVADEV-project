@@ -7,7 +7,7 @@ class Project(models.Model):
     """
     Main container for a validation project.
 
-    ✅ New rules:
+    New rules:
     - ONLY Admin creates projects (enforced in views / API).
     - Admin assigns:
         - evaluator (one user)
@@ -78,7 +78,8 @@ class ProjectMembership(models.Model):
 
     # Optional/compat field (safe default)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.DEVELOPER)
-
+   # Marks this membership as the project's AI agent (auto-created per project)
+    is_ai_agent = models.BooleanField(default=False)
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
