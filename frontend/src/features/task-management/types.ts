@@ -4,6 +4,7 @@ export type Developer = {
   username: string;
   email: string;
   role: string;
+  isAiAgent?: boolean;
 };
 
 export type AssignmentDeveloper = {
@@ -12,6 +13,7 @@ export type AssignmentDeveloper = {
   username: string;
   email: string;
   role: string;
+  isAiAgent?: boolean;
 };
 
 export type TaskInfo = {
@@ -19,6 +21,9 @@ export type TaskInfo = {
   taskId: string;
   name: string;
   description?: string;
+  aiSuitability?: AiSuitability;
+  aiSuitabilityReason?: string;
+  aiSuitabilityCheckedAt?: string | null;
 };
 
 export type Assignment = {
@@ -34,6 +39,7 @@ export type Assignment = {
   reviewedAt?: string | null;
   developer?: AssignmentDeveloper;
   evaluation?: TaskEvaluation | null;
+  aiRetryCount?: number;
 };
 
 export type TaskAssignmentItem = {
@@ -98,4 +104,67 @@ export type DeveloperPerformanceItem = {
   inProgressCount: number;
   acceptanceRate: number;
   averageScore: number;
+};
+export type AiSuitability =
+  | "RECOMMENDED"
+  | "NEUTRAL"
+  | "NOT_RECOMMENDED"
+  | "UNKNOWN";
+
+
+  export type AiGeneratedFileItem = {
+  id: number;
+  filename: string;
+  language: string;
+  content: string;
+};
+
+export type AiSubmissionItem = {
+  id: number;
+  attemptNumber: number;
+  explanation: string;
+  modelUsed: string;
+  tokensUsed: number;
+  createdAt: string | null;
+  files: AiGeneratedFileItem[];
+};
+
+export type AiSubmissionResponse = {
+  assignmentId: number;
+  isAiAgent: boolean;
+  status: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "ACCEPTED" | "REJECTED";
+  task: {
+    id: number;
+    name: string;
+    description?: string;
+  };
+  latest: AiSubmissionItem | null;
+  history: AiSubmissionItem[];
+  retryCount: number;
+};
+export type AiRunItem = {
+  submissionId: number;
+  assignmentId: number;
+  taskId: number;
+  taskName: string;
+  taskStatus: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "ACCEPTED" | "REJECTED";
+  attemptNumber: number;
+  modelUsed: string;
+  tokensUsed: number;
+  fileCount: number;
+  createdAt: string | null;
+  aiRetryCount: number;
+};
+
+export type AiRunsResponse = {
+  projectId: number;
+  totalRuns: number;
+  totals: {
+    submitted: number;
+    accepted: number;
+    rejected: number;
+    assigned: number;
+    inProgress: number;
+  };
+  items: AiRunItem[];
 };

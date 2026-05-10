@@ -4,8 +4,10 @@ import type {
   TaskAssignmentsResponse,
   MyAssignmentsResponse,
   DeveloperPerformanceItem,
-
+  AiSubmissionResponse,
+  AiRunsResponse,
 } from "../types";
+
 
 export function getProjectDevelopers(projectId: number) {
   return apiJson<DevelopersResponse>(`/api/projects/${projectId}/developers/`);
@@ -81,6 +83,28 @@ export function evaluateTaskAssignment(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+export function getAiSubmission(assignmentId: number) {
+  return apiJson<AiSubmissionResponse>(
+    `/api/task-assignments/${assignmentId}/ai-submission/`
+  );
+}
+export function retryAiAssignment(
+  assignmentId: number,
+  payload: {
+    feedback: string;
+  }
+) {
+  return apiJson<{ message: string; retryCount: number }>(
+    `/api/task-assignments/${assignmentId}/ai-retry/`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+export function getProjectAiRuns(projectId: number) {
+  return apiJson<AiRunsResponse>(`/api/projects/${projectId}/ai-runs/`);
 }
 
 export function getProjectDeveloperPerformance(projectId: number) {

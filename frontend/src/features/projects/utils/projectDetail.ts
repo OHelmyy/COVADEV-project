@@ -42,6 +42,7 @@ export function getTabs(
     { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
     { key: "bpmnCheck", label: "BPMN Check", visible: true },
     { key: "taskManagement", label: "Task Management", visible: true },
+    { key: "aiRuns", label: "AI Runs", visible: true },
     { key: "results", label: "Results", visible: true },
     { key: "compare", label: "Compare", visible: true },
     { key: "recommendations", label: "Recommendations", visible: true },

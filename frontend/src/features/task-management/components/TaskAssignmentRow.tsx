@@ -4,10 +4,11 @@ import {
   evaluateTaskAssignment,
   reviewTaskAssignment,
 } from "../api/taskManagementApi";
-
+import AiSubmissionViewer from "./AiSubmissionViewer";
 import type { Developer, TaskInfo, Assignment } from "../types";
 import { getStatusLabel } from "../utils";
-
+import { retryAiAssignment } from "../api/taskManagementApi";
+import AiRetryForm from "./AiRetryForm";
 import EvaluationForm from "./EvaluationForm";
 import { buttonBase, inputBase, ui } from "../../../theme/ui";
 
@@ -19,6 +20,25 @@ type Props = {
   onChanged: () => Promise<void> | void;
   onError: (operation: string, error: unknown, title?: string) => void;
 };
+type SuitabilityTone = {
+  bg: string;
+  color: string;
+  border: string;
+  label: string;
+};
+
+function getSuitabilityTone(value?: string): SuitabilityTone {
+  switch (value) {
+    case "RECOMMENDED":
+      return { bg: "#ecfdf5", color: "#047857", border: "#a7f3d0", label: "Recommended for AI" };
+    case "NOT_RECOMMENDED":
+      return { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca", label: "Not recommended for AI" };
+    case "NEUTRAL":
+      return { bg: "#fffbeb", color: "#b45309", border: "#fde68a", label: "Neutral" };
+    default:
+      return { bg: "#f3f4f6", color: "#4b5563", border: "#e5e7eb", label: "Not classified" };
+  }
+}
 
 export default function TaskAssignmentRow({
   projectId,
@@ -33,7 +53,8 @@ export default function TaskAssignmentRow({
   );
   const [saving, setSaving] = useState(false);
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
-
+  const [showAiSubmission, setShowAiSubmission] = useState(false);
+  const [showAiRetryForm, setShowAiRetryForm] = useState(false);
   async function handleAssign() {
     if (!developerMembershipId) {
       onError(
@@ -42,6 +63,23 @@ export default function TaskAssignmentRow({
         "Task assignment failed"
       );
       return;
+    }
+
+    const selected = developers.find(
+      (d) => String(d.membershipId) === developerMembershipId
+    );
+
+    if (
+      selected?.isAiAgent &&
+      task.aiSuitability === "NOT_RECOMMENDED"
+    ) {
+      const reasonText = task.aiSuitabilityReason
+        ? `\n\nReason: ${task.aiSuitabilityReason}`
+        : "";
+      const ok = window.confirm(
+        `This task is marked NOT RECOMMENDED for the AI agent.${reasonText}\n\nAssign anyway?`
+      );
+      if (!ok) return;
     }
 
     setSaving(true);
@@ -64,10 +102,21 @@ export default function TaskAssignmentRow({
 
     setSaving(true);
     try {
-      await reviewTaskAssignment(assignment.assignmentId, {
+      const res: any = await reviewTaskAssignment(assignment.assignmentId, {
         accepted,
         reviewNotes: "",
       });
+
+      if (accepted && res?.aiWarning) {
+        const w = res.aiWarning;
+        window.alert(
+          `Heads up: ${w.message}\n\n` +
+          `If you want, you can:\n` +
+          `- Send Back to AI with more specific feedback to raise the score, or\n` +
+          `- Reassign this task to a human developer.`
+        );
+      }
+
       await onChanged();
     } catch (error: any) {
       onError(
@@ -80,6 +129,20 @@ export default function TaskAssignmentRow({
     }
   }
 
+
+  async function handleAiRetry(feedback: string) {
+      if (!assignment) return;
+      setSaving(true);
+      try {
+        await retryAiAssignment(assignment.assignmentId, { feedback });
+        setShowAiRetryForm(false);
+        await onChanged();
+      } catch (error: any) {
+        onError("retry AI submission", error, "AI retry failed");
+      } finally {
+        setSaving(false);
+      }
+    }
   async function handleEvaluationSubmit(payload: {
     correctnessScore: number;
     qualityScore: number;
@@ -160,6 +223,44 @@ export default function TaskAssignmentRow({
               </option>
             ))}
           </select>
+
+          {(() => {
+            const selected = developers.find(
+              (d) => String(d.membershipId) === developerMembershipId
+            );
+            if (!selected?.isAiAgent) return null;
+            const tone = getSuitabilityTone(task.aiSuitability);
+            return (
+              <div
+                title={task.aiSuitabilityReason || tone.label}
+                style={{
+                  marginTop: 8,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  background: tone.bg,
+                  color: tone.color,
+                  border: `1px solid ${tone.border}`,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "help",
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: tone.color,
+                    display: "inline-block",
+                  }}
+                />
+                {tone.label}
+              </div>
+            );
+          })()}
         </td>
 
         <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
@@ -172,69 +273,119 @@ export default function TaskAssignmentRow({
         </td>
 
         <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <button
-              onClick={handleAssign}
-              disabled={saving}
-              style={{
-                ...buttonBase,
-                padding: "8px 12px",
-                border: `1px solid ${ui.colors.borderStrong}`,
-                background: "#fff",
-                color: ui.colors.text,
-              }}
-            >
-              {saving ? "Saving..." : assignment ? "Reassign" : "Assign"}
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 
-            {assignment?.status === "SUBMITTED" && (
-              <>
-                <button
-                  onClick={() => handleReview(true)}
-                  disabled={saving}
-                  style={{
-                    ...buttonBase,
-                    padding: "8px 12px",
-                    background: ui.colors.successSoft,
-                    border: "1px solid #bbf7d0",
-                    color: ui.colors.success,
-                  }}
-                >
-                  Accept
-                </button>
-
-                <button
-                  onClick={() => handleReview(false)}
-                  disabled={saving}
-                  style={{
-                    ...buttonBase,
-                    padding: "8px 12px",
-                    background: ui.colors.dangerSoft,
-                    border: "1px solid #fecaca",
-                    color: ui.colors.danger,
-                  }}
-                >
-                  Reject
-                </button>
-              </>
-            )}
-
-            {assignment &&
-            (assignment.status === "ACCEPTED" || assignment.status === "REJECTED") ? (
+            {/* Row 1 — Primary actions (Reassign, Accept, Reject, Evaluate) */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <button
-                onClick={() => setShowEvaluationForm((v) => !v)}
+                onClick={handleAssign}
                 disabled={saving}
                 style={{
                   ...buttonBase,
                   padding: "8px 12px",
-                  background: ui.colors.primarySoft,
-                  border: "1px solid #bfdbfe",
-                  color: ui.colors.primary,
+                  border: `1px solid ${ui.colors.borderStrong}`,
+                  background: "#fff",
+                  color: ui.colors.text,
                 }}
               >
-                {assignment.evaluation ? "Update Evaluation" : "Evaluate"}
+                {saving ? "Saving..." : assignment ? "Reassign" : "Assign"}
               </button>
-            ) : null}
+
+              {assignment?.status === "SUBMITTED" && (
+                <>
+                  <button
+                    onClick={() => handleReview(true)}
+                    disabled={saving}
+                    style={{
+                      ...buttonBase,
+                      padding: "8px 12px",
+                      background: ui.colors.successSoft,
+                      border: "1px solid #bbf7d0",
+                      color: ui.colors.success,
+                    }}
+                  >
+                    Accept
+                  </button>
+
+                  <button
+                    onClick={() => handleReview(false)}
+                    disabled={saving}
+                    style={{
+                      ...buttonBase,
+                      padding: "8px 12px",
+                      background: ui.colors.dangerSoft,
+                      border: "1px solid #fecaca",
+                      color: ui.colors.danger,
+                    }}
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
+
+              {assignment &&
+              (assignment.status === "ACCEPTED" || assignment.status === "REJECTED") ? (
+                <button
+                  onClick={() => setShowEvaluationForm((v) => !v)}
+                  disabled={saving}
+                  style={{
+                    ...buttonBase,
+                    padding: "8px 12px",
+                    background: ui.colors.primarySoft,
+                    border: "1px solid #bfdbfe",
+                    color: ui.colors.primary,
+                  }}
+                >
+                  {assignment.evaluation ? "Update Evaluation" : "Evaluate"}
+                </button>
+              ) : null}
+            </div>
+
+            {/* Row 2 — AI-specific actions (only for AI assignments) */}
+            {assignment?.developer?.isAiAgent && (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  paddingTop: 6,
+                  borderTop: `1px dashed ${ui.colors.border}`,
+                }}
+              >
+                {["SUBMITTED", "ACCEPTED", "REJECTED"].includes(assignment.status) && (
+                  <button
+                    onClick={() => setShowAiSubmission((v) => !v)}
+                    disabled={saving}
+                    style={{
+                      ...buttonBase,
+                      padding: "8px 12px",
+                      background: "#eef2ff",
+                      border: "1px solid #c7d2fe",
+                      color: "#3730a3",
+                    }}
+                  >
+                    {showAiSubmission ? "Hide AI Work" : "View AI Work"}
+                  </button>
+                )}
+
+                {assignment.status === "SUBMITTED" &&
+                  (assignment.aiRetryCount ?? 0) < 2 && (
+                    <button
+                      onClick={() => setShowAiRetryForm((v) => !v)}
+                      disabled={saving}
+                      style={{
+                        ...buttonBase,
+                        padding: "8px 12px",
+                        background: "#fff7ed",
+                        border: "1px solid #fed7aa",
+                        color: "#9a3412",
+                      }}
+                    >
+                      {showAiRetryForm ? "Hide Retry Form" : "Send Back to AI"}
+                    </button>
+                  )}
+              </div>
+            )}
           </div>
         </td>
       </tr>
@@ -257,6 +408,26 @@ export default function TaskAssignmentRow({
               onSubmit={handleEvaluationSubmit}
               onCancel={() => setShowEvaluationForm(false)}
               saving={saving}
+            />
+          </td>
+        </tr>
+      ) : null}
+      {showAiSubmission && assignment ? (
+        <tr>
+          <td colSpan={5} style={{ padding: 14, background: ui.colors.bgSoft }}>
+            <AiSubmissionViewer assignmentId={assignment.assignmentId} />
+          </td>
+        </tr>
+      ) : null}
+      {showAiRetryForm && assignment ? (
+        <tr>
+          <td colSpan={5} style={{ padding: 14, background: ui.colors.bgSoft }}>
+            <AiRetryForm
+              retryCount={assignment.aiRetryCount ?? 0}
+              maxRetries={2}
+              saving={saving}
+              onSubmit={handleAiRetry}
+              onCancel={() => setShowAiRetryForm(false)}
             />
           </td>
         </tr>

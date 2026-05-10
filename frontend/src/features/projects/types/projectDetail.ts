@@ -51,6 +51,7 @@ export type TabKey =
   | "members"
   | "bpmnCheck"
   | "taskManagement"
+  | "aiRuns"
   | "report";
 
 export type TraceRow = {

@@ -7,7 +7,7 @@ import TaskManagementTab from "../../task-management/components/TaskManagementTa
 
 import ProjectDetailLayout from "../components/project-detail/ProjectDetailLayout";
 import ProjectSidebar from "../components/project-detail/ProjectSidebar";
-
+import AiRunsTab from "../../task-management/components/AiRunsTab";
 import OverviewTab from "../components/project-detail/tabs/OverviewTab";
 import BpmnCheckTab from "../components/project-detail/tabs/BpmnCheckTab";
 import UploadsTab from "../components/project-detail/tabs/UploadsTab";
@@ -158,6 +158,12 @@ export default function ProjectDetailPage() {
         {vm.activeTab === "taskManagement" ? (
           <Card>
             <TaskManagementTab projectId={projectId} />
+          </Card>
+        ) : null}
+        
+        {vm.activeTab === "aiRuns" ? (
+          <Card>
+            <AiRunsTab projectId={projectId} />
           </Card>
         ) : null}
 
