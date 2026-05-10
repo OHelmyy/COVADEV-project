@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from django.db import transaction
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -10,7 +11,11 @@ from django.core.exceptions import ValidationError
 from django.db.models import Count, Avg, Q
 from apps.projects.models import Project, ProjectMembership
 from apps.analysis.models import BpmnTask
-from apps.task_management.models import TaskAssignment, TaskEvaluation
+from apps.task_management.models import (
+    TaskAssignment,
+    TaskEvaluation,
+    AISubmission,
+)
 from apps.task_management.permissions import (
     can_assign_tasks,
     can_review_tasks,
@@ -24,8 +29,7 @@ from apps.task_management.services.assignment_service import (
 )
 from apps.accounts.rbac import is_admin, is_evaluator
 from apps.task_management.services.evaluation_service import evaluate_assignment
-from apps.task_management.models import TaskAssignment, TaskEvaluation, Notification
-
+from apps.task_management.models import Notification
 def _parse_json_body(request):
     try:
         return json.loads(request.body.decode("utf-8") or "{}")
@@ -84,8 +88,10 @@ def _serialize_assignment(assignment: TaskAssignment) -> dict:
             "username": user.username,
             "email": user.email,
             "role": membership.role,
+            "isAiAgent": membership.is_ai_agent,
         },
         "evaluation": _serialize_evaluation(getattr(assignment, "evaluation", None)),
+        "aiRetryCount": assignment.ai_retry_count,
     }
 
 
@@ -127,6 +133,7 @@ def project_developers_api(request, project_id: int):
             "username": m.user.username,
             "email": m.user.email,
             "role": m.role,
+            "isAiAgent": m.is_ai_agent,
         }
         for m in memberships
     ]
@@ -165,6 +172,12 @@ def project_task_assignments_api(request, project_id: int):
                 "taskId": task.task_id,
                 "name": task.name,
                 "description": task.description,
+                "aiSuitability": task.ai_suitability,                          # NEW
+                "aiSuitabilityReason": task.ai_suitability_reason,             # NEW
+                "aiSuitabilityCheckedAt": (                                    # NEW
+                    task.ai_suitability_checked_at.isoformat()
+                    if task.ai_suitability_checked_at else None
+                ),
             },
             "assignment": _serialize_assignment(assignment) if assignment else None,
         })
@@ -276,11 +289,37 @@ def review_task_assignment_api(request, assignment_id: int):
         review_notes=review_notes,
     )
 
+    # If this was an AI accept, surface a warning when score is below threshold.
+    ai_warning = None
+    if accepted and assignment.developer_membership.is_ai_agent:
+        try:
+            from apps.analysis.models import MatchResult
+            m = (
+                MatchResult.objects
+                .filter(project=assignment.project, task=assignment.bpmn_task, is_ai_generated=True)
+                .order_by("-created_at")
+                .first()
+            )
+            if m is not None:
+                threshold = float(getattr(assignment.project, "similarity_threshold", 0.6) or 0.6)
+                if m.similarity_score < threshold:
+                    ai_warning = {
+                        "similarity": round(float(m.similarity_score), 4),
+                        "threshold": round(threshold, 4),
+                        "message": (
+                            f"AI similarity {m.similarity_score:.2f} is below "
+                            f"the project threshold {threshold:.2f}. "
+                            "Task was marked MISSING in Results."
+                        ),
+                    }
+        except Exception:
+            pass
+
     return JsonResponse({
         "message": "Assignment reviewed successfully.",
         "assignment": _serialize_assignment(assignment),
+        "aiWarning": ai_warning,
     })
-
 
 
 @login_required
@@ -782,4 +821,188 @@ def my_performance_insights_api(request):
             "totalDevelopers": len(ranking_items),
             "topDevelopers": top_developers,
         },
+    })
+
+#endpoint that returns the AI submission with its files
+def _serialize_ai_submission(submission):
+    if submission is None:
+        return None
+    return {
+        "id": submission.id,
+        "attemptNumber": submission.attempt_number,
+        "explanation": submission.explanation,
+        "modelUsed": submission.model_used,
+        "tokensUsed": submission.tokens_used,
+        "createdAt": submission.created_at.isoformat() if submission.created_at else None,
+        "files": [
+            {
+                "id": f.id,
+                "filename": f.filename,
+                "language": f.language,
+                "content": f.content,
+            }
+            for f in submission.files.all().order_by("filename")
+        ],
+    }
+
+
+@login_required
+@require_GET
+def ai_submission_api(request, assignment_id: int):
+    assignment = get_object_or_404(
+        TaskAssignment.objects
+        .select_related(
+            "bpmn_task",
+            "developer_membership__user",
+            "project",
+        ),
+        id=assignment_id,
+    )
+
+    if not can_view_assignment(assignment, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    submissions_qs = assignment.ai_submissions.prefetch_related("files").order_by("-attempt_number")
+    submissions = list(submissions_qs)
+
+    latest = submissions[0] if submissions else None
+
+    return JsonResponse({
+        "assignmentId": assignment.id,
+        "isAiAgent": assignment.developer_membership.is_ai_agent,
+        "status": assignment.status,
+        "task": {
+            "id": assignment.bpmn_task.id,
+            "name": assignment.bpmn_task.name,
+            "description": assignment.bpmn_task.description,
+        },
+        "latest": _serialize_ai_submission(latest),
+        "history": [_serialize_ai_submission(s) for s in submissions],
+        "retryCount": assignment.ai_retry_count,
+    })
+
+@login_required
+@require_POST
+def retry_ai_assignment_api(request, assignment_id: int):
+    assignment = get_object_or_404(
+        TaskAssignment.objects
+        .select_related("project", "developer_membership__user", "bpmn_task"),
+        id=assignment_id,
+    )
+
+    if not can_review_tasks(assignment.project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    if not assignment.developer_membership.is_ai_agent:
+        return JsonResponse(
+            {"detail": "Only AI assignments can be retried."}, status=400
+        )
+
+    if assignment.status != TaskAssignment.Status.SUBMITTED:
+        return JsonResponse(
+            {"detail": "Only SUBMITTED AI assignments can be retried."}, status=400
+        )
+
+    MAX_RETRIES = 2
+    if assignment.ai_retry_count >= MAX_RETRIES:
+        return JsonResponse(
+            {
+                "detail": (
+                    f"Max retries ({MAX_RETRIES}) reached. "
+                    "Please reassign this task to a human developer."
+                )
+            },
+            status=400,
+        )
+
+    body = _parse_json_body(request)
+    feedback = (body.get("feedback") or "").strip()
+    if not feedback:
+        return JsonResponse({"detail": "Feedback is required."}, status=400)
+
+    assignment.review_notes = feedback[:5000]
+    assignment.ai_retry_count = assignment.ai_retry_count + 1
+    assignment.status = TaskAssignment.Status.ASSIGNED
+    assignment.submitted_at = None
+    assignment.reviewed_at = None
+    assignment.reviewed_by = None
+    assignment.save(update_fields=[
+        "review_notes",
+        "ai_retry_count",
+        "status",
+        "submitted_at",
+        "reviewed_at",
+        "reviewed_by",
+        "updated_at",
+    ])
+
+    # Lazy import to avoid circular references
+    from apps.task_management.signals import _schedule_executor
+
+    transaction.on_commit(lambda: _schedule_executor(assignment.id))
+
+    return JsonResponse(
+        {
+            "message": "AI retry started.",
+            "retryCount": assignment.ai_retry_count,
+            "assignment": _serialize_assignment(assignment),
+        },
+        status=200,
+    )
+@login_required
+@require_GET
+def project_ai_runs_api(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not (is_admin(request.user) or is_evaluator(request.user)):
+        # Allow developers to see only their own project's runs
+        if not ProjectMembership.objects.filter(
+            project=project, user=request.user
+        ).exists():
+            return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    submissions = (
+        AISubmission.objects
+        .select_related(
+            "assignment",
+            "assignment__bpmn_task",
+            "assignment__developer_membership__user",
+        )
+        .filter(assignment__project=project)
+        .order_by("-created_at")
+    )
+
+    items = []
+    for sub in submissions:
+        assignment = sub.assignment
+        task = assignment.bpmn_task
+        items.append({
+            "submissionId": sub.id,
+            "assignmentId": assignment.id,
+            "taskId": task.id,
+            "taskName": task.name,
+            "taskStatus": assignment.status,
+            "attemptNumber": sub.attempt_number,
+            "modelUsed": sub.model_used,
+            "tokensUsed": sub.tokens_used,
+            "fileCount": sub.files.count(),
+            "createdAt": sub.created_at.isoformat() if sub.created_at else None,
+            "aiRetryCount": assignment.ai_retry_count,
+        })
+
+    # Aggregate counters per assignment status
+    from collections import Counter
+    status_counter = Counter(item["taskStatus"] for item in items)
+
+    return JsonResponse({
+        "projectId": project.id,
+        "totalRuns": len(items),
+        "totals": {
+            "submitted": status_counter.get("SUBMITTED", 0),
+            "accepted": status_counter.get("ACCEPTED", 0),
+            "rejected": status_counter.get("REJECTED", 0),
+            "assigned": status_counter.get("ASSIGNED", 0),
+            "inProgress": status_counter.get("IN_PROGRESS", 0),
+        },
+        "items": items,
     })
