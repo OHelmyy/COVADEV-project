@@ -91,7 +91,16 @@ def replace_match_results(project, results: List[Dict[str, Any]]) -> int:
         ...
       ]
     """
-    MatchResult.objects.filter(project=project).delete()
+    # Preserve AI-generated matches; only wipe pipeline-generated rows.
+    MatchResult.objects.filter(project=project, is_ai_generated=False).delete()
+
+    # Tasks that already have an AI-generated match are owned by the AI flow.
+    # The pipeline must not create duplicate rows for them.
+    ai_owned_task_ids = set(
+        MatchResult.objects
+        .filter(project=project, is_ai_generated=True, task__isnull=False)
+        .values_list("task_id", flat=True)
+    )
 
     task_map = {t.task_id: t for t in project.bpmn_tasks.all()}
 
@@ -100,6 +109,10 @@ def replace_match_results(project, results: List[Dict[str, Any]]) -> int:
         status = str(r.get("status", "MATCHED")).upper().strip()
         task_id = str(r.get("task_id", "")).strip()
         task = task_map.get(task_id) if task_id else None
+
+        # Skip pipeline results for tasks already owned by the AI flow.
+        if task is not None and task.id in ai_owned_task_ids:
+            continue
 
         objs.append(
             MatchResult(
