@@ -1,7 +1,7 @@
 # apps/analysis/code/java_extractor.py
 import re
 from typing import Any, Dict, List
-from .base_extractor import BaseExtractor
+from analysis.code.base_extractor import BaseExtractor
 
 class JavaExtractor(BaseExtractor):
     # Regex for Java methods: [access] [static] [return_type] name(params) {

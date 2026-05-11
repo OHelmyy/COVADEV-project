@@ -10,10 +10,10 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import transaction
 
-from .models import Project, ProjectFile, CodeFile
-from apps.analysis.summary.code_summary_service import SummaryService
-from apps.analysis.models_code import CodeArtifact
-from apps.analysis.summary.code_summary_service import fallback_summary as _fallback_summary
+from projects.models import Project, ProjectFile, CodeFile
+from analysis.summary.code_summary_service import SummaryService
+from analysis.models_code import CodeArtifact
+from analysis.summary.code_summary_service import fallback_summary as _fallback_summary
 
 
 # ============================================================
@@ -127,7 +127,7 @@ def _index_code_files(project: Project, code_root_dir: Path, uploader):
 # ✅ Code Summarization helpers
 # ============================================================
 
-from apps.analysis.code.universal_extractor import UniversalExtractor
+from analysis.code.universal_extractor import UniversalExtractor
 
 def _persist_code_artifacts_with_summaries(
     *,
