@@ -1,9 +1,64 @@
 import re
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from .base_extractor import BaseExtractor
 
+class JavascriptExtractor(BaseExtractor):
+    def __init__(self):
+        super().__init__("javascript")
 
-JS_EXTS = {".js", ".jsx", ".ts", ".tsx"}
+    def get_functions(self, source: str, rel_path: str) -> List[Dict[str, Any]]:
+        lines = source.splitlines()
+        items: List[Dict] = []
+
+        # Patterns from original react_extractor.py
+        p_export_default_func = re.compile(r"^\s*export\s+default\s+function\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
+        p_export_func = re.compile(r"^\s*export\s+function\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
+        p_func = re.compile(r"^\s*function\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
+        p_export_const_arrow = re.compile(r"^\s*export\s+const\s+([A-Za-z_]\w*)\s*=\s*\(?.*?\)?\s*=>", re.MULTILINE)
+        p_const_arrow = re.compile(r"^\s*const\s+([A-Za-z_]\w*)\s*=\s*\(?.*?\)?\s*=>", re.MULTILINE)
+
+        def _matches_with_line(pattern: re.Pattern) -> List[Dict]:
+            out: List[Dict] = []
+            for m in pattern.finditer(source):
+                name = m.group(1)
+                start_idx = source[: m.start()].count("\n")
+                out.append({"name": name, "line": start_idx, "start_pos": m.start()})
+            return out
+
+        raw_matches: List[Dict] = []
+        raw_matches.extend(_matches_with_line(p_export_default_func))
+        raw_matches.extend(_matches_with_line(p_export_func))
+        raw_matches.extend(_matches_with_line(p_func))
+        raw_matches.extend(_matches_with_line(p_export_const_arrow))
+        raw_matches.extend(_matches_with_line(p_const_arrow))
+
+        seen = set()
+        for m in raw_matches:
+            key = (m["name"], m["line"])
+            if key in seen:
+                continue
+            seen.add(key)
+            
+            name = m["name"]
+            line_index = m["line"]
+            start_pos = m["start_pos"]
+
+            leading_comment = _find_leading_comment(lines, line_index)
+            
+            # Use brace counting for snippet if it looks like a block
+            raw_snippet = self._extract_brace_block(source, start_pos)
+            
+            item_type = "component" if (name and name[0].isupper()) else "function"
+
+            items.append({
+                "name": name,
+                "start_line": line_index + 1,
+                "raw_snippet": raw_snippet,
+                "kind": item_type,
+                "leading_comment": leading_comment
+            })
+
+        return items
 
 
 def normalize_text(text: str) -> str:
@@ -61,133 +116,3 @@ def _find_leading_comment(lines: List[str], start_line_index: int) -> str:
         return block.strip()
 
     return ""
-
-
-def extract_react_code_items(js_file: Path, project_root: Optional[Path] = None) -> List[Dict]:
-    """
-    Extract "code items" from one JS/TS/JSX/TSX file.
-
-    We extract:
-    - React components (function or const/arrow) by naming convention (PascalCase)
-    - Exported functions (any case)
-    - Top-level functions (best effort)
-
-    Output schema (matches Python extractor):
-    {
-      "id": "...",
-      "type": "component|function",
-      "name": "...",
-      "text": "...",          # normalized text for embeddings later
-      "source_path": "..."    # relative path when project_root is provided
-    }
-    """
-    source = js_file.read_text(encoding="utf-8", errors="ignore")
-    lines = source.splitlines()
-
-    rel_path = str(js_file)
-    if project_root is not None:
-        try:
-            rel_path = str(js_file.relative_to(project_root))
-        except ValueError:
-            rel_path = str(js_file)
-
-    items: List[Dict] = []
-
-    # Patterns:
-    # 1) export default function ComponentName(...) { ... }
-    p_export_default_func = re.compile(
-        r"^\s*export\s+default\s+function\s+([A-Za-z_]\w*)\s*\(",
-        re.MULTILINE,
-    )
-
-    # 2) export function fnName(...) { ... }
-    p_export_func = re.compile(
-        r"^\s*export\s+function\s+([A-Za-z_]\w*)\s*\(",
-        re.MULTILINE,
-    )
-
-    # 3) function fnName(...) { ... }
-    p_func = re.compile(
-        r"^\s*function\s+([A-Za-z_]\w*)\s*\(",
-        re.MULTILINE,
-    )
-
-    # 4) export const Name = (...) => ...
-    p_export_const_arrow = re.compile(
-        r"^\s*export\s+const\s+([A-Za-z_]\w*)\s*=\s*\(?.*?\)?\s*=>",
-        re.MULTILINE,
-    )
-
-    # 5) const Name = (...) => ...
-    p_const_arrow = re.compile(
-        r"^\s*const\s+([A-Za-z_]\w*)\s*=\s*\(?.*?\)?\s*=>",
-        re.MULTILINE,
-    )
-
-    # Collect matches with their approximate start line index
-    def _matches_with_line(pattern: re.Pattern) -> List[Dict]:
-        out: List[Dict] = []
-        for m in pattern.finditer(source):
-            name = m.group(1)
-            start_idx = source[: m.start()].count("\n")
-            out.append({"name": name, "line": start_idx})
-        return out
-
-    raw_matches: List[Dict] = []
-    raw_matches.extend(_matches_with_line(p_export_default_func))
-    raw_matches.extend(_matches_with_line(p_export_func))
-    raw_matches.extend(_matches_with_line(p_func))
-    raw_matches.extend(_matches_with_line(p_export_const_arrow))
-    raw_matches.extend(_matches_with_line(p_const_arrow))
-
-    # Deduplicate by (name, line) to avoid duplicates from overlapping patterns
-    seen = set()
-    matches: List[Dict] = []
-    for m in raw_matches:
-        key = (m["name"], m["line"])
-        if key in seen:
-            continue
-        seen.add(key)
-        matches.append(m)
-
-    # Classify component vs function:
-    # - Component: PascalCase name (common React convention)
-    # - Function: anything else
-    def _is_component_name(name: str) -> bool:
-        return bool(name) and name[0].isupper()
-
-    for m in matches:
-        name = m["name"]
-        line_index = m["line"]
-
-        leading_comment = _find_leading_comment(lines, line_index)
-        raw_text = name
-        if leading_comment:
-            raw_text = f"{name}\n{leading_comment}"
-
-        normalized = normalize_text(raw_text)
-
-        item_type = "component" if _is_component_name(name) else "function"
-
-        items.append(
-            {
-                "id": _make_id(rel_path, item_type, name),
-                "type": item_type,
-                "name": name,
-                "text": normalized,
-                "source_path": rel_path,
-            }
-        )
-
-    return items
-
-
-def extract_react_from_directory(root_dir: Path, project_root: Optional[Path] = None) -> List[Dict]:
-    """
-    Walk a directory and extract items from all JS/TS/JSX/TSX files.
-    """
-    results: List[Dict] = []
-    for p in root_dir.rglob("*"):
-        if p.is_file() and p.suffix in JS_EXTS:
-            results.extend(extract_react_code_items(p, project_root=project_root))
-    return results
