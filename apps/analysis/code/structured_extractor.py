@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 FN_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
+from analysis.code.base_extractor import BaseExtractor
+
 @dataclass
 class StructuredFunction:
     function_uid: str
@@ -25,6 +27,34 @@ class StructuredFunction:
     end_line: int
     raw_snippet: str
     developer_id: Optional[str] = None
+
+
+class PythonExtractor(BaseExtractor):
+    def __init__(self):
+        super().__init__("python")
+
+    def get_functions(self, source: str, rel_path: str) -> List[Dict[str, Any]]:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return []
+
+        out: List[Dict[str, Any]] = []
+
+        for top in tree.body:
+            if isinstance(top, FN_TYPES):
+                out.append(_build_one(top, src=source, rel=rel_path, class_name=None))
+            elif isinstance(top, ast.ClassDef):
+                for item in top.body:
+                    if isinstance(item, FN_TYPES):
+                        out.append(_build_one(item, src=source, rel=rel_path, class_name=top.name))
+        
+        # Normalize the keys to match BaseExtractor's expectations before normalize_item is called
+        for item in out:
+            item["name"] = item.get("function_name")
+            # raw_snippet is already there
+        
+        return out
 
 
 def _rel_path(p: Path, root: Optional[Path]) -> str:
