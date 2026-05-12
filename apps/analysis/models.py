@@ -113,6 +113,7 @@ class MatchResult(models.Model):
 
     similarity_score = models.FloatField(default=0.0)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    matched_summary = models.TextField(blank=True, default="")
     is_ai_generated = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
