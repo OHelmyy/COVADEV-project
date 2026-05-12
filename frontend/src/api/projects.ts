@@ -141,6 +141,7 @@ export async function fetchCompareInputs(projectId: number) {
       summary_text?: string;
       summaryText?: string;
       compareText?: string;
+      source?: "evaluator" | "ai";
     }>;
   }>(`/api/projects/${projectId}/compare-inputs/`); // ✅ FIXED URL
 
@@ -184,6 +185,7 @@ export async function fetchCompareInputs(projectId: number) {
         functionName: fnName,
         filePath: fp,
         summaryText: sumRaw,
+        source: c.source,
       };
     }),
   };

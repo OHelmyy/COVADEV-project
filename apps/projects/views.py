@@ -432,10 +432,28 @@ def compare_inputs_api(request, project_id: int):
             "symbol": c.symbol,
             "file": c.file_path,
             "summaryText": c.summary_text,
+            "source": "evaluator",
         }
         for c in CodeArtifact.objects.filter(project=project)
     ]
 
+    # Also include AI-generated match results so their summaries appear alongside
+    # the evaluator's code functions.
+    for m in (
+        MatchResult.objects
+        .filter(project=project, is_ai_generated=True)
+        .select_related("task")
+    ):
+        if not (m.matched_summary or "").strip():
+            continue
+        task_name = m.task.name if m.task else ""
+        code_functions.append({
+            "codeUid": f"ai-match-{m.id}",
+            "symbol": task_name,
+            "file": m.code_ref,
+            "summaryText": m.matched_summary,
+            "source": "ai",
+        })
 
     return JsonResponse({
         "projectId": project.id,

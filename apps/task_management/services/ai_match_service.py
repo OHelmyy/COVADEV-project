@@ -143,17 +143,19 @@ def match_accepted_ai_submission(assignment: TaskAssignment) -> Optional[MatchRe
     #        Flavor B: embed each summary, take the BEST similarity (mirrors
     #        how developer code is scored — best-matching function wins).
     function_summaries = _get_ai_function_summaries(submission)
+    best_summary = ""
     if function_summaries:
         code_embeddings = embedder.embed_many(function_summaries)
-        similarity = max(
-            _cosine_similarity(emb.vector, task_vector)
-            for emb in code_embeddings
-        )
+        scores = [_cosine_similarity(emb.vector, task_vector) for emb in code_embeddings]
+        best_idx = int(max(range(len(scores)), key=lambda i: scores[i]))
+        similarity = scores[best_idx]
+        best_summary = function_summaries[best_idx]
     else:
         # Fallback: extraction failed — use old raw-code method.
         code_text = _build_ai_code_text(submission)
         code_embedding = embedder.embed_many([code_text])[0]
         similarity = _cosine_similarity(code_embedding.vector, task_vector)
+        best_summary = code_text[:300]
         
    # 4. Clean up any previous rows for this task that AI now supersedes:
     #    - Any existing AI row for this task (we replace it).
@@ -187,6 +189,7 @@ def match_accepted_ai_submission(assignment: TaskAssignment) -> Optional[MatchRe
         similarity_score=similarity,
         status=status,
         is_ai_generated=True,
+        matched_summary=best_summary,
     )
 
     return {

@@ -81,7 +81,7 @@ def clean_summary(text: str) -> str:
     t = re.sub(r'^[Tt]he\s+\w+\s+(function|method)\s+', '', t).strip()
 
     # Remove leading prefixes
-    prefixes = ["this function", "the function", "this method", "the method"]
+    prefixes = ["this function", "the function", "this method", "the method", "the code"]
     for p in prefixes:
         if t.lower().startswith(p):
             t = t[len(p):].strip()

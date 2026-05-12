@@ -39,6 +39,7 @@ export type CompareCodeFn = {
   summary_text?: string;
   summary?: string;
   structuredSummary?: string;
+  source?: "evaluator" | "ai";
 };
 
 export type TabKey =
