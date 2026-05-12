@@ -107,6 +107,12 @@ export function getProjectAiRuns(projectId: number) {
   return apiJson<AiRunsResponse>(`/api/projects/${projectId}/ai-runs/`);
 }
 
+export function autoEvaluateTaskAssignment(assignmentId: number) {
+  return apiJson(`/api/task-assignments/${assignmentId}/auto-evaluate/`, {
+    method: "POST",
+  });
+}
+
 export function getProjectDeveloperPerformance(projectId: number) {
   return apiJson<{ projectId: number; items: DeveloperPerformanceItem[] }>(
     `/api/projects/${projectId}/developer-performance/`

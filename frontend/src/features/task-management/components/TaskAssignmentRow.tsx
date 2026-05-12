@@ -3,6 +3,7 @@ import {
   assignTask,
   evaluateTaskAssignment,
   reviewTaskAssignment,
+  autoEvaluateTaskAssignment,
 } from "../api/taskManagementApi";
 import AiSubmissionViewer from "./AiSubmissionViewer";
 import type { Developer, TaskInfo, Assignment } from "../types";
@@ -17,7 +18,7 @@ type Props = {
   task: TaskInfo;
   assignment: Assignment | null;
   developers: Developer[];
-  onChanged: () => Promise<void> | void;
+  onChanged: (assignmentId?: number, newAssignment?: any) => Promise<void> | void;
   onError: (operation: string, error: unknown, title?: string) => void;
 };
 type SuitabilityTone = {
@@ -154,11 +155,26 @@ export default function TaskAssignmentRow({
 
     setSaving(true);
     try {
-      await evaluateTaskAssignment(assignment.assignmentId, payload);
+      const resp = await evaluateTaskAssignment(assignment.assignmentId, payload);
       setShowEvaluationForm(false);
-      await onChanged();
+      await onChanged(assignment.assignmentId, resp.assignment);
     } catch (error: any) {
       onError("save task evaluation", error, "Task evaluation failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAutoEvaluate() {
+    if (!assignment) return;
+
+    setSaving(true);
+    try {
+      const resp = await autoEvaluateTaskAssignment(assignment.assignmentId);
+      await onChanged(assignment.assignmentId, resp.assignment);
+      setShowEvaluationForm(false);
+    } catch (error: any) {
+      onError("auto evaluate task", error, "Auto evaluation failed");
     } finally {
       setSaving(false);
     }
@@ -172,10 +188,10 @@ export default function TaskAssignmentRow({
       status === "ACCEPTED"
         ? { bg: ui.colors.successSoft, color: ui.colors.success }
         : status === "REJECTED"
-        ? { bg: ui.colors.dangerSoft, color: ui.colors.danger }
-        : status === "SUBMITTED"
-        ? { bg: ui.colors.warningSoft, color: ui.colors.warning }
-        : { bg: ui.colors.primarySoft, color: ui.colors.primary };
+          ? { bg: ui.colors.dangerSoft, color: ui.colors.danger }
+          : status === "SUBMITTED"
+            ? { bg: ui.colors.warningSoft, color: ui.colors.warning }
+            : { bg: ui.colors.primarySoft, color: ui.colors.primary };
 
     return (
       <span
@@ -397,16 +413,17 @@ export default function TaskAssignmentRow({
               initialValues={
                 assignment.evaluation
                   ? {
-                      correctnessScore: assignment.evaluation.correctnessScore,
-                      qualityScore: assignment.evaluation.qualityScore,
-                      timelinessScore: assignment.evaluation.timelinessScore,
-                      communicationScore: assignment.evaluation.communicationScore,
-                      comments: assignment.evaluation.comments,
-                    }
+                    correctnessScore: assignment.evaluation.correctnessScore,
+                    qualityScore: assignment.evaluation.qualityScore,
+                    timelinessScore: assignment.evaluation.timelinessScore,
+                    communicationScore: assignment.evaluation.communicationScore,
+                    comments: assignment.evaluation.comments,
+                  }
                   : null
               }
               onSubmit={handleEvaluationSubmit}
               onCancel={() => setShowEvaluationForm(false)}
+              onAutoEvaluate={handleAutoEvaluate}
               saving={saving}
             />
           </td>

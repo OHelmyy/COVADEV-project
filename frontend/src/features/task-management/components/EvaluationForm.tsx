@@ -17,6 +17,7 @@ type Props = {
     comments: string;
   }) => Promise<void> | void;
   onCancel: () => void;
+  onAutoEvaluate?: () => Promise<void>;
   saving?: boolean;
 };
 
@@ -24,6 +25,7 @@ export default function EvaluationForm({
   initialValues,
   onSubmit,
   onCancel,
+  onAutoEvaluate,
   saving = false,
 }: Props) {
   const [correctnessScore, setCorrectnessScore] = useState(initialValues?.correctnessScore ?? 80);
@@ -109,6 +111,26 @@ export default function EvaluationForm({
         >
           Predicted Final Score: {avg.toFixed(2)}
         </div>
+
+        {onAutoEvaluate && (
+          <button
+            type="button"
+            onClick={onAutoEvaluate}
+            disabled={saving}
+            style={{
+              ...buttonBase,
+              background: ui.colors.violetSoft,
+              color: ui.colors.violet,
+              border: `1px solid ${ui.colors.violet}`,
+              fontSize: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span>✨</span> Auto-Evaluate with AI
+          </button>
+        )}
       </div>
 
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>

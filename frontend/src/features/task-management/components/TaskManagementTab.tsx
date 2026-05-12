@@ -47,12 +47,24 @@ export default function TaskManagementTab({ projectId }: Props) {
     });
   }
 
-  async function loadTaskAssignmentsOnly() {
-    try {
-      const taskData = await getProjectTaskAssignments(projectId);
-      setTaskAssignments(taskData.items || []);
-    } catch (err: any) {
-      openTaskError("refresh task assignments", err, "Task assignments refresh failed");
+  async function handleAssignmentChanged(assignmentId?: number, newAssignment?: any) {
+    if (newAssignment && newAssignment.task?.id) {
+      setTaskAssignments((prev) => {
+        const next = prev.map((item) => {
+          if (item.task.id === newAssignment.task.id) {
+            return { ...item, assignment: newAssignment };
+          }
+          return item;
+        });
+        return next;
+      });
+    } else {
+      try {
+        const taskData = await getProjectTaskAssignments(projectId);
+        setTaskAssignments(taskData.items || []);
+      } catch (err: any) {
+        openTaskError("refresh task assignments", err, "Task assignments refresh failed");
+      }
     }
   }
 
@@ -187,12 +199,14 @@ export default function TaskManagementTab({ projectId }: Props) {
                 ) : (
                   taskAssignments.map((item) => (
                     <TaskAssignmentRow
-                      key={item.task.id}
+                      key={`${item.task.id}-${item.assignment?.assignmentId || "unassigned"}-${
+                        item.assignment?.evaluation?.id || "no-eval"
+                      }-${item.assignment?.evaluation?.finalScore || "0"}`}
                       projectId={projectId}
                       task={item.task}
                       assignment={item.assignment}
                       developers={developers}
-                      onChanged={loadTaskAssignmentsOnly}
+                      onChanged={handleAssignmentChanged}
                       onError={openTaskError}
                     />
                   ))
