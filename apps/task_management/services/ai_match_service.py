@@ -7,8 +7,10 @@ import numpy as np
 
 from apps.analysis.embeddings.embedder import LocalEmbedder
 from apps.analysis.models import BpmnTask, MatchResult, TaskEmbedding
-from apps.task_management.models import TaskAssignment, AISubmission
-
+import tempfile
+from pathlib import Path
+from apps.analysis.code.structured_extractor import extract_structured_functions
+from apps.analysis.summary.code_summary_service import SummaryService
 
 # Lazy-loaded singleton embedder so we don't reload the model on every accept.
 _embedder_lock = threading.Lock()
@@ -43,6 +45,49 @@ def _build_ai_code_text(submission: AISubmission, max_chars: int = 6000) -> str:
     return text
 
 
+def _get_ai_function_summaries(submission: AISubmission) -> list:
+    """
+    Parse the AI's Python files, extract each function/class, generate a
+    one-sentence summary for each (same pipeline as developer code), and
+    return the list of summary strings.
+    Returns an empty list if extraction or summarization fails.
+    """
+    all_functions = []
+
+    for ai_file in submission.files.all().order_by("filename"):
+        content = ai_file.content or ""
+        if not content.strip():
+            continue
+
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                suffix=".py", mode="w", encoding="utf-8", delete=False
+            ) as tmp:
+                tmp.write(content)
+                tmp_path = Path(tmp.name)
+
+            functions = extract_structured_functions(tmp_path)
+            all_functions.extend(functions)
+        except Exception as e:
+            print(f"[ai_match_service] Failed to extract from {ai_file.filename}: {e}")
+        finally:
+            if tmp_path:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+    if not all_functions:
+        return []
+
+    try:
+        summaries_dict = SummaryService().summarize_many(all_functions)
+        return [s for s in summaries_dict.values() if s]
+    except Exception as e:
+        print(f"[ai_match_service] SummaryService failed: {e}")
+        return []
+
 def _cosine_similarity(a: list, b: list) -> float:
     av = np.asarray(a, dtype=float)
     bv = np.asarray(b, dtype=float)
@@ -75,10 +120,7 @@ def match_accepted_ai_submission(assignment: TaskAssignment) -> Optional[MatchRe
     task: BpmnTask = assignment.bpmn_task
     project = assignment.project
 
-    # 1. Build the AI code text and embed it.
-    code_text = _build_ai_code_text(submission)
     embedder = _get_embedder()
-    code_embedding = embedder.embed_many([code_text])[0]
 
     # 2. Get (or compute) the task embedding so we compare in the same vector space.
     task_emb = TaskEmbedding.objects.filter(project=project, bpmn_task=task).first()
@@ -97,9 +139,22 @@ def match_accepted_ai_submission(assignment: TaskAssignment) -> Optional[MatchRe
             defaults={"vector": task_vector},
         )
 
-    # 3. Compute cosine similarity.
-    similarity = _cosine_similarity(code_embedding.vector, task_vector)
-
+    # 1 + 3. Summarize each AI function (same pipeline as developer code).
+    #        Flavor B: embed each summary, take the BEST similarity (mirrors
+    #        how developer code is scored — best-matching function wins).
+    function_summaries = _get_ai_function_summaries(submission)
+    if function_summaries:
+        code_embeddings = embedder.embed_many(function_summaries)
+        similarity = max(
+            _cosine_similarity(emb.vector, task_vector)
+            for emb in code_embeddings
+        )
+    else:
+        # Fallback: extraction failed — use old raw-code method.
+        code_text = _build_ai_code_text(submission)
+        code_embedding = embedder.embed_many([code_text])[0]
+        similarity = _cosine_similarity(code_embedding.vector, task_vector)
+        
    # 4. Clean up any previous rows for this task that AI now supersedes:
     #    - Any existing AI row for this task (we replace it).
     #    - Any pipeline-generated MISSING row (the task is no longer missing).

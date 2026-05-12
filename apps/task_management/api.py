@@ -1,10 +1,11 @@
 from __future__ import annotations
-
+import io
+import zipfile
 import json
 from django.db import transaction
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 from django.core.exceptions import ValidationError
@@ -15,6 +16,7 @@ from apps.task_management.models import (
     TaskAssignment,
     TaskEvaluation,
     AISubmission,
+    Notification,
 )
 from apps.task_management.permissions import (
     can_assign_tasks,
@@ -27,9 +29,10 @@ from apps.task_management.services.assignment_service import (
     review_assignment,
     start_assignment,
 )
-from apps.accounts.rbac import is_admin, is_evaluator
 from apps.task_management.services.evaluation_service import evaluate_assignment
-from apps.task_management.models import Notification
+from apps.accounts.rbac import is_admin, is_evaluator
+
+
 def _parse_json_body(request):
     try:
         return json.loads(request.body.decode("utf-8") or "{}")
@@ -846,6 +849,73 @@ def _serialize_ai_submission(submission):
     }
 
 
+
+@login_required
+@require_GET
+def ai_submission_zip_api(request, assignment_id: int):
+    """
+    Returns the latest AI submission for an assignment as a zip file
+    containing each generated Python file plus a README.txt with metadata.
+    """
+    assignment = get_object_or_404(
+        TaskAssignment.objects.select_related(
+            "bpmn_task",
+            "developer_membership__user",
+            "project",
+        ),
+        id=assignment_id,
+    )
+
+    if not can_view_assignment(assignment, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    submission = (
+        assignment.ai_submissions
+        .prefetch_related("files")
+        .order_by("-attempt_number")
+        .first()
+    )
+    if submission is None:
+        return JsonResponse(
+            {"detail": "No AI submission exists for this assignment."},
+            status=404,
+        )
+
+    # Build the zip in memory
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # README with submission metadata
+        readme_lines = [
+            f"AI Submission Bundle",
+            f"=====================",
+            f"",
+            f"Task:        {assignment.bpmn_task.name}",
+            f"Task ID:     {assignment.bpmn_task.task_id}",
+            f"Assignment:  #{assignment.id}",
+            f"Attempt:     #{submission.attempt_number}",
+            f"Model:       {submission.model_used or '(unknown)'}",
+            f"Tokens used: {submission.tokens_used}",
+            f"Created at:  {submission.created_at.isoformat() if submission.created_at else '(unknown)'}",
+            f"Status:      {assignment.status}",
+            f"",
+            f"--- Explanation ---",
+            f"{submission.explanation or '(no explanation)'}",
+            f"",
+        ]
+        zf.writestr("README.txt", "\n".join(readme_lines))
+
+        # Each Python file
+        for f in submission.files.all():
+            safe_name = (f.filename or "ai_output.py").replace("/", "_").replace("\\", "_")
+            zf.writestr(safe_name, f.content or "")
+
+    buffer.seek(0)
+
+    filename = f"ai_submission_{assignment.id}_attempt_{submission.attempt_number}.zip"
+    response = HttpResponse(buffer.read(), content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
 @login_required
 @require_GET
 def ai_submission_api(request, assignment_id: int):
@@ -898,9 +968,15 @@ def retry_ai_assignment_api(request, assignment_id: int):
             {"detail": "Only AI assignments can be retried."}, status=400
         )
 
-    if assignment.status != TaskAssignment.Status.SUBMITTED:
+    allowed_for_retry = {
+        TaskAssignment.Status.SUBMITTED,
+        TaskAssignment.Status.ACCEPTED,
+        TaskAssignment.Status.REJECTED,
+    }
+    if assignment.status not in allowed_for_retry:
         return JsonResponse(
-            {"detail": "Only SUBMITTED AI assignments can be retried."}, status=400
+            {"detail": "AI assignment must be in SUBMITTED, ACCEPTED, or REJECTED to retry."},
+            status=400,
         )
 
     MAX_RETRIES = 2
@@ -936,9 +1012,7 @@ def retry_ai_assignment_api(request, assignment_id: int):
         "updated_at",
     ])
 
-    # Lazy import to avoid circular references
     from apps.task_management.signals import _schedule_executor
-
     transaction.on_commit(lambda: _schedule_executor(assignment.id))
 
     return JsonResponse(
@@ -949,13 +1023,14 @@ def retry_ai_assignment_api(request, assignment_id: int):
         },
         status=200,
     )
+
+
 @login_required
 @require_GET
 def project_ai_runs_api(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
     if not (is_admin(request.user) or is_evaluator(request.user)):
-        # Allow developers to see only their own project's runs
         if not ProjectMembership.objects.filter(
             project=project, user=request.user
         ).exists():
@@ -990,7 +1065,6 @@ def project_ai_runs_api(request, project_id: int):
             "aiRetryCount": assignment.ai_retry_count,
         })
 
-    # Aggregate counters per assignment status
     from collections import Counter
     status_counter = Counter(item["taskStatus"] for item in items)
 
@@ -1006,3 +1080,71 @@ def project_ai_runs_api(request, project_id: int):
         },
         "items": items,
     })
+
+
+import io
+import zipfile
+
+
+@login_required
+@require_GET
+def ai_submission_zip_api(request, assignment_id: int):
+    """
+    Returns the latest AI submission for an assignment as a zip file
+    containing each generated Python file plus a README.txt with metadata.
+    """
+    assignment = get_object_or_404(
+        TaskAssignment.objects.select_related(
+            "bpmn_task",
+            "developer_membership__user",
+            "project",
+        ),
+        id=assignment_id,
+    )
+
+    if not can_view_assignment(assignment, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    submission = (
+        assignment.ai_submissions
+        .prefetch_related("files")
+        .order_by("-attempt_number")
+        .first()
+    )
+    if submission is None:
+        return JsonResponse(
+            {"detail": "No AI submission exists for this assignment."},
+            status=404,
+        )
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        readme_lines = [
+            "AI Submission Bundle",
+            "=====================",
+            "",
+            f"Task:        {assignment.bpmn_task.name}",
+            f"Task ID:     {assignment.bpmn_task.task_id}",
+            f"Assignment:  #{assignment.id}",
+            f"Attempt:     #{submission.attempt_number}",
+            f"Model:       {submission.model_used or '(unknown)'}",
+            f"Tokens used: {submission.tokens_used}",
+            f"Created at:  {submission.created_at.isoformat() if submission.created_at else '(unknown)'}",
+            f"Status:      {assignment.status}",
+            "",
+            "--- Explanation ---",
+            f"{submission.explanation or '(no explanation)'}",
+            "",
+        ]
+        zf.writestr("README.txt", "\n".join(readme_lines))
+
+        for f in submission.files.all():
+            safe_name = (f.filename or "ai_output.py").replace("/", "_").replace("\\", "_")
+            zf.writestr(safe_name, f.content or "")
+
+    buffer.seek(0)
+
+    filename = f"ai_submission_{assignment.id}_attempt_{submission.attempt_number}.zip"
+    response = HttpResponse(buffer.read(), content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

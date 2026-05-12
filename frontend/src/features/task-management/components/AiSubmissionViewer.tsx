@@ -93,6 +93,24 @@ export default function AiSubmissionViewer({ assignmentId }: Props) {
         {data.history.length > 1 && (
           <span>(History: {data.history.length} attempts)</span>
         )}
+
+        <a
+          href={`/api/task-assignments/${assignmentId}/ai-submission.zip/`}
+          style={{
+            marginLeft: "auto",
+            padding: "6px 12px",
+            borderRadius: 6,
+            border: `1px solid ${ui.colors.borderStrong}`,
+            background: "#fff",
+            color: ui.colors.text,
+            fontWeight: 700,
+            fontSize: 12,
+            textDecoration: "none",
+            cursor: "pointer",
+          }}
+        >
+          ⬇ Download .zip
+        </a>
       </div>
 
       <div

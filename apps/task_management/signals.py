@@ -3,15 +3,16 @@ from __future__ import annotations
 import os
 import threading
 import traceback
-from django.utils import timezone
+
 from django.db import connection
+from django.utils import timezone
+
 from apps.task_management.models import TaskAssignment
 from apps.task_management.services.ai_executor import (
     execute_ai_assignment,
-    AITransientError,
-    AIPermanentError,
     AIExecutorError,
 )
+
 
 SYNCHRONOUS = os.environ.get("AI_EXECUTOR_SYNC", "false").lower() == "true"
 

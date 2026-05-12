@@ -1,6 +1,7 @@
 from django.urls import path
 from apps.task_management.api import (
     ai_submission_api,
+    ai_submission_zip_api,
     project_ai_runs_api,
     project_developers_api,
     project_task_assignments_api,
@@ -34,7 +35,8 @@ urlpatterns = [
     path("task-assignments/<int:assignment_id>/ai-submission/", ai_submission_api, name="ai_submission_api"),
     path("task-assignments/<int:assignment_id>/ai-retry/", retry_ai_assignment_api, name="retry_ai_assignment_api"),
     path("task-assignments/my/", my_task_assignments_api),
-
+    path("task-assignments/<int:assignment_id>/ai-submission.zip/",ai_submission_zip_api,name="ai_submission_zip_api",),
+    
     # Reporting / notifications
     path("task-management/developer-performance/", developer_performance_overview_api, name="developer_performance_overview_api"),
     path("task-management/my-insights/", my_performance_insights_api, name="my_performance_insights_api"),

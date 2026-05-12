@@ -5,9 +5,10 @@ import os
 import re
 import time
 from typing import Optional
-from apps.analysis.models import BpmnTask
+
 from django.utils import timezone
 
+from apps.analysis.models import BpmnTask
 from apps.analysis.summary.shared_model_singleton import ModelProvider
 from apps.task_management.models import (
     TaskAssignment,
@@ -21,7 +22,6 @@ EXECUTOR_MODEL_NAME = os.environ.get(
     "AI_EXECUTOR_MODEL",
     "llama-3.3-70b-versatile",
 )
-
 
 
 SYSTEM_PROMPT = """You are an autonomous Python developer agent.
@@ -41,6 +41,12 @@ HARD RULES (must follow exactly):
 - "files" must contain at least one entry. All filenames must end with ".py".
 - Inside "content", use real newlines in the JSON string (escape them as \\n).
 - Do not include backticks. Do not wrap the JSON in ```json ... ```.
+- Produce importable library code ONLY. Do NOT include:
+  * "# Example usage:" blocks or similar demonstration sections.
+  * Sample object instantiations or fake data values at module scope.
+  * `if __name__ == "__main__":` blocks.
+  * `print(...)` calls that show how to use the function.
+  The module must contain only the requested functions/classes and their imports.
 - If the task is impossible or non-Python, still produce a Python module that documents why
   (one file with a clear docstring explaining the limitation).
 
@@ -57,9 +63,15 @@ STYLE GUIDELINES (follow unless the task explicitly says otherwise):
 - If the task implies a Django context, use Django ORM patterns (querysets, model methods,
   transactions, signals) rather than raw SQL.
 
-PROCESS HINTS (read the input carefully before writing code):
+PROCESS HINTS (read the user message carefully before writing code).
+The user message may include PROJECT, PROJECT DESCRIPTION, BPMN PROCESS SUMMARY,
+SURROUNDING TASKS, EXISTING RELATED CODE, and the TASK itself.
 - The PROJECT and BPMN context tell you the domain; pick names and abstractions that fit it.
-- The SURROUNDING TASKS tell you what objects are produced before this task and consumed after it.
+- If EXISTING RELATED CODE is present, treat it as your project's actual codebase: reuse class
+  names, function names, and parameter conventions from those snippets. Do not invent parallel
+  abstractions if a similar one already exists. Import or call the existing classes/functions
+  explicitly when appropriate.
+- The SURROUNDING TASKS tell you what objects flow in from predecessors and out to successors.
   Make your function signatures align with that data flow.
 - If the task description is sparse, infer the most plausible behavior from the BPMN context
   and state your assumptions in the "explanation" field.
@@ -105,13 +117,12 @@ class AIPermanentError(AIExecutorError):
     )
 
 
-
-
 def _is_transient_error(exc: Exception) -> bool:
     if exc.__class__.__name__ in _TRANSIENT_EXCEPTION_NAMES:
         return True
     msg = str(exc).lower()
     return any(p in msg for p in _TRANSIENT_MESSAGE_PATTERNS)
+
 
 def _build_user_prompt(
     assignment: TaskAssignment,
@@ -177,7 +188,25 @@ def _build_user_prompt(
                 f"- Successors (run after this task): {', '.join(successor_names)}"
             )
 
-    # --- The original TASK NAME / DESCRIPTION block stays the same -------
+    # --- Improvement 5 (RAG): top-K related existing code snippets -------
+    try:
+        related = _get_related_code(task, project, k=8)
+    except Exception:
+        related = []
+
+    if related:
+        parts.append("")
+        parts.append(
+            "EXISTING RELATED CODE (most similar functions/classes already in the project; "
+            "reuse names and patterns where appropriate):"
+        )
+        for sim, artifact, snippet in related:
+            location = artifact.file_path or "(unknown file)"
+            symbol = artifact.symbol or "(unnamed)"
+            parts.append(f"--- {location} :: {symbol} (similarity {sim:.2f}) ---")
+            parts.append(snippet)
+
+    # --- TASK NAME / DESCRIPTION ------------------------------------------
     parts.append("")
     parts.append(f"TASK NAME: {task.name or '(unnamed task)'}")
     parts.append(
@@ -205,6 +234,89 @@ def _build_user_prompt(
             parts.append("Produce a NEW improved version that addresses this feedback.")
 
     return "\n".join(parts)
+
+
+def _get_related_code(
+    task,
+    project,
+    k: int = 8,
+    max_chars_per_snippet: int = 800,
+    total_char_budget: int = 6000,
+):
+    """
+    Return up to k existing code snippets from the project that are most
+    semantically similar to the assigned task. Each entry is
+    (similarity, CodeArtifact, truncated_snippet).
+    Reuses the existing TaskEmbedding/CodeEmbedding infrastructure;
+    falls back to computing the task vector on the fly if missing.
+    Returns [] if no embeddings or no relevant code exists.
+    """
+    import numpy as np
+    from apps.analysis.models import TaskEmbedding, CodeEmbedding
+    from apps.task_management.services.ai_match_service import _get_embedder
+
+    # 1. Task vector
+    task_emb = TaskEmbedding.objects.filter(project=project, bpmn_task=task).first()
+    if task_emb is not None and task_emb.vector:
+        task_vector = task_emb.vector
+    else:
+        task_text = (task.summary_text or task.description or task.name or "").strip()
+        if not task_text:
+            return []
+        try:
+            embedder = _get_embedder()
+            task_vector = embedder.embed_many([task_text])[0].vector
+        except Exception:
+            return []
+
+    # 2. All code embeddings for this project
+    code_embs = list(
+        CodeEmbedding.objects
+        .filter(project=project)
+        .select_related("code_artifact")
+    )
+    if not code_embs:
+        return []
+
+    # 3. Cosine similarity
+    tv = np.asarray(task_vector, dtype=float)
+    tv_norm = float(np.linalg.norm(tv)) or 1e-9
+
+    scored = []
+    for ce in code_embs:
+        if not ce.vector:
+            continue
+        cv = np.asarray(ce.vector, dtype=float)
+        cv_norm = float(np.linalg.norm(cv)) or 1e-9
+        sim = float(np.dot(tv, cv) / (tv_norm * cv_norm))
+        scored.append((sim, ce.code_artifact))
+
+    if not scored:
+        return []
+
+    # 4. Top K
+    scored.sort(key=lambda x: -x[0])
+    top = scored[:k]
+
+    # 5. Truncate snippets within total budget
+    result = []
+    budget = total_char_budget
+    for sim, artifact in top:
+        if budget <= 0:
+            break
+        snippet = (artifact.raw_snippet or "").strip()
+        if not snippet:
+            continue
+        if len(snippet) > max_chars_per_snippet:
+            snippet = snippet[:max_chars_per_snippet] + "\n... (truncated)"
+        if len(snippet) > budget:
+            snippet = snippet[:budget] + "\n... (truncated)"
+        result.append((sim, artifact, snippet))
+        budget -= len(snippet)
+
+    return result
+
+
 def _extract_json(raw: str) -> Optional[dict]:
     if not raw:
         return None
@@ -378,7 +490,7 @@ def execute_ai_assignment(assignment_id: int) -> AISubmission:
         )
         submission.delete()
         raise AIPermanentError(log_error)
-    
+
     AIExecutionLog.objects.create(
         assignment=assignment,
         prompt=user_prompt,
