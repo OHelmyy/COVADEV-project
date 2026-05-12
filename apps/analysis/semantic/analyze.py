@@ -295,9 +295,11 @@ def analyze_project(
     """
     Core semantic engine.
     Compares BPMN TASKS ↔ Code function summaries.
+    Backward-compatible wrapper around SemanticAnalysisFacade.
     """
+    from apps.analysis.semantic.facade import SemanticAnalysisFacade
 
-    bpmn_result = analyze_bpmn_side(
+    return SemanticAnalysisFacade.analyze_project(
         bpmn_input=bpmn_input,
         project=project,
         bpmn_graph_override=bpmn_graph_override,
