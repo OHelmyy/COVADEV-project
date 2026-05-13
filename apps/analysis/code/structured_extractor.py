@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 FN_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
-from analysis.code.base_extractor import BaseExtractor
+from apps.analysis.code.base_extractor import BaseExtractor
 
 @dataclass
 class StructuredFunction:

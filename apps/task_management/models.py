@@ -268,3 +268,47 @@ class AIExecutionLog(models.Model):
 
     def __str__(self):
         return f"AIExecutionLog(assignment={self.assignment_id}, status={self.status})"    
+    
+def developer_submission_upload_path(instance, filename):
+    return f"projects/{instance.project.id}/developer_submissions/{instance.assignment.id}/{filename}"
+
+
+class DeveloperSubmission(models.Model):
+    class Status(models.TextChoices):
+        PENDING    = "PENDING",    "Pending Review"
+        ACCEPTED   = "ACCEPTED",   "Accepted"
+        REJECTED   = "REJECTED",   "Rejected"
+        REASSIGNED = "REASSIGNED", "Reassigned"
+
+    assignment = models.ForeignKey(
+        TaskAssignment,
+        on_delete=models.CASCADE,
+        related_name="developer_submissions",
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="developer_submissions",
+    )
+    zip_file = models.FileField(upload_to=developer_submission_upload_path)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    attempt_number = models.IntegerField(default=1)
+    feedback        = models.TextField(blank=True, default="")
+    submitted_at    = models.DateTimeField(auto_now_add=True)
+    reviewed_at     = models.DateTimeField(null=True, blank=True)
+    reviewed_by     = models.ForeignKey(
+        User,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_developer_submissions",
+    )
+
+    class Meta:
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"DevSubmission(assignment={self.assignment_id}, attempt={self.attempt_number}, status={self.status})"

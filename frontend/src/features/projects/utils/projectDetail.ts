@@ -35,14 +35,21 @@ export function getPermissions(flags: ProjectRoleFlags): ProjectPermissions {
 
 export function getTabs(
   isAdmin: boolean,
-  canViewReport: boolean
+  canViewReport: boolean,
+  isDeveloper: boolean = false
 ): ProjectTabItem[] {
+  // Developers only see My Tasks
+  if (isDeveloper) {
+    return [{ key: "myTasks", label: "My Tasks", visible: true }];
+  }
+
   const all: ProjectTabItem[] = [
     { key: "overview", label: "Overview", visible: true },
     { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
     { key: "bpmnCheck", label: "BPMN Check", visible: true },
     { key: "taskManagement", label: "Task Management", visible: true },
     { key: "aiRuns", label: "AI Runs", visible: true },
+    { key: "devSubmissions", label: "Dev Submissions", visible: true },
     { key: "results", label: "Results", visible: true },
     { key: "compare", label: "Compare", visible: true },
     { key: "recommendations", label: "Recommendations", visible: true },
@@ -53,7 +60,6 @@ export function getTabs(
 
   return all.filter((tab) => tab.visible);
 }
-
 export function fmtDate(iso?: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);

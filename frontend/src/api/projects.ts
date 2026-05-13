@@ -208,3 +208,74 @@ export function generateRecommendations(projectId: number) {
     updatedAt: string;
   }>(`/api/projects/${projectId}/recommendations/`, {});
 }
+
+// ─── Developer Submission endpoints ───────────────────────────────────────────
+
+export type MyTask = {
+  assignmentId: number;
+  taskId: string;
+  taskName: string;
+  taskDescription: string;
+  assignmentStatus: string;
+  submission: {
+    id: number;
+    status: "PENDING" | "ACCEPTED" | "REJECTED" | "REASSIGNED";
+    attemptNumber: number;
+    feedback: string;
+    submittedAt: string;
+  } | null;
+};
+
+export type DevSubmission = {
+  id: number;
+  assignmentId: number;
+  taskId: string;
+  taskName: string;
+  developerEmail: string;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "REASSIGNED";
+  attemptNumber: number;
+  feedback: string;
+  submittedAt: string;
+  zipFileName: string | null;
+  zipUrl: string | null;
+};
+
+export function fetchMyTasks(projectId: number) {
+  return apiGet<{ tasks: MyTask[] }>(`/api/projects/${projectId}/my-tasks/`);
+}
+
+export function submitZip(projectId: number, assignmentId: number, file: File) {
+  const fd = new FormData();
+  fd.append("zip_file", file);
+  return apiUpload<{ ok: boolean; submissionId: number }>(
+    `/api/projects/${projectId}/my-tasks/${assignmentId}/submit/`,
+    fd
+  );
+}
+
+export function fetchDevSubmissions(projectId: number) {
+  return apiGet<{ submissions: DevSubmission[] }>(
+    `/api/projects/${projectId}/developer-submissions/`
+  );
+}
+
+export function acceptSubmission(projectId: number, submissionId: number) {
+  return apiPostJson<{ ok: boolean; belowThreshold?: boolean; similarity?: number; threshold?: number; detail?: string }>(
+    `/api/projects/${projectId}/developer-submissions/${submissionId}/accept/`,
+    {}
+  );
+}
+
+export function rejectSubmission(projectId: number, submissionId: number, feedback: string) {
+  return apiPostJson<{ ok: boolean }>(
+    `/api/projects/${projectId}/developer-submissions/${submissionId}/reject/`,
+    { feedback }
+  );
+}
+
+export function reassignSubmission(projectId: number, submissionId: number, feedback: string) {
+  return apiPostJson<{ ok: boolean }>(
+    `/api/projects/${projectId}/developer-submissions/${submissionId}/reassign/`,
+    { feedback }
+  );
+}

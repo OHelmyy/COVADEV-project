@@ -65,6 +65,7 @@ export default function CompareTab({
             codeCompare.map((code) => {
               const display = getCodeComparePresentation(code);
               const isAi = code.source === "ai";
+              const isDev = code.source === "developer";
 
               return (
                 <div key={code.codeUid} style={{ position: "relative" }}>
@@ -83,6 +84,23 @@ export default function CompareTab({
                       letterSpacing: 0.5,
                     }}>
                       AI
+                    </span>
+                  )}
+                  {isDev && (
+                    <span style={{
+                      position: "absolute",
+                      top: 8,
+                      right: 8,
+                      background: "#0ea5e9",
+                      color: "#fff",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      zIndex: 1,
+                      letterSpacing: 0.5,
+                    }}>
+                      DEV
                     </span>
                   )}
                   <CompareCard

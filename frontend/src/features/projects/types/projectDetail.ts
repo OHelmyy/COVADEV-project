@@ -39,7 +39,7 @@ export type CompareCodeFn = {
   summary_text?: string;
   summary?: string;
   structuredSummary?: string;
-  source?: "evaluator" | "ai";
+  source?: "evaluator" | "ai" | "developer";
 };
 
 export type TabKey =
@@ -53,7 +53,9 @@ export type TabKey =
   | "bpmnCheck"
   | "taskManagement"
   | "aiRuns"
-  | "report";
+  | "report"
+  | "myTasks"
+  | "devSubmissions";
 
 export type TraceRow = {
   taskId: string;

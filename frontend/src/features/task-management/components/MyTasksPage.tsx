@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   getMyTaskAssignments,
-  startTaskAssignment,
-  submitTaskAssignment,
 } from "../api/taskManagementApi";
 import type { AssignmentWithTask } from "../types";
 import { getStatusLabel } from "../utils";
@@ -62,26 +60,6 @@ export default function MyTasksTab() {
   useEffect(() => {
     loadMyTasks();
   }, []);
-
-  async function handleStart(assignmentId: number) {
-    try {
-      await startTaskAssignment(assignmentId);
-      await loadMyTasks();
-    } catch (err: any) {
-      openTaskError("start task", err, "Task start failed");
-    }
-  }
-
-  async function handleSubmit(assignmentId: number) {
-    try {
-      await submitTaskAssignment(assignmentId, {
-        submissionNotes: "Completed",
-      });
-      await loadMyTasks();
-    } catch (err: any) {
-      openTaskError("submit task", err, "Task submit failed");
-    }
-  }
 
   function statusBadge(status: string) {
     const label = getStatusLabel(status);
@@ -204,34 +182,21 @@ export default function MyTasksTab() {
                         {statusBadge(item.status)}
                       </td>
                       <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-                        {item.status === "ASSIGNED" && (
-                          <button
-                            onClick={() => handleStart(item.assignmentId)}
+                        {(item.status === "ASSIGNED" || item.status === "IN_PROGRESS") && (
+                          <a
+                            href={`/projects/${item.projectId}`}
                             style={{
                               ...buttonBase,
                               padding: "8px 12px",
                               border: `1px solid ${ui.colors.borderStrong}`,
                               background: "#fff",
                               color: ui.colors.text,
+                              textDecoration: "none",
+                              display: "inline-block",
                             }}
                           >
-                            Start
-                          </button>
-                        )}
-
-                        {item.status === "IN_PROGRESS" && (
-                          <button
-                            onClick={() => handleSubmit(item.assignmentId)}
-                            style={{
-                              ...buttonBase,
-                              padding: "8px 12px",
-                              border: "1px solid transparent",
-                              background: ui.colors.primary,
-                              color: "#fff",
-                            }}
-                          >
-                            Submit
-                          </button>
+                            Go to Project →
+                          </a>
                         )}
 
                         {item.status !== "ASSIGNED" && item.status !== "IN_PROGRESS" && (

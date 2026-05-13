@@ -1,11 +1,11 @@
 # apps/analysis/code/extractor_factory.py
 from typing import Optional
-from analysis.code.base_extractor import BaseExtractor
-from analysis.code.structured_extractor import PythonExtractor
-from analysis.code.react_extractor import JavascriptExtractor
-from analysis.code.java_extractor import JavaExtractor
-from analysis.code.cpp_extractor import CppExtractor
-from analysis.code.generic_extractor import GenericExtractor
+from apps.analysis.code.base_extractor import BaseExtractor
+from apps.analysis.code.structured_extractor import PythonExtractor
+from apps.analysis.code.react_extractor import JavascriptExtractor
+from apps.analysis.code.java_extractor import JavaExtractor
+from apps.analysis.code.cpp_extractor import CppExtractor
+from apps.analysis.code.generic_extractor import GenericExtractor
 
 class ExtractorFactory:
     """

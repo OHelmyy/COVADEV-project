@@ -17,7 +17,8 @@ import RecommendationsTab from "../components/project-detail/tabs/Recommendation
 import ReportTab from "../components/project-detail/tabs/ReportTab";
 import RunsTab from "../components/project-detail/tabs/RunsTab";
 import MembersTab from "../components/project-detail/tabs/MembersTab";
-
+import MyTasksTab from "../components/project-detail/tabs/MyTasksTab";
+import DevSubmissionsTab from "../components/project-detail/tabs/DevSubmissionsTab";
 import { useProjectDetail } from "../hooks/useProjectDetail";
 import { normalizeBpmnMeta } from "../utils/projectDetail";
 import { buildProjectErrorFromText } from "../utils/projectError";
@@ -165,6 +166,13 @@ export default function ProjectDetailPage() {
           <Card>
             <AiRunsTab projectId={projectId} />
           </Card>
+        ) : null}
+        {vm.activeTab === "myTasks" ? (
+          <MyTasksTab projectId={projectId} />
+        ) : null}
+
+        {vm.activeTab === "devSubmissions" ? (
+          <DevSubmissionsTab projectId={projectId} />
         ) : null}
 
         {vm.activeTab === "uploads" ? (

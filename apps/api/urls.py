@@ -12,6 +12,15 @@ from apps.api.projects_api.member_views import (
     api_project_members,
     api_remove_member,
 )
+from apps.api.projects_api.developer_submission_views import (
+    api_my_tasks,
+    api_submit_zip,
+    api_dev_submissions_list,
+    api_dev_submission_accept,
+    api_dev_submission_reject,
+    api_dev_submission_reassign,
+    api_dev_submission_download,
+)
 from apps.api.projects_api.upload_views import (
     api_upload_bpmn,
     api_upload_code_zip,
@@ -69,4 +78,13 @@ urlpatterns = [
 
     # Admin
     path("admin/", include("apps.api.admin_users_urls")),
+
+    # Developer submissions
+    path("projects/<int:project_id>/my-tasks/", api_my_tasks, name="my_tasks"),
+    path("projects/<int:project_id>/my-tasks/<int:assignment_id>/submit/", api_submit_zip, name="submit_zip"),
+    path("projects/<int:project_id>/developer-submissions/", api_dev_submissions_list, name="dev_submissions_list"),
+    path("projects/<int:project_id>/developer-submissions/<int:submission_id>/accept/", api_dev_submission_accept, name="dev_submission_accept"),
+    path("projects/<int:project_id>/developer-submissions/<int:submission_id>/reject/", api_dev_submission_reject, name="dev_submission_reject"),
+    path("projects/<int:project_id>/developer-submissions/<int:submission_id>/reassign/", api_dev_submission_reassign, name="dev_submission_reassign"),
+    path("projects/<int:project_id>/developer-submissions/<int:submission_id>/download/", api_dev_submission_download, name="dev_submission_download"),
 ]

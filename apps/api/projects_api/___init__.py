@@ -25,6 +25,14 @@ from .data_views import (
 from .recommendation_views import (
     api_project_recommendations,
 )
+from apps.api.projects_api.developer_submission_views import (
+    api_my_tasks,
+    api_submit_zip,
+    api_dev_submissions_list,
+    api_dev_submission_accept,
+    api_dev_submission_reject,
+    api_dev_submission_reassign,
+)
 
 __all__ = [
     "api_projects_list_create",

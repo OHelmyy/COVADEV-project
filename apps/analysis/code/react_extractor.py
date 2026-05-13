@@ -7,6 +7,7 @@ class JavascriptExtractor(BaseExtractor):
         super().__init__("javascript")
 
     def get_functions(self, source: str, rel_path: str) -> List[Dict[str, Any]]:
+        
         lines = source.splitlines()
         items: List[Dict] = []
 

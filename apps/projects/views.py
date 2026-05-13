@@ -455,6 +455,25 @@ def compare_inputs_api(request, project_id: int):
             "source": "ai",
         })
 
+    # Include developer submission match results
+    for m in (
+        MatchResult.objects
+        .filter(project=project, is_ai_generated=False)
+        .select_related("task")
+    ):
+        if not m.code_ref.startswith("Developer submission"):
+            continue
+        if not (m.matched_summary or "").strip():
+            continue
+        task_name = m.task.name if m.task else ""
+        code_functions.append({
+            "codeUid": f"dev-match-{m.id}",
+            "symbol": task_name,
+            "file": m.code_ref,
+            "summaryText": m.matched_summary,
+            "source": "developer",
+        })
+
     return JsonResponse({
         "projectId": project.id,
         "bpmnTasks": bpmn_tasks,
