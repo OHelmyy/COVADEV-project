@@ -1,7 +1,7 @@
 # apps/analysis/code/cpp_extractor.py
 import re
 from typing import Any, Dict, List
-from analysis.code.base_extractor import BaseExtractor
+from .base_extractor import BaseExtractor
 
 class CppExtractor(BaseExtractor):
     # Regex for C++ functions: [return_type] [class::]name(params) {
