@@ -13,6 +13,7 @@ export type ProjectSummaryApi = {
   name: string;
   description?: string;
   similarityThreshold: number;
+  github_repo_url?: string;
   membership?: { role: ProjectRole };
 };
 
@@ -22,6 +23,7 @@ export type ProjectDetailApi = {
     name: string;
     description: string;
     similarityThreshold: number;
+    github_repo_url: string;
   };
   membership: { role: ProjectRole };
 

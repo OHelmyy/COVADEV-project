@@ -11,6 +11,7 @@ export function createProject(input: {
   name: string;
   description?: string;
   similarity_threshold: number;
+  github_repo_url?: string;
 
   // ✅ added for Admin create (backend expects these)
   evaluatorEmail: string;
@@ -66,6 +67,19 @@ export function runAnalysis(projectId: number) {
   return apiPost<{ run: { id: number; status: string; errorMessage?: string | null } }>(
     `/api/projects/${projectId}/run-analysis/`,
     {}
+  );
+}
+
+export function fetchGithubCode(projectId: number, branch: string) {
+  return apiPost<{ ok: boolean }>(`/api/projects/${projectId}/fetch-github/`, {
+    branch,
+  });
+}
+
+export function updateGithubUrl(projectId: number, githubRepoUrl: string) {
+  return apiPostJson<{ ok: boolean }>(
+    `/api/projects/${projectId}/settings/github-url/`,
+    { github_repo_url: githubRepoUrl }
   );
 }
 

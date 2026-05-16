@@ -141,6 +141,8 @@ export default function ProjectDetailPage() {
             codeFilesCount={vm.data.counts.codeFiles}
             tasksCount={vm.data.counts.tasks}
             matchesCount={vm.data.counts.matches}
+            githubRepoUrl={vm.data.project.github_repo_url}
+            onUpdateGithubUrl={vm.onUpdateGithubUrl}
             onDeleteProject={vm.onDeleteProject}
           />
         ) : null}
@@ -173,6 +175,8 @@ export default function ProjectDetailPage() {
             onUploadBpmn={vm.onUploadBpmn}
             onUploadCode={vm.onUploadCode}
             onRunAnalysis={vm.onRunAnalysis}
+            githubRepoUrl={vm.data.project.github_repo_url}
+            onFetchGithubCode={vm.onFetchGithubCode}
           />
         ) : null}
 

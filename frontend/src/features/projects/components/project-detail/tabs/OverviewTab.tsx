@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ui, inputBase } from "../../../../../theme/ui";
 import { Card, MiniCard, Stat } from "../ProjectUi";
 
 type Props = {
@@ -10,6 +12,8 @@ type Props = {
   codeFilesCount: number;
   tasksCount: number;
   matchesCount: number;
+  githubRepoUrl?: string;
+  onUpdateGithubUrl: (url: string) => void;
   onDeleteProject: () => void;
 };
 
@@ -23,8 +27,12 @@ export default function OverviewTab({
   codeFilesCount,
   tasksCount,
   matchesCount,
+  githubRepoUrl,
+  onUpdateGithubUrl,
   onDeleteProject,
 }: Props) {
+  const [newUrl, setNewUrl] = useState(githubRepoUrl || "");
+  const isEvaluatorOrAdmin = role === "EVALUATOR" || isAdmin;
   return (
     <>
       <Card>
@@ -67,6 +75,45 @@ export default function OverviewTab({
           <Stat label="Indexed files" value={codeFilesCount} />
           <Stat label="BPMN tasks" value={tasksCount} />
           <Stat label="Match results" value={matchesCount} />
+        </div>
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>GitHub Settings</h3>
+        <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ fontSize: 13, color: ui.colors.textMuted }}>
+            Link a public GitHub repository to pull code directly from branches.
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              value={newUrl}
+              onChange={(e) => setNewUrl(e.target.value)}
+              disabled={!isEvaluatorOrAdmin}
+              placeholder="https://github.com/owner/repo"
+              style={{ ...inputBase, flex: 1 }}
+            />
+            {isEvaluatorOrAdmin && (
+              <button
+                onClick={() => onUpdateGithubUrl(newUrl)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 12,
+                  background: ui.colors.primary,
+                  color: "#fff",
+                  fontWeight: 700,
+                  border: "none",
+                }}
+              >
+                Update
+              </button>
+            )}
+          </div>
+          {githubRepoUrl && (
+            <div style={{ fontSize: 12, color: ui.colors.primary, fontWeight: 600 }}>
+              Currently linked: {githubRepoUrl}
+            </div>
+          )}
         </div>
       </Card>
 
