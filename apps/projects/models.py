@@ -34,6 +34,10 @@ class Project(models.Model):
     )
 
     similarity_threshold = models.FloatField(default=0.6)
+
+    # Optional GitHub repo link (public repos; private-repo support planned)
+    github_repo_url = models.URLField(max_length=500, blank=True, default="")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     # Active upload pointers (no versioning)
