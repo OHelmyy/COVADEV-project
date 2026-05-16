@@ -9,6 +9,7 @@ from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
 from apps.projects.models import Project, ProjectFile
 
 from .permissions import can_open_project, is_project_evaluator, require_admin_or_evaluator
+from apps.projects.github_service import validate_github_url
 import json
 
 @login_required
@@ -59,6 +60,29 @@ def api_update_threshold(request, project_id: int):
         return JsonResponse({"ok": True, "similarityThreshold": float(project.similarity_threshold)})
     except Exception:
         return JsonResponse({"detail": "Invalid threshold. Use 0..1 (e.g., 0.6)."}, status=400)
+
+@login_required
+@require_POST
+def api_update_github_url(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not is_project_evaluator(project, request.user):
+        return JsonResponse({"detail": "Only evaluator can update settings."}, status=403)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+        url = (body.get("github_repo_url") or "").strip()
+
+        if url:
+            validate_github_url(url)
+
+        project.github_repo_url = url
+        project.save(update_fields=["github_repo_url"])
+        return JsonResponse({"ok": True, "github_repo_url": project.github_repo_url})
+    except ValueError as e:
+        return JsonResponse({"detail": str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({"detail": f"Failed to update GitHub URL: {e}"}, status=400)
 
 @login_required
 def api_project_files(request, project_id: int):

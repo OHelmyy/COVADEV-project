@@ -17,6 +17,7 @@ from apps.analysis.models_code import CodeArtifact
 from apps.analysis.services.services import run_analysis_for_project
 from .models import Project, ProjectMembership, CodeFile, ProjectFile
 from .services import save_bpmn_file, save_code_zip_and_extract
+from .github_service import validate_github_url, download_repo_archive
 
 # ============================================================
 # Permission helpers (Option 1)
@@ -87,6 +88,7 @@ def projects_create(request):
     threshold_raw = (request.POST.get("similarity_threshold") or "0.6").strip()
     evaluator_id = (request.POST.get("evaluator_id") or "").strip()
     developer_ids = request.POST.getlist("developer_ids")
+    github_repo_url = (request.POST.get("github_repo_url") or "").strip()
 
     if not name:
         messages.error(request, "Project name is required.")
@@ -99,6 +101,14 @@ def projects_create(request):
     except Exception:
         messages.error(request, "Threshold must be a number between 0 and 1 (e.g., 0.6).")
         return redirect("projects:create")
+
+    # Validate GitHub URL if provided
+    if github_repo_url:
+        try:
+            validate_github_url(github_repo_url)
+        except ValueError as e:
+            messages.error(request, str(e))
+            return redirect("projects:create")
 
     if not evaluator_id:
         messages.error(request, "Please select an evaluator.")
@@ -113,6 +123,7 @@ def projects_create(request):
         created_by=request.user,
         evaluator=evaluator,
         similarity_threshold=threshold,
+        github_repo_url=github_repo_url,
     )
 
     # Add developers chosen by admin
@@ -230,6 +241,86 @@ def upload_code_zip(request, project_id):
         messages.success(request, "Code uploaded.")
     except Exception as e:
         messages.error(request, f"Code upload failed: {e}")
+
+    return redirect("projects:detail", project_id=project.id)
+
+
+# ============================================================
+# Fetch Code from GitHub (Project members OR Admin)
+# ============================================================
+
+@login_required
+@require_POST
+def fetch_github_code(request, project_id):
+    """Download repo archive from GitHub and process it like a ZIP upload."""
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _can_open_project(project, request.user):
+        messages.error(request, "Access denied.")
+        return redirect("projects:list")
+
+    if not project.github_repo_url:
+        messages.error(request, "No GitHub repository linked to this project.")
+        return redirect("projects:detail", project_id=project.id)
+
+    branch = (request.POST.get("branch") or "main").strip()
+
+    try:
+        # 1. Download the archive ZIP from GitHub
+        zip_path = download_repo_archive(
+            repo_url=project.github_repo_url,
+            project_id=project.id,
+            branch=branch,
+        )
+
+        # 2. Open the downloaded file and feed it through the existing pipeline
+        from django.core.files import File
+        with open(zip_path, "rb") as f:
+            django_file = File(f, name=zip_path.name)
+            save_code_zip_and_extract(project, django_file, request.user)
+
+        messages.success(
+            request,
+            f"Code fetched from GitHub (branch: {branch}) and indexed."
+        )
+    except (ValueError, RuntimeError) as e:
+        messages.error(request, f"GitHub fetch failed: {e}")
+    except Exception as e:
+        messages.error(request, f"GitHub fetch failed: {e}")
+
+    return redirect("projects:detail", project_id=project.id)
+
+
+# ============================================================
+# Update GitHub Repo URL (Evaluator or Admin)
+# ============================================================
+
+@login_required
+@require_POST
+def update_github_url(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not _is_project_evaluator(project, request.user):
+        messages.error(request, "Evaluator only.")
+        return redirect("projects:detail", project_id=project.id)
+
+    url = (request.POST.get("github_repo_url") or "").strip()
+
+    # Allow clearing the URL
+    if url:
+        try:
+            validate_github_url(url)
+        except ValueError as e:
+            messages.error(request, str(e))
+            return redirect("projects:detail", project_id=project.id)
+
+    project.github_repo_url = url
+    project.save(update_fields=["github_repo_url"])
+
+    if url:
+        messages.success(request, "GitHub repository URL updated.")
+    else:
+        messages.success(request, "GitHub repository URL cleared.")
 
     return redirect("projects:detail", project_id=project.id)
 

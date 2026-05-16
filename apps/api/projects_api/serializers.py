@@ -24,6 +24,7 @@ def json_project_summary(project: Project, user: User):
         "name": project.name,
         "description": project.description or "",
         "similarityThreshold": float(project.similarity_threshold),
+        "github_repo_url": project.github_repo_url or "",
         "membership": {"role": role} if role else None,
     }
 
@@ -83,6 +84,7 @@ def json_project_detail(project: Project, user: User):
             "name": project.name,
             "description": project.description or "",
             "similarityThreshold": float(project.similarity_threshold),
+            "github_repo_url": project.github_repo_url or "",
             "evaluator": {
                 "id": project.evaluator_id,
                 "username": project.evaluator.username if getattr(project, "evaluator", None) else None,
