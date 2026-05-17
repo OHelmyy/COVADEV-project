@@ -41,6 +41,12 @@ function getSuitabilityTone(value?: string): SuitabilityTone {
   }
 }
 
+function formatDate(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString();
+}
+
 export default function TaskAssignmentRow({
   projectId,
   task,
@@ -223,60 +229,89 @@ export default function TaskAssignmentRow({
         </td>
 
         <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-          <select
-            value={developerMembershipId}
-            onChange={(e) => setDeveloperMembershipId(e.target.value)}
-            style={{
-              ...inputBase,
-              minWidth: 200,
-              padding: "10px 12px",
-            }}
-          >
-            <option value="">Select developer</option>
-            {developers.map((dev) => (
-              <option key={dev.membershipId} value={dev.membershipId}>
-                {dev.username}
-              </option>
-            ))}
-          </select>
-
-          {(() => {
-            const selected = developers.find(
-              (d) => String(d.membershipId) === developerMembershipId
-            );
-            if (!selected?.isAiAgent) return null;
-            const tone = getSuitabilityTone(task.aiSuitability);
-            return (
-              <div
-                title={task.aiSuitabilityReason || tone.label}
+          {assignment ? (
+            <span style={{ fontWeight: 700, color: ui.colors.text }}>
+              {assignment.developer?.username || "—"} {assignment.developer?.isAiAgent ? "(AI)" : ""}
+            </span>
+          ) : (
+            <>
+              <select
+                value={developerMembershipId}
+                onChange={(e) => setDeveloperMembershipId(e.target.value)}
                 style={{
-                  marginTop: 8,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  background: tone.bg,
-                  color: tone.color,
-                  border: `1px solid ${tone.border}`,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "help",
+                  ...inputBase,
+                  minWidth: 150,
+                  padding: "8px 10px",
                 }}
               >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: tone.color,
-                    display: "inline-block",
-                  }}
-                />
-                {tone.label}
-              </div>
-            );
-          })()}
+                <option value="">Select developer</option>
+                {developers.map((dev) => (
+                  <option key={dev.membershipId} value={dev.membershipId}>
+                    {dev.username}
+                  </option>
+                ))}
+              </select>
+
+              {(() => {
+                const selected = developers.find(
+                  (d) => String(d.membershipId) === developerMembershipId
+                );
+                if (!selected?.isAiAgent) return null;
+                const tone = getSuitabilityTone(task.aiSuitability);
+                return (
+                  <div
+                    title={task.aiSuitabilityReason || tone.label}
+                    style={{
+                      marginTop: 8,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: tone.bg,
+                      color: tone.color,
+                      border: `1px solid ${tone.border}`,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "help",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: tone.color,
+                        display: "inline-block",
+                      }}
+                    />
+                    {tone.label}
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </td>
+
+        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, color: ui.colors.text, fontSize: 13 }}>
+          {assignment?.githubBranch ? (
+            <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: 4, fontWeight: 700, color: ui.colors.primary }}>
+              {assignment.githubBranch}
+            </code>
+          ) : "—"}
+        </td>
+
+        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+          {assignment?.githubPrUrl ? (
+            <a
+              href={assignment.githubPrUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: ui.colors.primary, textDecoration: "underline", fontWeight: 700, fontSize: 13 }}
+            >
+              #{assignment.githubPrNumber || "PR Link"}
+            </a>
+          ) : "—"}
         </td>
 
         <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
@@ -286,6 +321,10 @@ export default function TaskAssignmentRow({
               Score: <strong style={{ color: ui.colors.text }}>{assignment.evaluation.finalScore}</strong>
             </div>
           )}
+        </td>
+
+        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, color: ui.colors.textMuted, fontSize: 13 }}>
+          {assignment?.assignedAt ? formatDate(assignment.assignedAt) : "—"}
         </td>
 
         <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
