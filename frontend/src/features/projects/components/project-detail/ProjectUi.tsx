@@ -101,7 +101,9 @@ export function SectionTable(props: {
       {!props.table ? (
         <div style={{ color: ui.colors.textMuted }}>{props.emptyText}</div>
       ) : (
-        props.table
+        <div style={{ overflowX: "auto", width: "100%" }}>
+          {props.table}
+        </div>
       )}
     </div>
   );
@@ -118,11 +120,11 @@ export function CompareCard(props: { title: string; subtitle: string; body: stri
         boxShadow: ui.shadow.sm,
       }}
     >
-      <div style={{ fontWeight: 900, fontSize: 16, color: ui.colors.text }}>{props.title}</div>
-      <div style={{ color: ui.colors.textMuted, fontSize: 12, marginTop: 4 }}>
+      <div style={{ fontWeight: 900, fontSize: 16, color: ui.colors.text, wordBreak: "break-word" }}>{props.title}</div>
+      <div style={{ color: ui.colors.textMuted, fontSize: 12, marginTop: 4, wordBreak: "break-all" }}>
         {props.subtitle}
       </div>
-      <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7, color: ui.colors.textSoft }}>
+      <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7, color: ui.colors.textSoft, wordBreak: "break-word" }}>
         {props.body}
       </div>
     </div>

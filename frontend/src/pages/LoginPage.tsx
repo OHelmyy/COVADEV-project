@@ -81,7 +81,9 @@ export default function LoginPage() {
     <>
       <div
         style={{
-          minHeight: "100vh",
+          height: "100vh",
+          overflow: "hidden",
+          boxSizing: "border-box",
           display: "grid",
           placeItems: "center",
           padding: "24px 16px",
@@ -99,9 +101,13 @@ export default function LoginPage() {
         >
           <div
             style={{
-              padding: "24px 24px 18px",
+              padding: "40px 32px 30px",
               background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
               color: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center"
             }}
           >
             <div
@@ -113,8 +119,9 @@ export default function LoginPage() {
                 display: "grid",
                 placeItems: "center",
                 fontWeight: 900,
-                fontSize: 22,
-                marginBottom: 14,
+                fontSize: 24,
+                marginBottom: 16,
+                boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
               }}
             >
               C
@@ -152,18 +159,22 @@ export default function LoginPage() {
                 type="submit"
                 style={{
                   ...buttonBase,
-                  marginTop: 4,
+                  marginTop: 12,
+                  padding: "12px",
                   border: "1px solid transparent",
                   background: ui.colors.primary,
                   color: "#fff",
                   fontWeight: 800,
+                  fontSize: "16px",
+                  borderRadius: "8px",
                   boxShadow: "0 12px 26px rgba(15,61,145,0.18)",
+                  transition: "all 0.2s ease-in-out",
                 }}
               >
                 Sign in
               </button>
 
-              <div style={{ color: ui.colors.textMuted, fontSize: 13, lineHeight: 1.6 }}>
+              <div style={{ color: ui.colors.textMuted, fontSize: 13, lineHeight: 1.6, textAlign: "center", marginTop: 8 }}>
                 Accounts are created by the Admin.
               </div>
             </form>

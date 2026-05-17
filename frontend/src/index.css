@@ -17,6 +17,10 @@
   --primary: #0f3d91;
 }
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {

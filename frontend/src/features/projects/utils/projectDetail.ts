@@ -229,6 +229,7 @@ export const th: React.CSSProperties = {
 export const td: React.CSSProperties = {
   padding: "10px 8px",
   borderBottom: "1px solid #f3f3f3",
+  wordBreak: "break-word",
 };
 
 export const codeboxStyle: React.CSSProperties = {
@@ -236,6 +237,7 @@ export const codeboxStyle: React.CSSProperties = {
   maxHeight: 160,
   overflow: "auto",
   whiteSpace: "pre-wrap",
+  wordBreak: "break-all",
   background: "#0b0f1a",
   color: "#e5e7eb",
   padding: 10,
