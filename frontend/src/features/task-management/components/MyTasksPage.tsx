@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   getMyTaskAssignments,
+  startTaskAssignment,
+  submitTaskAssignment,
 } from "../api/taskManagementApi";
+import { submitZip } from "../../../api/projects";
 import type { AssignmentWithTask } from "../types";
 import { getStatusLabel } from "../utils";
-import { buttonBase, cardBase, ui } from "../../../theme/ui";
+import { buttonBase, cardBase, ui, inputBase } from "../../../theme/ui";
 import ErrorModal from "../../../components/ErrorModal";
 import { buildTaskManagementError } from "../utils/taskManagementError";
 
@@ -24,11 +27,33 @@ const EMPTY_ERROR: ErrorState = {
   details: "",
 };
 
+const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
+  ASSIGNED:      { bg: "#eff6ff", fg: "#1e40af" },
+  IN_PROGRESS:   { bg: "#f0fdf4", fg: "#166534" },
+  SUBMITTED:     { bg: "#fef3c7", fg: "#92400e" },
+  UNDER_REVIEW:  { bg: "#fef3c7", fg: "#92400e" },
+  NEEDS_CHANGES: { bg: "#f5f3ff", fg: "#5b21b6" },
+  ACCEPTED:      { bg: "#ecfdf5", fg: "#065f46" },
+  REJECTED:      { bg: "#fef2f2", fg: "#991b1b" },
+  MERGED:        { bg: "#ecfdf5", fg: "#065f46" },
+};
+
 export default function MyTasksTab() {
   const [items, setItems] = useState<AssignmentWithTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [errorModal, setErrorModal] = useState<ErrorState>(EMPTY_ERROR);
+
+  // Form states per assignment
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [submitMethod, setSubmitMethod] = useState<Record<number, "github" | "zip">>({});
+  const [prNumber, setPrNumber] = useState<Record<number, string>>({});
+  const [prUrl, setPrUrl] = useState<Record<number, string>>({});
+  const [subNote, setSubNote] = useState<Record<number, string>>({});
+  const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
+  const [actionMsg, setActionMsg] = useState<Record<number, string>>({});
+
+  const fileRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   function openTaskError(operation: string, err: unknown, title?: string) {
     const info = buildTaskManagementError(operation, err, title);
@@ -61,17 +86,70 @@ export default function MyTasksTab() {
     loadMyTasks();
   }, []);
 
+  async function handleStartTask(assignmentId: number) {
+    setActionLoading((prev) => ({ ...prev, [assignmentId]: true }));
+    setActionMsg((prev) => ({ ...prev, [assignmentId]: "" }));
+    try {
+      await startTaskAssignment(assignmentId);
+      setActionMsg((prev) => ({ ...prev, [assignmentId]: "✓ Task started successfully!" }));
+      await loadMyTasks();
+    } catch (e: any) {
+      setActionMsg((prev) => ({ ...prev, [assignmentId]: `Error: ${e.message}` }));
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [assignmentId]: false }));
+    }
+  }
+
+  async function handleGitHubSubmit(assignmentId: number, projectId: number) {
+    const num = prNumber[assignmentId] ? Number(prNumber[assignmentId]) : null;
+    const note = subNote[assignmentId] || "";
+
+    if (!num) {
+      alert("Please enter the Pull Request Number.");
+      return;
+    }
+
+    setActionLoading((prev) => ({ ...prev, [assignmentId]: true }));
+    setActionMsg((prev) => ({ ...prev, [assignmentId]: "" }));
+    try {
+      await submitTaskAssignment(assignmentId, {
+        githubPrNumber: num,
+        githubPrUrl: "", // Handled automatically by backend using repo url + pr number
+        submissionNotes: note,
+      });
+      setActionMsg((prev) => ({ ...prev, [assignmentId]: "✓ Task submitted successfully!" }));
+      setPrNumber((prev) => ({ ...prev, [assignmentId]: "" }));
+      setSubNote((prev) => ({ ...prev, [assignmentId]: "" }));
+      setExpandedId(null);
+      await loadMyTasks();
+    } catch (e: any) {
+      setActionMsg((prev) => ({ ...prev, [assignmentId]: `Error: ${e.message}` }));
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [assignmentId]: false }));
+    }
+  }
+
+  async function handleZipSubmit(assignmentId: number, projectId: number, file: File) {
+    setActionLoading((prev) => ({ ...prev, [assignmentId]: true }));
+    setActionMsg((prev) => ({ ...prev, [assignmentId]: "" }));
+    try {
+      await submitZip(projectId, assignmentId, file);
+      setActionMsg((prev) => ({ ...prev, [assignmentId]: "✓ ZIP submitted successfully!" }));
+      setExpandedId(null);
+      await loadMyTasks();
+    } catch (e: any) {
+      setActionMsg((prev) => ({ ...prev, [assignmentId]: `Error: ${e.message}` }));
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [assignmentId]: false }));
+      if (fileRefs.current[assignmentId]) {
+        fileRefs.current[assignmentId]!.value = "";
+      }
+    }
+  }
+
   function statusBadge(status: string) {
     const label = getStatusLabel(status);
-
-    const tone =
-      status === "ACCEPTED"
-        ? { bg: ui.colors.successSoft, color: ui.colors.success }
-        : status === "REJECTED"
-        ? { bg: ui.colors.dangerSoft, color: ui.colors.danger }
-        : status === "SUBMITTED"
-        ? { bg: ui.colors.warningSoft, color: ui.colors.warning }
-        : { bg: ui.colors.primarySoft, color: ui.colors.primary };
+    const tone = STATUS_COLORS[status] ?? { bg: "#f3f4f6", fg: "#6b7280" };
 
     return (
       <span
@@ -141,7 +219,7 @@ export default function MyTasksTab() {
         >
           <h3 style={{ margin: 0, fontSize: 22 }}>My Tasks</h3>
           <div style={{ marginTop: 8, opacity: 0.95 }}>
-            Start, track, and submit your assigned tasks.
+            Start, track, and submit your assigned tasks across your active projects.
           </div>
         </div>
 
@@ -150,9 +228,9 @@ export default function MyTasksTab() {
             <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr style={{ background: ui.colors.bgSoft, borderBottom: `1px solid ${ui.colors.border}` }}>
-                  <th style={{ textAlign: "left", padding: 14 }}>Task ID</th>
-                  <th style={{ textAlign: "left", padding: 14 }}>Task Name</th>
-                  <th style={{ textAlign: "left", padding: 14 }}>Project</th>
+                  <th style={{ textAlign: "left", padding: 14 }}>Project Name</th>
+                  <th style={{ textAlign: "left", padding: 14 }}>BPMN Task</th>
+                  <th style={{ textAlign: "left", padding: 14 }}>GitHub Branch</th>
                   <th style={{ textAlign: "left", padding: 14 }}>Status</th>
                   <th style={{ textAlign: "left", padding: 14 }}>Action</th>
                 </tr>
@@ -165,46 +243,215 @@ export default function MyTasksTab() {
                     </td>
                   </tr>
                 ) : (
-                  items.map((item) => (
-                    <tr key={item.assignmentId}>
-                      <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-                        <span style={{ fontFamily: "monospace", color: ui.colors.textSoft }}>
-                          {item.task.taskId}
-                        </span>
-                      </td>
-                      <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, fontWeight: 800 }}>
-                        {item.task.name}
-                      </td>
-                      <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-                        {item.projectId}
-                      </td>
-                      <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-                        {statusBadge(item.status)}
-                      </td>
-                      <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-                        {(item.status === "ASSIGNED" || item.status === "IN_PROGRESS") && (
-                          <a
-                            href={`/projects/${item.projectId}`}
-                            style={{
-                              ...buttonBase,
-                              padding: "8px 12px",
-                              border: `1px solid ${ui.colors.borderStrong}`,
-                              background: "#fff",
-                              color: ui.colors.text,
-                              textDecoration: "none",
-                              display: "inline-block",
-                            }}
-                          >
-                            Go to Project →
-                          </a>
-                        )}
+                  items.map((item) => {
+                    const isExpanded = expandedId === item.assignmentId;
+                    const activeMethod = submitMethod[item.assignmentId] || "github";
 
-                        {item.status !== "ASSIGNED" && item.status !== "IN_PROGRESS" && (
-                          <span style={{ color: ui.colors.textMuted }}>No action</span>
+                    return (
+                      <React.Fragment key={item.assignmentId}>
+                        <tr>
+                          <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, fontWeight: 700, color: ui.colors.text }}>
+                            {(item as any).projectName || `Project #${item.projectId}`}
+                          </td>
+                          <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                            <div style={{ fontWeight: 800, color: ui.colors.text }}>{item.task.name}</div>
+                            <div style={{ color: ui.colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>
+                              {item.task.taskId}
+                            </div>
+                          </td>
+                          <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                            {item.githubBranch ? (
+                              <code style={{ background: "#eff6ff", color: "#1e40af", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
+                                {item.githubBranch}
+                              </code>
+                            ) : "—"}
+                          </td>
+                          <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                            {statusBadge(item.status)}
+                          </td>
+                          <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              {item.status === "ASSIGNED" && (
+                                <button
+                                  onClick={() => handleStartTask(item.assignmentId)}
+                                  disabled={actionLoading[item.assignmentId]}
+                                  style={{
+                                    ...buttonBase,
+                                    padding: "8px 14px",
+                                    background: "#6366f1",
+                                    color: "#fff",
+                                    fontWeight: 800,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  {actionLoading[item.assignmentId] ? "Starting..." : "Start Task"}
+                                </button>
+                              )}
+
+                              {["IN_PROGRESS", "NEEDS_CHANGES"].includes(item.status) && (
+                                <button
+                                  onClick={() => setExpandedId(isExpanded ? null : item.assignmentId)}
+                                  style={{
+                                    ...buttonBase,
+                                    padding: "8px 14px",
+                                    background: isExpanded ? ui.colors.textMuted : ui.colors.primary,
+                                    color: "#fff",
+                                    fontWeight: 800,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  {isExpanded ? "Cancel" : "Submit Work"}
+                                </button>
+                              )}
+
+                              <a
+                                href={`/projects/${item.projectId}`}
+                                style={{
+                                  ...buttonBase,
+                                  padding: "8px 12px",
+                                  border: `1px solid ${ui.colors.borderStrong}`,
+                                  background: "#fff",
+                                  color: ui.colors.text,
+                                  textDecoration: "none",
+                                  display: "inline-block",
+                                  fontSize: 12,
+                                }}
+                              >
+                                Go to Project →
+                              </a>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: "16px 20px", background: "#f8fafc", borderBottom: `1px solid ${ui.colors.border}` }}>
+                              <div>
+                                <h5 style={{ margin: "0 0 12px 0", fontSize: 14, color: ui.colors.text }}>Submit Assignment</h5>
+                                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                                  <button
+                                    onClick={() => setSubmitMethod((prev) => ({ ...prev, [item.assignmentId]: "github" }))}
+                                    style={{
+                                      ...buttonBase,
+                                      padding: "6px 12px",
+                                      background: activeMethod === "github" ? ui.colors.primary : "#e2e8f0",
+                                      color: activeMethod === "github" ? "#fff" : ui.colors.text,
+                                      fontWeight: 700,
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    🔗 Submit via GitHub PR
+                                  </button>
+                                  <button
+                                    onClick={() => setSubmitMethod((prev) => ({ ...prev, [item.assignmentId]: "zip" }))}
+                                    style={{
+                                      ...buttonBase,
+                                      padding: "6px 12px",
+                                      background: activeMethod === "zip" ? ui.colors.primary : "#e2e8f0",
+                                      color: activeMethod === "zip" ? "#fff" : ui.colors.text,
+                                      fontWeight: 700,
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    📦 Submit via ZIP File
+                                  </button>
+                                </div>
+
+                                {activeMethod === "github" ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 600 }}>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: ui.colors.textMuted }}>
+                                        PR Number
+                                      </label>
+                                      <input
+                                        type="number"
+                                        placeholder="e.g. 23"
+                                        value={prNumber[item.assignmentId] || ""}
+                                        onChange={(e) => setPrNumber((prev) => ({ ...prev, [item.assignmentId]: e.target.value }))}
+                                        style={{ ...inputBase, width: "100%", padding: "6px 10px", fontSize: 13, maxWidth: 200 }}
+                                      />
+                                      <small style={{ color: ui.colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                                        🔗 The system will automatically generate your GitHub Pull Request link.
+                                      </small>
+                                    </div>
+
+                                    <div>
+                                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: ui.colors.textMuted }}>
+                                        Submission Note
+                                      </label>
+                                      <textarea
+                                        rows={2}
+                                        placeholder="Note for evaluator..."
+                                        value={subNote[item.assignmentId] || ""}
+                                        onChange={(e) => setSubNote((prev) => ({ ...prev, [item.assignmentId]: e.target.value }))}
+                                        style={{ ...inputBase, width: "100%", padding: "6px 10px", resize: "vertical", fontSize: 13 }}
+                                      />
+                                    </div>
+
+                                    <button
+                                      onClick={() => handleGitHubSubmit(item.assignmentId, item.projectId)}
+                                      disabled={actionLoading[item.assignmentId]}
+                                      style={{
+                                        ...buttonBase,
+                                        alignSelf: "flex-start",
+                                        padding: "8px 16px",
+                                        background: ui.colors.primary,
+                                        color: "#fff",
+                                        fontWeight: 800,
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      {actionLoading[item.assignmentId] ? "Submitting..." : "Submit via PR"}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <input
+                                      type="file"
+                                      accept=".zip"
+                                      ref={(el) => { fileRefs.current[item.assignmentId] = el; }}
+                                      style={{ display: "none" }}
+                                      onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) handleZipSubmit(item.assignmentId, item.projectId, f);
+                                      }}
+                                    />
+                                    <button
+                                      onClick={() => fileRefs.current[item.assignmentId]?.click()}
+                                      disabled={actionLoading[item.assignmentId]}
+                                      style={{
+                                        ...buttonBase,
+                                        padding: "8px 16px",
+                                        background: ui.colors.primary,
+                                        color: "#fff",
+                                        fontWeight: 700,
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      {actionLoading[item.assignmentId] ? "Uploading…" : "Upload ZIP File"}
+                                    </button>
+                                  </div>
+                                )}
+
+                                {actionMsg[item.assignmentId] && (
+                                  <div
+                                    style={{
+                                      marginTop: 10,
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      color: actionMsg[item.assignmentId].startsWith("Error") ? ui.colors.danger : ui.colors.success,
+                                    }}
+                                  >
+                                    {actionMsg[item.assignmentId]}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
