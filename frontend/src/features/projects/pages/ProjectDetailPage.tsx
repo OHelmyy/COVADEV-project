@@ -10,6 +10,7 @@ import ProjectSidebar from "../components/project-detail/ProjectSidebar";
 
 import OverviewTab from "../components/project-detail/tabs/OverviewTab";
 import BpmnCheckTab from "../components/project-detail/tabs/BpmnCheckTab";
+import BpmnDiagramTab from "../components/project-detail/tabs/BpmnDiagramTab";
 import UploadsTab from "../components/project-detail/tabs/UploadsTab";
 import ResultsTab from "../components/project-detail/tabs/ResultsTab";
 import CompareTab from "../components/project-detail/tabs/CompareTab";
@@ -155,6 +156,13 @@ export default function ProjectDetailPage() {
           />
         ) : null}
 
+        {vm.activeTab === "bpmnDiagram" ? (
+          <BpmnDiagramTab
+          projectId={projectId}
+          canEdit={vm.roleFlags.isEvaluator || vm.roleFlags.isAdmin}
+        />
+        ) : null}
+
         {vm.activeTab === "taskManagement" ? (
           <Card>
             <TaskManagementTab projectId={projectId} />
@@ -228,6 +236,7 @@ export default function ProjectDetailPage() {
         ) : null}
 
         {vm.activeTab === "runs" ? <RunsTab runs={vm.data.runs} /> : null}
+
         {vm.activeTab === "members" ? (
           <MembersTab
             projectId={vm.data.project.id}
