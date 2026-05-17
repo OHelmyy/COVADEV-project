@@ -9,7 +9,8 @@ from .views import (
     GitHubPullRequestCommitsView,
     GitHubFileContentView,
     GitHubCreateBranchView,
-    GitHubMergePullRequestView
+    GitHubMergePullRequestView,
+    GitHubFetchAndIndexView
 )
 
 app_name = "github_integration"
@@ -25,4 +26,5 @@ urlpatterns = [
     path("projects/<int:project_id>/github/pull-requests/<int:pr_number>/commits/", GitHubPullRequestCommitsView.as_view(), name="pull_request_commits"),
     path("projects/<int:project_id>/github/pull-requests/<int:pr_number>/merge/", GitHubMergePullRequestView.as_view(), name="pull_request_merge"),
     path("projects/<int:project_id>/github/file-content/", GitHubFileContentView.as_view(), name="file_content"),
+    path("projects/<int:project_id>/github/fetch-and-index/", GitHubFetchAndIndexView.as_view(), name="fetch_and_index"),
 ]

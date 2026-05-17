@@ -134,3 +134,7 @@ export function fetchGitHubFileContent(projectId: number, path: string, ref?: st
 export function mergeGitHubPullRequest(projectId: number, prNumber: number, data?: { commit_title?: string; commit_message?: string }) {
   return apiPostJson<any>(`/api/projects/${projectId}/github/pull-requests/${prNumber}/merge/`, data || {});
 }
+
+export function fetchAndIndexGitHubBranch(projectId: number, branch: string = "main") {
+  return apiPostJson<{ message: string }>(`/api/projects/${projectId}/github/fetch-and-index/`, { branch });
+}

@@ -40,7 +40,7 @@ export function useProjectDetail(projectId: number) {
   }, [project.tabs, activeTab]);
 
   useEffect(() => {
-    if (activeTab === "compare") {
+    if (activeTab === "analysis") {
       void compare.loadCompare();
     }
   }, [activeTab, compare.loadCompare]);
@@ -52,7 +52,7 @@ export function useProjectDetail(projectId: number) {
   }, [activeTab, project.permissions.canViewReport, report.loadReport]);
 
   useEffect(() => {
-    if (activeTab === "recommendations") {
+    if (activeTab === "data") {
       void recommendations.loadRecommendations();
     }
   }, [activeTab, recommendations.loadRecommendations]);

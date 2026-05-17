@@ -12,6 +12,7 @@ import { buildTaskManagementError } from "../utils/taskManagementError";
 
 type Props = {
   projectId: number;
+  isAdmin?: boolean;
 };
 
 type ErrorState = {
@@ -30,7 +31,7 @@ const EMPTY_ERROR: ErrorState = {
   details: "",
 };
 
-export default function TaskManagementTab({ projectId }: Props) {
+export default function TaskManagementTab({ projectId, isAdmin }: Props) {
   const [developers, setDevelopers] = useState<Developer[]>([]);
   const [taskAssignments, setTaskAssignments] = useState<TaskAssignmentItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -300,6 +301,7 @@ export default function TaskManagementTab({ projectId }: Props) {
         })()}
 
         {/* Premium Assign Task Card */}
+        {!isAdmin && (
         <div style={{ ...cardBase, padding: 24, border: `2px solid ${ui.colors.primarySoft}`, boxShadow: ui.shadow.md }}>
           <h4 style={{ margin: "0 0 20px 0", fontSize: 19, fontWeight: 800, color: ui.colors.primary, display: "flex", alignItems: "center", gap: 8 }}>
             Create Task Assignment
@@ -443,6 +445,7 @@ export default function TaskManagementTab({ projectId }: Props) {
             </div>
           </div>
         </div>
+        )}
 
         <div style={{ ...cardBase, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>

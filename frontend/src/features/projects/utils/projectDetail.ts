@@ -48,18 +48,10 @@ export function getTabs(
 
   const all: ProjectTabItem[] = [
     { key: "overview", label: "Overview", visible: true },
-    { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
-    { key: "bpmnCheck", label: "BPMN Check", visible: true },
-    { key: "taskManagement", label: "Task Management", visible: true },
-    { key: "aiRuns", label: "AI Runs", visible: true },
-    { key: "devSubmissions", label: "Dev Submissions", visible: true },
-    { key: "results", label: "Results", visible: true },
-    { key: "compare", label: "Compare", visible: true },
-    { key: "recommendations", label: "Recommendations", visible: true },
-    { key: "report", label: "Report", visible: canViewReport },
-    { key: "runs", label: "Runs", visible: true },
-    { key: "members", label: "Members", visible: true },
-    { key: "github", label: "GitHub", visible: isAdmin || isEvaluator },
+    { key: "data", label: "Data & Integration", visible: !isAdmin },
+    { key: "tasks", label: "Tasks & Submissions", visible: true },
+    { key: "analysis", label: "Analysis & Results", visible: true },
+    { key: "report", label: "Reports & History", visible: true },
   ];
 
   return all.filter((tab) => tab.visible);

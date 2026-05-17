@@ -154,3 +154,33 @@ export function ScoreBadge({ value }: { value: number }) {
     </span>
   );
 }
+
+export function SubTabs(props: {
+  tabs: { key: string; label: string }[];
+  active: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 16, borderBottom: `1px solid ${ui.colors.border}`, marginBottom: 20 }}>
+      {props.tabs.map(tab => (
+        <button
+          key={tab.key}
+          onClick={() => props.onChange(tab.key)}
+          style={{
+            padding: "8px 4px",
+            background: "none",
+            border: "none",
+            borderBottom: tab.key === props.active ? `3px solid ${ui.colors.primary}` : "3px solid transparent",
+            color: tab.key === props.active ? ui.colors.primary : ui.colors.textSoft,
+            fontWeight: tab.key === props.active ? 800 : 600,
+            cursor: "pointer",
+            fontSize: 15,
+            transition: ui.transition
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}

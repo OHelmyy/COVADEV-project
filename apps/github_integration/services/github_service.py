@@ -140,3 +140,16 @@ class GitHubService:
             raise Exception(f"GitHub Error: {message}")
             
         return response.json()
+
+    def download_zipball(self, owner, repo, ref):
+        """
+        Downloads the repository archive as a zipball for the given ref.
+        Returns raw bytes.
+        """
+        url = f"{self.BASE_URL}/repos/{owner}/{repo}/zipball/{ref}"
+        # Zipball endpoint returns a redirect, requests follows it automatically
+        response = requests.get(url, headers=self.headers)
+        if response.status_code != 200:
+            raise Exception(f"Failed to download repository zip archive. Status code: {response.status_code}")
+        return response.content
+

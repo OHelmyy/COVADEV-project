@@ -20,9 +20,10 @@ import type {
 
 type Props = {
   projectId: number;
+  isAdmin?: boolean;
 };
 
-export default function GitHubTab({ projectId }: Props) {
+export default function GitHubTab({ projectId, isAdmin }: Props) {
   const [repo, setRepo] = useState<GitHubRepoApi | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -327,7 +328,7 @@ export default function GitHubTab({ projectId }: Props) {
                   <a href={selectedPr.html_url} target="_blank" rel="noreferrer" style={linkButtonStyle}>
                     View on GitHub
                   </a>
-                  {selectedPr.state === "open" && (
+                  {selectedPr.state === "open" && !isAdmin && (
                     <button
                       onClick={handleMergePr}
                       disabled={merging}

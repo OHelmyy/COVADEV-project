@@ -12,6 +12,8 @@ from .serializers import (
     GitHubCommitSerializer
 )
 from .services.github_service import GitHubService
+from apps.projects.services import save_code_zip_and_extract
+from django.core.files.base import ContentFile
 
 class GitHubConnectView(views.APIView):
     """
@@ -187,5 +189,29 @@ class GitHubMergePullRequestView(GitHubBaseView):
                 commit_message=commit_message
             )
             return Response(result, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class GitHubFetchAndIndexView(GitHubBaseView):
+    """
+    Fetch the entire repository branch and index it.
+    """
+    def post(self, request, project_id):
+        branch = request.data.get("branch", "main")
+        service, repo = self.get_service(project_id)
+        project = repo.project
+        
+        try:
+            # Download the zip archive
+            zip_content = service.download_zipball(repo.owner, repo.repo_name, branch)
+            
+            # Wrap raw bytes in a ContentFile so Django can save it
+            file_name = f"{repo.repo_name}-{branch}.zip"
+            zip_file = ContentFile(zip_content, name=file_name)
+            
+            # Index it just like an uploaded zip
+            save_code_zip_and_extract(project, zip_file, request.user)
+            
+            return Response({"message": f"Successfully fetched and indexed branch '{branch}'"}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Card } from "../ProjectUi";
+import { fetchAndIndexGitHubBranch } from "../../../../../api/github";
 
 type Props = {
   canUploadBpmn: boolean;
@@ -11,6 +13,7 @@ type Props = {
   onUploadBpmn: () => void;
   onUploadCode: () => void;
   onRunAnalysis: () => void;
+  projectId: number;
 };
 
 export default function UploadsTab({
@@ -24,7 +27,24 @@ export default function UploadsTab({
   onUploadBpmn,
   onUploadCode,
   onRunAnalysis,
+  projectId,
 }: Props) {
+  const [fetchingGithub, setFetchingGithub] = useState(false);
+  const [githubMsg, setGithubMsg] = useState("");
+
+  const handleFetchGithub = async () => {
+    setFetchingGithub(true);
+    setGithubMsg("");
+    try {
+      const res = await fetchAndIndexGitHubBranch(projectId, "main");
+      setGithubMsg(res.message || "Successfully fetched and indexed main branch");
+      // Optional: you might want to reload project data here, but user can refresh.
+    } catch (err: any) {
+      setGithubMsg(err.message || "Failed to fetch from GitHub");
+    } finally {
+      setFetchingGithub(false);
+    }
+  };
   return (
     <Card>
       <h3 style={{ marginTop: 0 }}>Uploads & Tools</h3>
@@ -96,6 +116,27 @@ export default function UploadsTab({
             </>
           ) : (
             <div style={{ color: "#888" }}>You don't have permission to upload code.</div>
+          )}
+
+          {canUploadCode && (
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed #ddd" }}>
+              <h5 style={{ marginTop: 0, marginBottom: 10 }}>Or fetch from GitHub</h5>
+              <button
+                onClick={handleFetchGithub}
+                disabled={fetchingGithub}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                }}
+              >
+                {fetchingGithub ? "Fetching..." : "Fetch 'main' Branch & Index"}
+              </button>
+              {githubMsg && <div style={{ marginTop: 8, fontSize: 13, color: githubMsg.includes("Failed") ? "red" : "green" }}>{githubMsg}</div>}
+              <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
+                Requires GitHub to be connected in Tasks &amp; Submissions -&gt; GitHub.
+              </div>
+            </div>
           )}
         </div>
       </div>
