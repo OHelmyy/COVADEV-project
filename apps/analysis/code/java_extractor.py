@@ -7,7 +7,7 @@ class JavaExtractor(BaseExtractor):
     # Regex for Java methods: [access] [static] [return_type] name(params) {
     # Covers most standard Java method declarations
     METHOD_PATTERN = re.compile(
-        r"(?:public|protected|private|static|\s) +[\w\<\>\[\]\.]+ +(\w+) *\([^\)]*\) *(?:throws [\w\.\s,]+)?\s*\{",
+        r"(?:public|protected|private|static|\s)+\s+[\w<>\[\]\.,\s]+?\s+(\w+)\s*\([^\)]*\)\s*(?:throws [\w\.\s,]+)?\s*\{",
         re.MULTILINE
     )
 
