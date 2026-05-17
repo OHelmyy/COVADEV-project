@@ -36,11 +36,14 @@ export function getPermissions(flags: ProjectRoleFlags): ProjectPermissions {
 export function getTabs(
   isAdmin: boolean,
   canViewReport: boolean,
-  isDeveloper: boolean = false
+  isDeveloper: boolean = false,
+  isEvaluator: boolean = false
 ): ProjectTabItem[] {
   // Developers only see My Tasks
   if (isDeveloper) {
-    return [{ key: "myTasks", label: "My Tasks", visible: true }];
+    return [
+      { key: "myTasks", label: "My Tasks", visible: true },
+    ];
   }
 
   const all: ProjectTabItem[] = [
@@ -56,6 +59,7 @@ export function getTabs(
     { key: "report", label: "Report", visible: canViewReport },
     { key: "runs", label: "Runs", visible: true },
     { key: "members", label: "Members", visible: true },
+    { key: "github", label: "GitHub", visible: isAdmin || isEvaluator },
   ];
 
   return all.filter((tab) => tab.visible);

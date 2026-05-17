@@ -55,7 +55,8 @@ export type TabKey =
   | "aiRuns"
   | "report"
   | "myTasks"
-  | "devSubmissions";
+  | "devSubmissions"
+  | "github";
 
 export type TraceRow = {
   taskId: string;

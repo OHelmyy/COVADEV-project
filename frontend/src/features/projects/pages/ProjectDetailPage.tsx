@@ -19,6 +19,7 @@ import RunsTab from "../components/project-detail/tabs/RunsTab";
 import MembersTab from "../components/project-detail/tabs/MembersTab";
 import MyTasksTab from "../components/project-detail/tabs/MyTasksTab";
 import DevSubmissionsTab from "../components/project-detail/tabs/DevSubmissionsTab";
+import GitHubTab from "../components/project-detail/tabs/GitHubTab";
 import { useProjectDetail } from "../hooks/useProjectDetail";
 import { normalizeBpmnMeta } from "../utils/projectDetail";
 import { buildProjectErrorFromText } from "../utils/projectError";
@@ -173,6 +174,10 @@ export default function ProjectDetailPage() {
 
         {vm.activeTab === "devSubmissions" ? (
           <DevSubmissionsTab projectId={projectId} />
+        ) : null}
+        
+        {vm.activeTab === "github" ? (
+          <GitHubTab projectId={projectId} />
         ) : null}
 
         {vm.activeTab === "uploads" ? (

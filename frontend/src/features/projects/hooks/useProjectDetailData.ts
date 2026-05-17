@@ -40,8 +40,8 @@ export function useProjectDetailData(projectId: number) {
   );
 
   const tabs = useMemo(
-    () => getTabs(roleFlags.isAdmin, permissions.canViewReport,roleFlags.isDeveloper),
-    [roleFlags.isAdmin, permissions.canViewReport, roleFlags.isDeveloper]
+    () => getTabs(roleFlags.isAdmin, permissions.canViewReport, roleFlags.isDeveloper, roleFlags.isEvaluator),
+    [roleFlags.isAdmin, permissions.canViewReport, roleFlags.isDeveloper, roleFlags.isEvaluator]
   );
 
   return {
