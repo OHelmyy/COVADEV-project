@@ -25,9 +25,10 @@ export function assignTask(
     bpmnTaskId: number;
     developerMembershipId: number;
     notes?: string;
+    createBranch?: boolean;
   }
 ) {
-  return apiJson(`/api/projects/${projectId}/task-assignments/assign/`, {
+  return apiJson(`/api/projects/${projectId}/task-assignments/`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -59,11 +60,27 @@ export function startTaskAssignment(assignmentId: number) {
 export function submitTaskAssignment(
   assignmentId: number,
   payload: {
+    githubPrNumber?: number | null;
+    githubPrUrl?: string;
     submissionNotes?: string;
   }
 ) {
   return apiJson(`/api/task-assignments/${assignmentId}/submit/`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateAssignmentGithubInfo(
+  assignmentId: number,
+  payload: {
+    githubBranch?: string;
+    githubPrNumber?: number | null;
+    githubPrUrl?: string;
+  }
+) {
+  return apiJson(`/api/task-assignments/${assignmentId}/github-info/`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
