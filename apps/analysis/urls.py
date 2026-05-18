@@ -17,5 +17,6 @@ urlpatterns = [
     path("api/analysis/<int:project_id>/metrics/details/", views.metrics_details, name="metrics_details"),
     path("api/analysis/<int:project_id>/metrics/developers/", views.metrics_developers, name="metrics_developers"),
     path("api/reports/dashboard/", views.dashboard_stats, name="dashboard_stats"),
+    path("api/projects/<int:project_id>/bpmn-diagram/",views.project_bpmn_diagram,name="project_bpmn_diagram",),
     
 ]

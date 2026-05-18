@@ -98,7 +98,12 @@ def precheck_bpmn_xml(bpmn_bytes: bytes) -> PrecheckResult:
     # -------------------------
     # 5) Unique IDs (nodes)
     # -------------------------
-    all_nodes = tasks + events + gateways
+    participants = g.get("participants") or []
+    lanes = g.get("lanes") or []
+    data_objects = g.get("data_objects") or []
+    message_flows = g.get("message_flows") or []
+
+    all_nodes = tasks + events + gateways + participants + lanes + data_objects
     node_ids_list = [str(n.get("id", "")).strip() for n in all_nodes if n.get("id")]
     node_ids: Set[str] = set(node_ids_list)
 
@@ -150,6 +155,28 @@ def precheck_bpmn_xml(bpmn_bytes: bytes) -> PrecheckResult:
             process_name=process_name,
             task_count=task_count,
         )
+    
+
+
+    bad_message_flows: List[str] = []
+
+    for f in message_flows:
+        fid = str(f.get("id", "") or "").strip() or "[no-id]"
+        src = str(f.get("source", "") or "").strip()
+        tgt = str(f.get("target", "") or "").strip()
+
+        if not src or not tgt:
+            bad_message_flows.append(f"{fid} (missing sourceRef/targetRef)")
+            continue
+
+        if src not in node_ids or tgt not in node_ids:
+            bad_message_flows.append(f"{fid} (invalid ref {src} -> {tgt})")
+
+    if bad_message_flows:
+        warnings.append(
+            "Invalid messageFlow references: " + "; ".join(bad_message_flows[:10])
+        )
+
 
     # -------------------------
     # 8) Build adjacency graph from flows

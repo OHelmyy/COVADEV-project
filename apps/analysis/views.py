@@ -15,7 +15,13 @@ from apps.projects.models import Project, ProjectMembership, ProjectFile
 from apps.analysis.models import AnalysisRun
 from apps.accounts.rbac import is_admin, is_evaluator
 from .services.services import run_semantic_pipeline_for_project, compute_metrics_from_similarity_payload
-
+from apps.analysis.bpmn.parser import extract_bpmn_graph
+from apps.api.projects_api.permissions import can_open_project
+from django.http import HttpResponse
+from django.views.decorators.http import require_POST
+from apps.analysis.services.upload_flow_service import run_bpmn_upload_flow
+from django.core.files.base import ContentFile
+from apps.analysis.models import MatchResult
 # ============================================================
 # Helpers
 # ============================================================
@@ -236,3 +242,168 @@ def dashboard_stats(request):
         json_dumps_params={"ensure_ascii": False},
     )
 
+@login_required
+@require_GET
+def project_bpmn_diagram(request, project_id: int):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    project = get_object_or_404(
+        Project.objects.select_related("active_bpmn", "evaluator"),
+        id=project_id,
+    )
+
+    if not can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    active_bpmn = project.active_bpmn
+
+    if not active_bpmn:
+        return JsonResponse({"error": "No active BPMN uploaded."}, status=404)
+
+    try:
+        bpmn_path = _abs_media_path(active_bpmn.stored_path)
+        graph = extract_bpmn_graph(bpmn_path)
+
+        return JsonResponse(
+            graph,
+            safe=True,
+            json_dumps_params={"ensure_ascii": False},
+        )
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+@login_required
+@require_GET
+def project_bpmn_xml(request, project_id: int):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    project = get_object_or_404(
+        Project.objects.select_related("active_bpmn", "evaluator"),
+        id=project_id,
+    )
+
+    if not can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    if not project.active_bpmn:
+        return JsonResponse({"error": "No active BPMN uploaded."}, status=404)
+
+    bpmn_path = _abs_media_path(project.active_bpmn.stored_path)
+
+    xml_text = bpmn_path.read_text(encoding="utf-8")
+
+    # ✅ Check if BPMN has visual diagram layout
+    if "BPMNDiagram" not in xml_text:
+        return JsonResponse(
+            {
+                "error": (
+                    "This BPMN file is valid but has no BPMN diagram layout "
+                    "(BPMN DI). Please upload a BPMN exported from a BPMN modeler."
+                )
+            },
+            status=400,
+        )
+
+    return HttpResponse(
+        xml_text,
+        content_type="application/xml",
+    )
+
+@login_required
+@require_GET
+def project_bpmn_diagnostics(request, project_id: int):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    project = get_object_or_404(
+        Project.objects.select_related("active_bpmn", "evaluator"),
+        id=project_id,
+    )
+
+    if not can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    if not project.active_bpmn:
+        return JsonResponse({"error": "No active BPMN uploaded."}, status=404)
+
+    return JsonResponse({
+        "isWellFormed": project.active_bpmn.is_well_formed,
+        "errors": project.active_bpmn.precheck_errors or [],
+        "warnings": project.active_bpmn.precheck_warnings or [],
+    })
+
+@login_required
+@require_POST
+def save_fixed_bpmn(request, project_id: int):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    project = get_object_or_404(Project, id=project_id)
+    if not (
+        is_admin(request.user)
+        or (is_evaluator(request.user) and project.evaluator_id == request.user.id)
+    ):
+        return JsonResponse(
+            {"detail": "Only the assigned evaluator or admin can edit BPMN."},
+            status=403,
+        )
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        xml = payload.get("xml", "")
+
+        if not xml.strip():
+            return JsonResponse({"error": "Missing BPMN XML."}, status=400)
+
+        filename = f"fixed_project_{project.id}.bpmn"
+        upload_file = ContentFile(xml.encode("utf-8"), name=filename)
+
+        result = run_bpmn_upload_flow(project, upload_file, request.user)
+
+        return JsonResponse({
+            "ok": True,
+            "precheck": result.get("predev", {}),
+        })
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+    
+@login_required
+@require_GET
+def project_bpmn_match_status(request, project_id: int):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+
+    project = get_object_or_404(
+        Project.objects.select_related("active_bpmn", "evaluator"),
+        id=project_id,
+    )
+
+    if not can_open_project(project, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    results = (
+        MatchResult.objects
+        .filter(project=project)
+        .select_related("task")
+    )
+
+    tasks = []
+
+    for r in results:
+        if not r.task:
+            continue
+
+        tasks.append({
+            "taskId": r.task.task_id,
+            "taskName": r.task.name,
+            "status": r.status,
+            "score": r.similarity_score,
+            "codeRef": r.code_ref,
+        })
+
+    return JsonResponse({
+        "tasks": tasks,
+    })

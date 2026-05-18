@@ -73,7 +73,11 @@ urlpatterns = [
     path("projects/<int:project_id>/compare-inputs/", compare_inputs_api, name="compare_inputs"),
     path("projects/<int:project_id>/report/", api_project_report, name="project_report"),
     path("projects/<int:project_id>/recommendations/", api_project_recommendations, name="project_recommendations"),
-
+    path("projects/<int:project_id>/bpmn-diagram/", analysis_views.project_bpmn_diagram, name="project_bpmn_diagram"),
+    path("projects/<int:project_id>/bpmn-xml/",analysis_views.project_bpmn_xml,name="project_bpmn_xml",),
+    path("projects/<int:project_id>/bpmn-diagnostics/",analysis_views.project_bpmn_diagnostics,name="project_bpmn_diagnostics",),
+    path("projects/<int:project_id>/bpmn-save-fixed/",analysis_views.save_fixed_bpmn,name="bpmn_save_fixed",),
+    path("projects/<int:project_id>/bpmn-match-status/",analysis_views.project_bpmn_match_status,name="project_bpmn_match_status",),
     # Dashboard
     path("reports/dashboard/", analysis_views.dashboard_stats, name="dashboard_stats"),
 

@@ -50,7 +50,13 @@ TASK_TAGS = {
     "callActivity",
 }
 
-EVENT_TAGS = {"startEvent", "endEvent"}
+EVENT_TAGS = {
+    "startEvent",
+    "endEvent",
+    "intermediateCatchEvent",
+    "intermediateThrowEvent",
+    "boundaryEvent",
+}
 
 GATEWAY_TAGS = {
     "exclusiveGateway",
@@ -58,6 +64,35 @@ GATEWAY_TAGS = {
     "inclusiveGateway",
     "eventBasedGateway",
     "complexGateway",
+}
+
+
+COLLABORATION_TAGS = {
+    "collaboration",
+    "participant",
+}
+
+LANE_TAGS = {
+    "laneSet",
+    "lane",
+}
+
+DATA_TAGS = {
+    "dataObject",
+    "dataObjectReference",
+    "dataStoreReference",
+}
+
+MESSAGE_FLOW_TAGS = {
+    "messageFlow",
+}
+
+EVENT_DEFINITION_TAGS = {
+    "messageEventDefinition",
+    "timerEventDefinition",
+    "errorEventDefinition",
+    "signalEventDefinition",
+    "conditionalEventDefinition",
 }
 
 FLOW_TAGS = {"sequenceFlow"}
@@ -139,6 +174,11 @@ def extract_bpmn_graph(bpmn_input: Union[str, Path, bytes]) -> Dict[str, object]
     events: List[Dict] = []
     gateways: List[Dict] = []
     flows: List[Dict] = []
+    participants: List[Dict] = []
+    lanes: List[Dict] = []
+    data_objects: List[Dict] = []
+    message_flows: List[Dict] = []
+    event_definitions: List[Dict] = []
 
     for el in root.iter():
         tag = _local(el.tag)
@@ -198,6 +238,78 @@ def extract_bpmn_graph(bpmn_input: Union[str, Path, bytes]) -> Dict[str, object]
             )
             continue
 
+
+        if tag in COLLABORATION_TAGS:
+            nid = _get_attr(el, "id")
+            if not nid:
+                continue
+
+            item = {
+                "id": nid,
+                "name": _get_attr(el, "name"),
+                "type": tag,
+            }
+
+            if tag == "participant":
+                item["processRef"] = _get_attr(el, "processRef")
+
+            participants.append(item)
+            continue
+
+        if tag in LANE_TAGS:
+            nid = _get_attr(el, "id")
+            if not nid:
+                continue
+
+            lanes.append({
+                "id": nid,
+                "name": _get_attr(el, "name"),
+                "type": tag,
+            })
+            continue
+
+        if tag in DATA_TAGS:
+            nid = _get_attr(el, "id")
+            if not nid:
+                continue
+
+            data_objects.append({
+                "id": nid,
+                "name": _get_attr(el, "name"),
+                "type": tag,
+                "dataObjectRef": _get_attr(el, "dataObjectRef"),
+            })
+            continue
+
+        if tag in EVENT_DEFINITION_TAGS:
+            nid = _get_attr(el, "id")
+            if not nid:
+                continue
+
+            event_definitions.append({
+                "id": nid,
+                "type": tag,
+            })
+            continue
+
+        if tag in MESSAGE_FLOW_TAGS:
+            fid = _get_attr(el, "id")
+            src = _get_attr(el, "sourceRef")
+            tgt = _get_attr(el, "targetRef")
+
+            if not fid or not src or not tgt:
+                continue
+
+            message_flows.append({
+                "id": fid,
+                "name": _get_attr(el, "name"),
+                "source": src,
+                "target": tgt,
+                "type": tag,
+            })
+            continue           
+                
+
         # Flows
         if tag in FLOW_TAGS:
             fid = _get_attr(el, "id")
@@ -224,6 +336,11 @@ def extract_bpmn_graph(bpmn_input: Union[str, Path, bytes]) -> Dict[str, object]
         "events": events,
         "gateways": gateways,
         "flows": flows,
+         "participants": participants,
+        "lanes": lanes,
+        "data_objects": data_objects,
+        "message_flows": message_flows,
+        "event_definitions": event_definitions,
     }
 
 def extract_tasks_with_context(bpmn_input: Union[str, Path, bytes]) -> List[Dict]:
