@@ -50,6 +50,7 @@ export type TabKey =
   | "runs"
   | "members"
   | "bpmnCheck"
+  | "bpmnDiagram"
   | "taskManagement"
   | "report";
 

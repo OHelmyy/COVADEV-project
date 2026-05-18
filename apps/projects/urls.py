@@ -1,7 +1,6 @@
-# apps/projects/urls.py ❌ WRONG
-
 from django.urls import path
 from . import views
+from apps.analysis import views as analysis_views
 
 app_name = "projects"
 
@@ -9,6 +8,8 @@ urlpatterns = [
     path("", views.projects_list, name="list"),
     path("create/", views.projects_create, name="create"),
     path("<int:project_id>/", views.projects_detail, name="detail"),
+
+    path("<int:project_id>/bpmn-diagram/", analysis_views.project_bpmn_diagram, name="bpmn_diagram"),
 
     path("<int:project_id>/upload-bpmn/", views.upload_bpmn, name="upload_bpmn"),
     path("<int:project_id>/upload-code/", views.upload_code_zip, name="upload_code"),
@@ -23,5 +24,4 @@ urlpatterns = [
     path("<int:project_id>/members/", views.project_members, name="members"),
     path("<int:project_id>/members/<int:membership_id>/remove/", views.remove_member, name="remove_member"),
     path("<int:project_id>/compare-inputs/", views.compare_inputs_api, name="compare_inputs"),
-
 ]

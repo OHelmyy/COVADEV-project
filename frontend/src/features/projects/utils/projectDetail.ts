@@ -41,6 +41,7 @@ export function getTabs(
     { key: "overview", label: "Overview", visible: true },
     { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
     { key: "bpmnCheck", label: "BPMN Check", visible: true },
+    { key: "bpmnDiagram", label: "BPMN Diagram", visible: true },
     { key: "taskManagement", label: "Task Management", visible: true },
     { key: "results", label: "Results", visible: true },
     { key: "compare", label: "Compare", visible: true },
