@@ -1,7 +1,7 @@
 # apps/analysis/code/generic_extractor.py
 import re
 from typing import Any, Dict, List
-from apps.analysis.code.base_extractor import BaseExtractor
+from .base_extractor import BaseExtractor
 
 class GenericExtractor(BaseExtractor):
     """

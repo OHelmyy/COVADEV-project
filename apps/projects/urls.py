@@ -12,7 +12,10 @@ urlpatterns = [
 
     path("<int:project_id>/upload-bpmn/", views.upload_bpmn, name="upload_bpmn"),
     path("<int:project_id>/upload-code/", views.upload_code_zip, name="upload_code"),
+    path("<int:project_id>/fetch-github/", views.fetch_github_code, name="fetch_github"),
     path("<int:project_id>/run-analysis/", views.run_analysis, name="run_analysis"),
+
+    path("<int:project_id>/settings/github-url/", views.update_github_url, name="update_github_url"),
 
     path("<int:project_id>/files/", views.project_files, name="project_files"),
     path("<int:project_id>/tasks/", views.project_tasks, name="project_tasks"),

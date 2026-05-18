@@ -1,7 +1,7 @@
 # apps/analysis/code/universal_extractor.py
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from apps.analysis.code.extractor_factory import ExtractorFactory
+from .extractor_factory import ExtractorFactory
 
 class UniversalExtractor:
     """

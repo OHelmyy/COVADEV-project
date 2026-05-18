@@ -8,6 +8,8 @@ from django.views.decorators.http import require_POST
 from apps.analysis.services.services import run_bpmn_upload_flow
 from apps.projects.models import Project
 from apps.projects.services import save_code_zip_and_extract
+from apps.projects.github_service import download_repo_archive
+from django.core.files import File
 
 from .permissions import can_open_project, is_project_evaluator
 from .serializers import json_file_payload
@@ -52,3 +54,40 @@ def api_upload_code_zip(request, project_id: int):
         return JsonResponse({"ok": True})
     except Exception as e:
         return JsonResponse({"detail": f"Code ZIP upload failed: {e}"}, status=400)
+
+@login_required
+@require_POST
+def api_fetch_github_code(request, project_id: int):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not can_open_project(project, request.user):
+        return JsonResponse({"detail": "Access denied."}, status=403)
+
+    if not project.github_repo_url:
+        return JsonResponse({"detail": "No GitHub repository linked."}, status=400)
+
+    import json
+    # Handle both application/json and application/x-www-form-urlencoded
+    if request.content_type == "application/json":
+        try:
+            body = json.loads(request.body)
+            branch = (body.get("branch") or "main").strip()
+        except Exception:
+            branch = "main"
+    else:
+        branch = (request.POST.get("branch") or "main").strip()
+
+    try:
+        zip_path = download_repo_archive(
+            repo_url=project.github_repo_url,
+            project_id=project.id,
+            branch=branch,
+        )
+
+        with open(zip_path, "rb") as f:
+            django_file = File(f, name=zip_path.name)
+            save_code_zip_and_extract(project, django_file, request.user)
+
+        return JsonResponse({"ok": True})
+    except Exception as e:
+        return JsonResponse({"detail": f"GitHub fetch failed: {e}"}, status=400)

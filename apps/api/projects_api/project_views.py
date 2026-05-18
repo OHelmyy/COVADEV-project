@@ -37,6 +37,7 @@ def api_projects_list_create(request):
     name = (request.POST.get("name") or "").strip()
     description = (request.POST.get("description") or "").strip()
     threshold = (request.POST.get("similarity_threshold") or "0.6").strip()
+    github_repo_url = (request.POST.get("github_repo_url") or "").strip()
 
     evaluator_email = (request.POST.get("evaluatorEmail") or "").strip().lower()
     developer_emails_raw = (request.POST.get("developerEmails") or "").strip()
@@ -71,6 +72,7 @@ def api_projects_list_create(request):
         created_by=request.user,
         evaluator=evaluator,
         similarity_threshold=threshold_value,
+        github_repo_url=github_repo_url,
     )
 
     for email in developer_emails:

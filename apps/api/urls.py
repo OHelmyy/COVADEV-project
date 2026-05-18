@@ -24,6 +24,7 @@ from apps.api.projects_api.developer_submission_views import (
 from apps.api.projects_api.upload_views import (
     api_upload_bpmn,
     api_upload_code_zip,
+    api_fetch_github_code,
 )
 from apps.api.projects_api.analysis_views import (
     api_run_analysis,
@@ -34,6 +35,7 @@ from apps.api.projects_api.data_views import (
     api_project_matches,
     api_project_logs,
     api_update_threshold,
+    api_update_github_url,
     api_project_report,
 )
 from apps.api.projects_api.recommendation_views import (
@@ -56,10 +58,12 @@ urlpatterns = [
 
     # Settings
     path("projects/<int:project_id>/settings/threshold/", api_update_threshold, name="update_threshold"),
+    path("projects/<int:project_id>/settings/github-url/", api_update_github_url, name="update_github_url"),
 
     # Uploads & Analysis
     path("projects/<int:project_id>/upload-bpmn/", api_upload_bpmn, name="upload_bpmn"),
     path("projects/<int:project_id>/upload-code/", api_upload_code_zip, name="upload_code"),
+    path("projects/<int:project_id>/fetch-github/", api_fetch_github_code, name="fetch_github"),
     path("projects/<int:project_id>/run-analysis/", api_run_analysis, name="run_analysis"),
 
     # Data

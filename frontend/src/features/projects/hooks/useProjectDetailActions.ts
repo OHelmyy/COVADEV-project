@@ -1,8 +1,10 @@
 import { useCallback, useState } from "react";
 import {
   deleteProject,
+  fetchGithubCode,
   generateRecommendations,
   runAnalysis,
+  updateGithubUrl,
   updateThreshold,
   uploadBpmn,
   uploadCodeZip,
@@ -137,6 +139,36 @@ export function useProjectDetailActions({
     }
   }, [projectId, thresholdInput, reloadProject, reloadResults, openErrorModal]);
 
+  const onFetchGithubCode = useCallback(async (branch: string) => {
+    setActionMsg(`Fetching from GitHub (${branch})...`);
+
+    try {
+      await fetchGithubCode(projectId, branch);
+      setActionMsg(`Code fetched from GitHub (${branch}) ✅`);
+
+      await reloadProject();
+      await reloadResults();
+      await reloadCompare();
+    } catch (error: unknown) {
+      setActionMsg("");
+      openErrorModal("fetch from GitHub", error, "GitHub fetch failed");
+    }
+  }, [projectId, reloadProject, reloadResults, reloadCompare, openErrorModal]);
+
+  const onUpdateGithubUrl = useCallback(async (url: string) => {
+    setActionMsg("Updating GitHub URL...");
+
+    try {
+      await updateGithubUrl(projectId, url);
+      setActionMsg("GitHub URL updated ✅");
+
+      await reloadProject();
+    } catch (error: unknown) {
+      setActionMsg("");
+      openErrorModal("update GitHub URL", error, "GitHub URL update failed");
+    }
+  }, [projectId, reloadProject, openErrorModal]);
+
   const onDeleteProject = useCallback(() => {
     setShowDeleteModal(true);
   }, []);
@@ -187,6 +219,8 @@ export function useProjectDetailActions({
     onUploadCode,
     onRunAnalysis,
     onUpdateThreshold,
+    onFetchGithubCode,
+    onUpdateGithubUrl,
     onDeleteProject,
     confirmDeleteProject,
     onGenerateRecommendations,

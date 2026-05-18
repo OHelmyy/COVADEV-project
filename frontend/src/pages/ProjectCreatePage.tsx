@@ -16,6 +16,7 @@ export default function ProjectCreatePage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [threshold, setThreshold] = useState("0.6");
+  const [githubRepoUrl, setGithubRepoUrl] = useState("");
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [evaluatorId, setEvaluatorId] = useState<number | "">("");
@@ -79,6 +80,7 @@ export default function ProjectCreatePage() {
         name,
         description,
         similarity_threshold: Number(threshold),
+        github_repo_url: githubRepoUrl,
         evaluatorEmail: evaluator.email.trim().toLowerCase(),
         developerEmails: devEmails,
       });
@@ -151,6 +153,16 @@ export default function ProjectCreatePage() {
                 value={threshold}
                 onChange={(e) => setThreshold(e.target.value)}
                 style={{ ...inputBase, width: "100%" }}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ color: ui.colors.textSoft, fontWeight: 700 }}>GitHub Repository URL (optional)</span>
+              <input
+                value={githubRepoUrl}
+                onChange={(e) => setGithubRepoUrl(e.target.value)}
+                style={{ ...inputBase, width: "100%" }}
+                placeholder="https://github.com/owner/repo"
               />
             </label>
           </div>
