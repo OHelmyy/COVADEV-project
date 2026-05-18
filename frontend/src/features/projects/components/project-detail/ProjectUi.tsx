@@ -101,7 +101,9 @@ export function SectionTable(props: {
       {!props.table ? (
         <div style={{ color: ui.colors.textMuted }}>{props.emptyText}</div>
       ) : (
-        props.table
+        <div style={{ overflowX: "auto", width: "100%" }}>
+          {props.table}
+        </div>
       )}
     </div>
   );
@@ -118,11 +120,11 @@ export function CompareCard(props: { title: string; subtitle: string; body: stri
         boxShadow: ui.shadow.sm,
       }}
     >
-      <div style={{ fontWeight: 900, fontSize: 16, color: ui.colors.text }}>{props.title}</div>
-      <div style={{ color: ui.colors.textMuted, fontSize: 12, marginTop: 4 }}>
+      <div style={{ fontWeight: 900, fontSize: 16, color: ui.colors.text, wordBreak: "break-word" }}>{props.title}</div>
+      <div style={{ color: ui.colors.textMuted, fontSize: 12, marginTop: 4, wordBreak: "break-all" }}>
         {props.subtitle}
       </div>
-      <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7, color: ui.colors.textSoft }}>
+      <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7, color: ui.colors.textSoft, wordBreak: "break-word" }}>
         {props.body}
       </div>
     </div>
@@ -152,5 +154,35 @@ export function ScoreBadge({ value }: { value: number }) {
     >
       {`${Math.round((Number(value) || 0) * 100)}%`}
     </span>
+  );
+}
+
+export function SubTabs(props: {
+  tabs: { key: string; label: string }[];
+  active: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 16, borderBottom: `1px solid ${ui.colors.border}`, marginBottom: 20 }}>
+      {props.tabs.map(tab => (
+        <button
+          key={tab.key}
+          onClick={() => props.onChange(tab.key)}
+          style={{
+            padding: "8px 4px",
+            background: "none",
+            border: "none",
+            borderBottom: tab.key === props.active ? `3px solid ${ui.colors.primary}` : "3px solid transparent",
+            color: tab.key === props.active ? ui.colors.primary : ui.colors.textSoft,
+            fontWeight: tab.key === props.active ? 800 : 600,
+            cursor: "pointer",
+            fontSize: 15,
+            transition: ui.transition
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
   );
 }

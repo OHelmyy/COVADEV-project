@@ -29,10 +29,13 @@ export type TaskInfo = {
 export type Assignment = {
   assignmentId: number;
   projectId: number;
-  status: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "ACCEPTED" | "REJECTED";
+  status: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "UNDER_REVIEW" | "NEEDS_CHANGES" | "ACCEPTED" | "REJECTED" | "MERGED";
   assignmentNotes?: string;
   submissionNotes?: string;
   reviewNotes?: string;
+  githubBranch?: string;
+  githubPrNumber?: number | null;
+  githubPrUrl?: string;
   assignedAt?: string | null;
   startedAt?: string | null;
   submittedAt?: string | null;
@@ -64,10 +67,13 @@ export type MyAssignmentsResponse = {
 export type AssignmentWithTask = {
   assignmentId: number;
   projectId: number;
-  status: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "ACCEPTED" | "REJECTED";
+  status: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "UNDER_REVIEW" | "NEEDS_CHANGES" | "ACCEPTED" | "REJECTED" | "MERGED";
   assignmentNotes?: string;
   submissionNotes?: string;
   reviewNotes?: string;
+  githubBranch?: string;
+  githubPrNumber?: number | null;
+  githubPrUrl?: string;
   assignedAt?: string | null;
   startedAt?: string | null;
   submittedAt?: string | null;

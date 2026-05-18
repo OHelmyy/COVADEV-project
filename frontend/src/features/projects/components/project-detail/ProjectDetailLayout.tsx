@@ -14,7 +14,7 @@ export default function ProjectDetailLayout({ sidebar, children }: Props) {
       }}
     >
       {sidebar}
-      <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <section style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
         {children}
       </section>
     </div>

@@ -95,4 +95,7 @@ urlpatterns = [
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/reject/", api_dev_submission_reject, name="dev_submission_reject"),
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/reassign/", api_dev_submission_reassign, name="dev_submission_reassign"),
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/download/", api_dev_submission_download, name="dev_submission_download"),
+
+    # GitHub Integration
+    path("", include("apps.github_integration.urls")),
 ]

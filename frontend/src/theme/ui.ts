@@ -73,6 +73,7 @@ export const ui = {
     outline: "none",
     background: "#fff",
     color: ui.colors.text,
+    boxSizing: "border-box",
   };
   
   export const sectionTitle: React.CSSProperties = {

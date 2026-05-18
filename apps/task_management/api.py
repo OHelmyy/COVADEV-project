@@ -17,6 +17,8 @@ from apps.task_management.models import (
     TaskEvaluation,
     AISubmission,
     Notification,
+    TaskSubmission,
+    TaskStatusLog,
 )
 from apps.task_management.permissions import (
     can_assign_tasks,
@@ -67,6 +69,9 @@ def _serialize_assignment(assignment: TaskAssignment) -> dict:
         "assignmentNotes": assignment.assignment_notes,
         "submissionNotes": assignment.submission_notes,
         "reviewNotes": assignment.review_notes,
+        "githubBranch": assignment.github_branch,
+        "githubPrNumber": assignment.github_pr_number,
+        "githubPrUrl": assignment.github_pr_url,
         "assignedAt": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
         "startedAt": assignment.started_at.isoformat() if assignment.started_at else None,
         "submittedAt": assignment.submitted_at.isoformat() if assignment.submitted_at else None,
@@ -148,43 +153,77 @@ def project_developers_api(request, project_id: int):
 
 
 @login_required
-@require_GET
 def project_task_assignments_api(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
+
+    # Check project membership/evaluator role
+    is_project_evaluator = (project.evaluator_id == request.user.id) and is_evaluator(request.user)
+    try:
+        membership = ProjectMembership.objects.get(project=project, user=request.user)
+    except ProjectMembership.DoesNotExist:
+        if not is_admin(request.user) and not is_project_evaluator:
+            return JsonResponse({"detail": "Forbidden"}, status=403)
+        membership = None
+
+    if request.method == "POST":
+        return assign_task_api(request, project_id)
+
+    # GET logic
+    is_eval = is_admin(request.user) or (membership and membership.role in ["EVALUATOR", "ADMIN"]) or (project.evaluator_id == request.user.id)
 
     tasks = list(
         BpmnTask.objects.filter(project=project).order_by("id")
     )
 
+    assignments_query = TaskAssignment.objects.select_related(
+        "developer_membership__user",
+        "assigned_by",
+        "reviewed_by",
+        "bpmn_task",
+        "evaluation",
+    ).filter(project=project)
+
+    if not is_eval:
+        if membership:
+            assignments_query = assignments_query.filter(developer_membership=membership)
+        else:
+            assignments_query = assignments_query.none()
+
     assignments = {
         a.bpmn_task_id: a
-        for a in TaskAssignment.objects.select_related(
-            "developer_membership__user",
-            "assigned_by",
-            "reviewed_by",
-            "bpmn_task",
-            "evaluation",
-        ).filter(project=project)
+        for a in assignments_query
     }
 
     result = []
     for task in tasks:
         assignment = assignments.get(task.id)
-        result.append({
-            "task": {
-                "id": task.id,
-                "taskId": task.task_id,
-                "name": task.name,
-                "description": task.description,
-                "aiSuitability": task.ai_suitability,                          # NEW
-                "aiSuitabilityReason": task.ai_suitability_reason,             # NEW
-                "aiSuitabilityCheckedAt": (                                    # NEW
-                    task.ai_suitability_checked_at.isoformat()
-                    if task.ai_suitability_checked_at else None
-                ),
-            },
-            "assignment": _serialize_assignment(assignment) if assignment else None,
-        })
+        if is_eval:
+            result.append({
+                "task": {
+                    "id": task.id,
+                    "taskId": task.task_id,
+                    "name": task.name,
+                    "description": task.description,
+                    "aiSuitability": task.ai_suitability,
+                    "aiSuitabilityReason": task.ai_suitability_reason,
+                    "aiSuitabilityCheckedAt": (
+                        task.ai_suitability_checked_at.isoformat()
+                        if task.ai_suitability_checked_at else None
+                    ),
+                },
+                "assignment": _serialize_assignment(assignment) if assignment else None,
+            })
+        else:
+            if assignment:
+                result.append({
+                    "task": {
+                        "id": task.id,
+                        "taskId": task.task_id,
+                        "name": task.name,
+                        "description": task.description,
+                    },
+                    "assignment": _serialize_assignment(assignment),
+                })
 
     return JsonResponse({
         "projectId": project.id,
@@ -203,9 +242,10 @@ def assign_task_api(request, project_id: int):
 
     # Parse request body
     body = _parse_json_body(request)
-    bpmn_task_id = body.get("bpmnTaskId")
-    developer_membership_id = body.get("developerMembershipId")
+    bpmn_task_id = body.get("bpmnTaskId") or body.get("bpmn_task_id")
+    developer_membership_id = body.get("developerMembershipId") or body.get("developer_id")
     notes = body.get("notes", "")
+    create_branch = body.get("createBranch") or body.get("create_branch", False)
 
     # Validate required fields
     if not bpmn_task_id or not developer_membership_id:
@@ -222,6 +262,7 @@ def assign_task_api(request, project_id: int):
             developer_membership_id=developer_membership_id,
             assigned_by=request.user,
             notes=notes,
+            create_branch=bool(create_branch)
         )
     except ValidationError as e:
         return JsonResponse(
@@ -256,18 +297,44 @@ def submit_task_assignment_api(request, assignment_id: int):
     if assignment.developer_membership.user_id != request.user.id and not is_admin(request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    body = _parse_json_body(request)
-    submission_notes = body.get("submissionNotes", "")
+    valid_statuses = [
+        TaskAssignment.Status.ASSIGNED,
+        TaskAssignment.Status.IN_PROGRESS,
+        TaskAssignment.Status.NEEDS_CHANGES,
+    ]
+    if assignment.status not in valid_statuses:
+        return JsonResponse(
+            {"detail": f"Cannot submit assignment in status: {assignment.status}"},
+            status=400,
+        )
 
-    assignment = submit_assignment(
+    body = _parse_json_body(request)
+    github_pr_number = body.get("github_pr_number") or body.get("githubPrNumber")
+    github_pr_url = body.get("github_pr_url") or body.get("githubPrUrl") or ""
+    submission_note = body.get("submission_note") or body.get("submissionNote") or ""
+
+    if github_pr_number is not None:
+        try:
+            github_pr_number = int(github_pr_number)
+        except ValueError:
+            return JsonResponse({"detail": "github_pr_number must be an integer."}, status=400)
+
+    assignment, submission = submit_assignment(
         assignment=assignment,
-        submission_notes=submission_notes,
+        submitted_by=request.user,
+        github_pr_number=github_pr_number,
+        github_pr_url=github_pr_url,
+        submission_note=submission_note,
+        status=TaskAssignment.Status.SUBMITTED,
     )
 
     return JsonResponse({
         "message": "Assignment submitted successfully.",
         "assignment": _serialize_assignment(assignment),
+        "submissionId": submission.id,
     })
+
+
 @login_required
 @require_POST
 def review_task_assignment_api(request, assignment_id: int):
@@ -336,14 +403,34 @@ def my_task_assignments_api(request):
         .order_by("-assigned_at")
     )
 
-    data = [
-        _serialize_assignment(a)
-        for a in assignments
-    ]
+    data = []
+    for a in assignments:
+        data.append({
+            "assignmentId": a.id,
+            "projectId": a.project.id,
+            "projectName": a.project.name,
+            "taskName": a.bpmn_task.name,
+            "taskId": a.bpmn_task.task_id,
+            "taskDescription": a.bpmn_task.summary_text or a.bpmn_task.description or "",
+            "task": {
+                "id": a.bpmn_task.id,
+                "taskId": a.bpmn_task.task_id,
+                "name": a.bpmn_task.name,
+                "description": a.bpmn_task.summary_text or a.bpmn_task.description or "",
+            },
+            "githubBranch": a.github_branch,
+            "githubPrNumber": a.github_pr_number,
+            "githubPrUrl": a.github_pr_url,
+            "status": a.status,
+            "assignedAt": a.assigned_at.isoformat() if a.assigned_at else None,
+            "startedAt": a.started_at.isoformat() if a.started_at else None,
+            "submittedAt": a.submitted_at.isoformat() if a.submitted_at else None,
+        })
 
     return JsonResponse({
         "items": data
     })
+
 
 @login_required
 @require_POST
@@ -353,10 +440,45 @@ def start_task_assignment_api(request, assignment_id: int):
     if assignment.developer_membership.user_id != request.user.id:
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    assignment = start_assignment(assignment=assignment)
+    assignment = start_assignment(assignment=assignment, started_by=request.user)
 
     return JsonResponse({
         "assignment": _serialize_assignment(assignment)
+    })
+
+
+@login_required
+def update_github_info_api(request, assignment_id: int):
+    if request.method != "PATCH":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+
+    assignment = get_object_or_404(TaskAssignment, id=assignment_id)
+
+    is_assigned_dev = assignment.developer_membership.user_id == request.user.id
+    is_project_eval = assignment.project.evaluator_id == request.user.id
+    if not (is_assigned_dev or is_project_eval or is_admin(request.user)):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    body = _parse_json_body(request)
+    github_branch = body.get("github_branch") or body.get("githubBranch")
+    github_pr_number = body.get("github_pr_number") or body.get("githubPrNumber")
+    github_pr_url = body.get("github_pr_url") or body.get("githubPrUrl")
+
+    if github_branch is not None:
+        assignment.github_branch = github_branch
+    if github_pr_number is not None:
+        try:
+            assignment.github_pr_number = int(github_pr_number) if github_pr_number else None
+        except ValueError:
+            return JsonResponse({"detail": "github_pr_number must be an integer."}, status=400)
+    if github_pr_url is not None:
+        assignment.github_pr_url = github_pr_url
+
+    assignment.save()
+
+    return JsonResponse({
+        "message": "GitHub details updated successfully.",
+        "assignment": _serialize_assignment(assignment),
     })
 
 

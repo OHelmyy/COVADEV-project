@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ConfirmModal from "../../../components/ConfirmModal";
 import ErrorModal from "../../../components/ErrorModal";
@@ -20,10 +20,11 @@ import RunsTab from "../components/project-detail/tabs/RunsTab";
 import MembersTab from "../components/project-detail/tabs/MembersTab";
 import MyTasksTab from "../components/project-detail/tabs/MyTasksTab";
 import DevSubmissionsTab from "../components/project-detail/tabs/DevSubmissionsTab";
+import GitHubTab from "../components/project-detail/tabs/GitHubTab";
 import { useProjectDetail } from "../hooks/useProjectDetail";
 import { normalizeBpmnMeta } from "../utils/projectDetail";
 import { buildProjectErrorFromText } from "../utils/projectError";
-import { Card } from "../components/project-detail/ProjectUi";
+import { Card, SubTabs } from "../components/project-detail/ProjectUi";
 import { ui } from "../../../theme/ui";
 
 export default function ProjectDetailPage() {
@@ -31,6 +32,20 @@ export default function ProjectDetailPage() {
   const projectId = Number(projectIdParam);
 
   const vm = useProjectDetail(projectId);
+
+  const [subTabState, setSubTabState] = useState<Record<string, string>>({
+    overview: "overview",
+    data: "uploads",
+    tasks: "taskManagement",
+    analysis: "results",
+    report: "report",
+  });
+
+  const activeSubTab = subTabState[vm.activeTab] || "";
+
+  const handleSubTabChange = (key: string) => {
+    setSubTabState(prev => ({ ...prev, [vm.activeTab]: key }));
+  };
 
   useEffect(() => {
     if (vm.compareError) {
@@ -133,134 +148,180 @@ export default function ProjectDetailPage() {
         ) : null}
 
         {vm.activeTab === "overview" ? (
-          <OverviewTab
-            projectName={vm.data.project.name}
-            description={vm.data.project.description}
-            role={vm.data.membership.role}
-            isAdmin={vm.roleFlags.isAdmin}
-            activeBpmnName={vm.data.activeUploads.activeBpmn?.originalName}
-            activeCodeName={vm.data.activeUploads.activeCode?.originalName}
-            codeFilesCount={vm.data.counts.codeFiles}
-            tasksCount={vm.data.counts.tasks}
-            matchesCount={vm.data.counts.matches}
-            githubRepoUrl={vm.data.project.github_repo_url}
-            onUpdateGithubUrl={vm.onUpdateGithubUrl}
-            onDeleteProject={vm.onDeleteProject}
-          />
+          <>
+            <SubTabs
+              tabs={[
+                { key: "overview", label: "Overview" },
+                { key: "members", label: "Members" },
+              ]}
+              active={activeSubTab}
+              onChange={handleSubTabChange}
+            />
+            {activeSubTab === "overview" && (
+              <OverviewTab
+                projectName={vm.data.project.name}
+                description={vm.data.project.description}
+                role={vm.data.membership.role}
+                isAdmin={vm.roleFlags.isAdmin}
+                activeBpmnName={vm.data.activeUploads.activeBpmn?.originalName}
+                activeCodeName={vm.data.activeUploads.activeCode?.originalName}
+                codeFilesCount={vm.data.counts.codeFiles}
+                tasksCount={vm.data.counts.tasks}
+                matchesCount={vm.data.counts.matches}
+                onDeleteProject={vm.onDeleteProject}
+              />
+            )}
+            {activeSubTab === "members" && (
+              <MembersTab
+                projectId={vm.data.project.id}
+                initialMembers={vm.data.members}
+                currentUserRole={vm.data.membership?.role}
+              />
+            )}
+          </>
         ) : null}
 
-        {vm.activeTab === "bpmnCheck" ? (
-          <BpmnCheckTab
-            activeBpmn={vm.data.activeUploads.activeBpmn}
-            isWellFormed={isWellFormed}
-            precheckWarnings={precheckWarnings}
-            precheckErrors={precheckErrors}
-            bpmnSummary={bpmnSummary}
-          />
+        {vm.activeTab === "data" ? (
+          <>
+            <SubTabs
+              tabs={[
+                { key: "uploads", label: "Uploads & Tools" },
+                { key: "bpmnCheck", label: "BPMN Check" },
+                { key: "recommendations", label: "Recommendations" },
+              ]}
+              active={activeSubTab}
+              onChange={handleSubTabChange}
+            />
+            {activeSubTab === "uploads" && (
+              <UploadsTab
+                canUploadBpmn={vm.permissions.canUploadBpmn}
+                canUploadCode={vm.permissions.canUploadCode}
+                canRunAnalysis={vm.permissions.canRunAnalysis}
+                bpmnFile={vm.bpmnFile}
+                codeZip={vm.codeZip}
+                setBpmnFile={vm.setBpmnFile}
+                setCodeZip={vm.setCodeZip}
+                onUploadBpmn={vm.onUploadBpmn}
+                onUploadCode={vm.onUploadCode}
+                onRunAnalysis={vm.onRunAnalysis}
+                projectId={projectId}
+              />
+            )}
+            {activeSubTab === "bpmnCheck" && (
+              <BpmnCheckTab
+                activeBpmn={vm.data.activeUploads.activeBpmn}
+                isWellFormed={isWellFormed}
+                precheckWarnings={precheckWarnings}
+                precheckErrors={precheckErrors}
+                bpmnSummary={bpmnSummary}
+              />
+            )}
+            {activeSubTab === "recommendations" && (
+              <RecommendationsTab
+                recState={vm.recState}
+                recError={vm.recError}
+                recommendations={vm.recommendations}
+                recUpdatedAt={vm.recUpdatedAt}
+                hasSummary={vm.hasSummary}
+                canGenerate={vm.roleFlags.isEvaluator || vm.roleFlags.isAdmin}
+                onRefresh={vm.loadRecommendations}
+                onGenerate={vm.onGenerateRecommendations}
+                onRetry={vm.loadRecommendations}
+              />
+            )}
+          </>
         ) : null}
 
-        {vm.activeTab === "bpmnDiagram" ? (
-          <BpmnDiagramTab
-          projectId={projectId}
-          canEdit={vm.roleFlags.isEvaluator || vm.roleFlags.isAdmin}
-        />
+        {vm.activeTab === "tasks" ? (
+          <>
+            <SubTabs
+              tabs={[
+                { key: "taskManagement", label: "Task Management" },
+                { key: "devSubmissions", label: "Dev Submissions" },
+                { key: "aiRuns", label: "AI Runs" },
+                { key: "github", label: "GitHub" },
+              ]}
+              active={activeSubTab}
+              onChange={handleSubTabChange}
+            />
+            {activeSubTab === "taskManagement" && (
+              <Card>
+                <TaskManagementTab projectId={projectId} isAdmin={vm.roleFlags.isAdmin} />
+              </Card>
+            )}
+            {activeSubTab === "devSubmissions" && <DevSubmissionsTab projectId={projectId} />}
+            {activeSubTab === "aiRuns" && (
+              <Card>
+                <AiRunsTab projectId={projectId} />
+              </Card>
+            )}
+            {activeSubTab === "github" && <GitHubTab projectId={projectId} isAdmin={vm.roleFlags.isAdmin} />}
+          </>
         ) : null}
 
-        {vm.activeTab === "taskManagement" ? (
-          <Card>
-            <TaskManagementTab projectId={projectId} />
-          </Card>
-        ) : null}
-        
-        {vm.activeTab === "aiRuns" ? (
-          <Card>
-            <AiRunsTab projectId={projectId} />
-          </Card>
-        ) : null}
-        {vm.activeTab === "myTasks" ? (
-          <MyTasksTab projectId={projectId} />
-        ) : null}
-
-        {vm.activeTab === "devSubmissions" ? (
-          <DevSubmissionsTab projectId={projectId} />
-        ) : null}
-
-        {vm.activeTab === "uploads" ? (
-          <UploadsTab
-            canUploadBpmn={vm.permissions.canUploadBpmn}
-            canUploadCode={vm.permissions.canUploadCode}
-            canRunAnalysis={vm.permissions.canRunAnalysis}
-            bpmnFile={vm.bpmnFile}
-            codeZip={vm.codeZip}
-            setBpmnFile={vm.setBpmnFile}
-            setCodeZip={vm.setCodeZip}
-            onUploadBpmn={vm.onUploadBpmn}
-            onUploadCode={vm.onUploadCode}
-            onRunAnalysis={vm.onRunAnalysis}
-            githubRepoUrl={vm.data.project.github_repo_url}
-            onFetchGithubCode={vm.onFetchGithubCode}
-          />
-        ) : null}
-
-        {vm.activeTab === "results" ? (
-          <ResultsTab
-            resultsLoading={vm.resultsLoading}
-            resultsError={vm.resultsError}
-            tasksCount={vm.tasks.length}
-            matched={vm.matched}
-            missing={vm.missing}
-            extra={vm.extra}
-            coverage={vm.coverage}
-            scoreAvg={vm.scoreAvg}
-            files={vm.files}
-            onRefresh={vm.loadResults}
-          />
-        ) : null}
-
-        {vm.activeTab === "compare" ? (
-          <CompareTab
-            compareLoading={vm.compareLoading}
-            compareError={vm.compareError}
-            bpmnCompare={vm.bpmnCompare}
-            codeCompare={vm.codeCompare}
-            onRefresh={vm.loadCompare}
-          />
-        ) : null}
-
-        {vm.activeTab === "recommendations" ? (
-          <RecommendationsTab
-            recState={vm.recState}
-            recError={vm.recError}
-            recommendations={vm.recommendations}
-            recUpdatedAt={vm.recUpdatedAt}
-            hasSummary={vm.hasSummary}
-            canGenerate={vm.roleFlags.isEvaluator || vm.roleFlags.isAdmin}
-            onRefresh={vm.loadRecommendations}
-            onGenerate={vm.onGenerateRecommendations}
-            onRetry={vm.loadRecommendations}
-          />
+        {vm.activeTab === "analysis" ? (
+          <>
+            <SubTabs
+              tabs={[
+                { key: "results", label: "Results" },
+                { key: "compare", label: "Compare" },
+              ]}
+              active={activeSubTab}
+              onChange={handleSubTabChange}
+            />
+            {activeSubTab === "results" && (
+              <ResultsTab
+                resultsLoading={vm.resultsLoading}
+                resultsError={vm.resultsError}
+                tasksCount={vm.tasks.length}
+                matched={vm.matched}
+                missing={vm.missing}
+                extra={vm.extra}
+                coverage={vm.coverage}
+                scoreAvg={vm.scoreAvg}
+                files={vm.files}
+                onRefresh={vm.loadResults}
+              />
+            )}
+            {activeSubTab === "compare" && (
+              <CompareTab
+                compareLoading={vm.compareLoading}
+                compareError={vm.compareError}
+                bpmnCompare={vm.bpmnCompare}
+                codeCompare={vm.codeCompare}
+                onRefresh={vm.loadCompare}
+              />
+            )}
+          </>
         ) : null}
 
         {vm.activeTab === "report" ? (
-          <ReportTab
-            canViewReport={vm.permissions.canViewReport}
-            reportState={vm.reportState}
-            reportError={vm.reportError}
-            report={vm.report}
-            onRefresh={vm.loadReport}
-            onRetry={vm.loadReport}
-            onDownloadPdf={() => vm.downloadReport("pdf")}
-          />
+          <>
+            <SubTabs
+              tabs={[
+                { key: "report", label: "Report Document" },
+                { key: "runs", label: "Analysis Runs History" },
+              ]}
+              active={activeSubTab}
+              onChange={handleSubTabChange}
+            />
+            {activeSubTab === "report" && (
+              <ReportTab
+                canViewReport={vm.permissions.canViewReport}
+                reportState={vm.reportState}
+                reportError={vm.reportError}
+                report={vm.report}
+                onRefresh={vm.loadReport}
+                onRetry={vm.loadReport}
+                onDownloadPdf={() => vm.downloadReport("pdf")}
+              />
+            )}
+            {activeSubTab === "runs" && <RunsTab runs={vm.data.runs} />}
+          </>
         ) : null}
 
-        {vm.activeTab === "runs" ? <RunsTab runs={vm.data.runs} /> : null}
-
-        {vm.activeTab === "members" ? (
-          <MembersTab
-            projectId={vm.data.project.id}
-            initialMembers={vm.data.members}
-            currentUserRole={vm.data.membership?.role}
-          />
+        {vm.activeTab === "myTasks" ? (
+          <MyTasksTab projectId={projectId} />
         ) : null}
 
         <ConfirmModal

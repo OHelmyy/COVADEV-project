@@ -13,8 +13,11 @@ class TaskAssignment(models.Model):
         ASSIGNED = "ASSIGNED", "Assigned"
         IN_PROGRESS = "IN_PROGRESS", "In Progress"
         SUBMITTED = "SUBMITTED", "Submitted"
+        UNDER_REVIEW = "UNDER_REVIEW", "Under Review"
+        NEEDS_CHANGES = "NEEDS_CHANGES", "Needs Changes"
         ACCEPTED = "ACCEPTED", "Accepted"
         REJECTED = "REJECTED", "Rejected"
+        MERGED = "MERGED", "Merged"
 
     project = models.ForeignKey(
         Project,
@@ -36,6 +39,10 @@ class TaskAssignment(models.Model):
         on_delete=models.CASCADE,
         related_name="assigned_tasks"
     )
+
+    github_branch = models.CharField(max_length=255, blank=True, default="")
+    github_pr_number = models.IntegerField(null=True, blank=True)
+    github_pr_url = models.URLField(max_length=500, blank=True, default="")
 
     status = models.CharField(
         max_length=20,
@@ -312,3 +319,53 @@ class DeveloperSubmission(models.Model):
 
     def __str__(self):
         return f"DevSubmission(assignment={self.assignment_id}, attempt={self.attempt_number}, status={self.status})"
+
+
+class TaskSubmission(models.Model):
+    assignment = models.ForeignKey(
+        TaskAssignment,
+        on_delete=models.CASCADE,
+        related_name="submissions"
+    )
+    submitted_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="task_submissions"
+    )
+    github_branch = models.CharField(max_length=255)
+    github_pr_number = models.IntegerField(null=True, blank=True)
+    github_pr_url = models.URLField(max_length=500, null=True, blank=True)
+    submission_note = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=50)
+    
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"TaskSubmission(assignment={self.assignment_id}, status={self.status})"
+
+
+class TaskStatusLog(models.Model):
+    assignment = models.ForeignKey(
+        TaskAssignment,
+        on_delete=models.CASCADE,
+        related_name="status_logs"
+    )
+    old_status = models.CharField(max_length=50)
+    new_status = models.CharField(max_length=50)
+    changed_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="status_logs"
+    )
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"TaskStatusLog(assignment={self.assignment_id}, {self.old_status} -> {self.new_status})"

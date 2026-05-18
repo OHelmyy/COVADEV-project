@@ -18,6 +18,7 @@ from apps.task_management.api import (
     my_notifications_api,
     mark_notification_read_api,
     mark_all_notifications_read_api,
+    update_github_info_api,
 )
 
 
@@ -36,7 +37,9 @@ urlpatterns = [
     path("task-assignments/<int:assignment_id>/auto-evaluate/", auto_evaluate_task_assignment_api, name="auto_evaluate_task_assignment_api"),
     path("task-assignments/<int:assignment_id>/ai-submission/", ai_submission_api, name="ai_submission_api"),
     path("task-assignments/<int:assignment_id>/ai-retry/", retry_ai_assignment_api, name="retry_ai_assignment_api"),
+    path("task-assignments/<int:assignment_id>/github-info/", update_github_info_api, name="update_github_info_api"),
     path("task-assignments/my/", my_task_assignments_api),
+    path("my/task-assignments/", my_task_assignments_api),
     path("task-assignments/<int:assignment_id>/ai-submission.zip/",ai_submission_zip_api,name="ai_submission_zip_api",),
     
     # Reporting / notifications

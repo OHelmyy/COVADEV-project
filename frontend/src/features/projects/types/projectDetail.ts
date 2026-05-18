@@ -44,19 +44,11 @@ export type CompareCodeFn = {
 
 export type TabKey =
   | "overview"
-  | "uploads"
-  | "results"
-  | "recommendations"
-  | "compare"
-  | "runs"
-  | "members"
-  | "bpmnCheck"
-  | "bpmnDiagram"
-  | "taskManagement"
-  | "aiRuns"
+  | "data"
+  | "tasks"
+  | "analysis"
   | "report"
-  | "myTasks"
-  | "devSubmissions";
+  | "myTasks";
 
 export type TraceRow = {
   taskId: string;

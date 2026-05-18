@@ -15,8 +15,6 @@ export default function ProjectCreatePage() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [threshold, setThreshold] = useState("0.6");
-  const [githubRepoUrl, setGithubRepoUrl] = useState("");
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [evaluatorId, setEvaluatorId] = useState<number | "">("");
@@ -79,8 +77,7 @@ export default function ProjectCreatePage() {
       const created = await createProject({
         name,
         description,
-        similarity_threshold: Number(threshold),
-        github_repo_url: githubRepoUrl,
+        similarity_threshold: 0.6,
         evaluatorEmail: evaluator.email.trim().toLowerCase(),
         developerEmails: devEmails,
       });
@@ -93,7 +90,8 @@ export default function ProjectCreatePage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 880 }}>
+    <div style={{ minHeight: "100vh", padding: "40px 20px", display: "flex", justifyContent: "center", background: "radial-gradient(circle at top right, rgba(6,182,212,0.07), transparent 22%), radial-gradient(circle at top left, rgba(109,40,217,0.05), transparent 18%), #f4f7fb" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", maxWidth: 880 }}>
       <div
         style={{
           ...cardBase,
@@ -142,27 +140,6 @@ export default function ProjectCreatePage() {
                   fontFamily: "inherit",
                 }}
                 placeholder="Enter project description"
-              />
-            </label>
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ color: ui.colors.textSoft, fontWeight: 700 }}>
-                Similarity threshold (0–1)
-              </span>
-              <input
-                value={threshold}
-                onChange={(e) => setThreshold(e.target.value)}
-                style={{ ...inputBase, width: "100%" }}
-              />
-            </label>
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ color: ui.colors.textSoft, fontWeight: 700 }}>GitHub Repository URL (optional)</span>
-              <input
-                value={githubRepoUrl}
-                onChange={(e) => setGithubRepoUrl(e.target.value)}
-                style={{ ...inputBase, width: "100%" }}
-                placeholder="https://github.com/owner/repo"
               />
             </label>
           </div>
@@ -274,6 +251,7 @@ export default function ProjectCreatePage() {
           </button>
         </div>
       </form>
+      </div>
     </div>
   );
 }

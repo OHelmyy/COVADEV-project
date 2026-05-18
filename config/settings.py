@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'apps.analysis',
     'apps.reports',
     'apps.task_management',
+    'apps.github_integration',
 ]
 
 MIDDLEWARE = [

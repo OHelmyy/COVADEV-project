@@ -36,27 +36,22 @@ export function getPermissions(flags: ProjectRoleFlags): ProjectPermissions {
 export function getTabs(
   isAdmin: boolean,
   canViewReport: boolean,
-  isDeveloper: boolean = false
+  isDeveloper: boolean = false,
+  isEvaluator: boolean = false
 ): ProjectTabItem[] {
   // Developers only see My Tasks
   if (isDeveloper) {
-    return [{ key: "myTasks", label: "My Tasks", visible: true }];
+    return [
+      { key: "myTasks", label: "My Tasks", visible: true },
+    ];
   }
 
   const all: ProjectTabItem[] = [
     { key: "overview", label: "Overview", visible: true },
-    { key: "uploads", label: "Uploads & Analysis", visible: !isAdmin },
-    { key: "bpmnCheck", label: "BPMN Check", visible: true },
-    { key: "bpmnDiagram", label: "BPMN Diagram", visible: true },
-    { key: "taskManagement", label: "Task Management", visible: true },
-    { key: "aiRuns", label: "AI Runs", visible: true },
-    { key: "devSubmissions", label: "Dev Submissions", visible: true },
-    { key: "results", label: "Results", visible: true },
-    { key: "compare", label: "Compare", visible: true },
-    { key: "recommendations", label: "Recommendations", visible: true },
-    { key: "report", label: "Report", visible: canViewReport },
-    { key: "runs", label: "Runs", visible: true },
-    { key: "members", label: "Members", visible: true },
+    { key: "data", label: "Data & Integration", visible: !isAdmin },
+    { key: "tasks", label: "Tasks & Submissions", visible: true },
+    { key: "analysis", label: "Analysis & Results", visible: true },
+    { key: "report", label: "Reports & History", visible: true },
   ];
 
   return all.filter((tab) => tab.visible);
@@ -234,6 +229,7 @@ export const th: React.CSSProperties = {
 export const td: React.CSSProperties = {
   padding: "10px 8px",
   borderBottom: "1px solid #f3f3f3",
+  wordBreak: "break-word",
 };
 
 export const codeboxStyle: React.CSSProperties = {
@@ -241,6 +237,7 @@ export const codeboxStyle: React.CSSProperties = {
   maxHeight: 160,
   overflow: "auto",
   whiteSpace: "pre-wrap",
+  wordBreak: "break-all",
   background: "#0b0f1a",
   color: "#e5e7eb",
   padding: 10,
