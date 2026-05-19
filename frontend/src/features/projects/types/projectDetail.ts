@@ -48,7 +48,11 @@ export type TabKey =
   | "tasks"
   | "analysis"
   | "report"
-  | "myTasks";
+  | "myTasks"
+  | "devOverview"
+  | "devBpmn"
+  | "devRecommendations"
+  | "devHistory";
 
 export type TraceRow = {
   taskId: string;

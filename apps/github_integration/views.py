@@ -171,6 +171,30 @@ class GitHubCreateBranchView(GitHubBaseView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+
+
+def _reindex_default_branch_async(service, repo, project_id, user):
+    """
+    After a PR merge, re-download and re-index the default branch in a
+    background thread so the AI's codebase context stays up to date.
+    Failures are silent — this is best-effort.
+    """
+    import threading
+    from apps.projects.services import save_code_zip_and_extract
+    from apps.projects.models import Project
+    from django.core.files.base import ContentFile
+
+    def _run():
+        try:
+            project = Project.objects.get(id=project_id)
+            branch = (repo.default_branch or "main").strip()
+            zip_content = service.download_zipball(repo.owner, repo.repo_name, branch)
+            zip_file = ContentFile(zip_content, name=f"{repo.repo_name}-{branch}.zip")
+            save_code_zip_and_extract(project, zip_file, user)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
 class GitHubMergePullRequestView(GitHubBaseView):
     """
     Merge a pull request.
@@ -188,6 +212,7 @@ class GitHubMergePullRequestView(GitHubBaseView):
                 commit_title=commit_title, 
                 commit_message=commit_message
             )
+            _reindex_default_branch_async(service, repo, project_id, request.user)
             return Response(result, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

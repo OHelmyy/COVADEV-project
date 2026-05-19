@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card } from "../ProjectUi";
 import { fetchAndIndexGitHubBranch } from "../../../../../api/github";
+import { ui, inputBase } from "../../../../../theme/ui";
 
 type Props = {
   canUploadBpmn: boolean;
@@ -13,7 +14,9 @@ type Props = {
   onUploadBpmn: () => void;
   onUploadCode: () => void;
   onRunAnalysis: () => void;
+  onFetchGithubCode: (branch: string) => void;
   projectId: number;
+  githubRepoUrl?: string;
 };
 
 export default function UploadsTab({
@@ -27,10 +30,13 @@ export default function UploadsTab({
   onUploadBpmn,
   onUploadCode,
   onRunAnalysis,
+  onFetchGithubCode,
   projectId,
+  githubRepoUrl,
 }: Props) {
   const [fetchingGithub, setFetchingGithub] = useState(false);
   const [githubMsg, setGithubMsg] = useState("");
+  const [branch, setBranch] = useState("main");
 
   const handleFetchGithub = async () => {
     setFetchingGithub(true);

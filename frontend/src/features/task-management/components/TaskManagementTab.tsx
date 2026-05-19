@@ -69,7 +69,7 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
     });
   }
 
-  async function handleAssignmentChanged(assignmentId?: number, newAssignment?: any) {
+  async function handleAssignmentChanged(_assignmentId?: number, newAssignment?: any) {
     if (newAssignment && newAssignment.task?.id) {
       setTaskAssignments((prev) => {
         const next = prev.map((item) => {
@@ -150,6 +150,7 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (projectId) {
       loadAll();
@@ -334,7 +335,7 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
                   return (
                     <option key={item.task.id} value={item.task.id} disabled={isAssigned} style={{ padding: 6 }}>
                       {isAssigned ? "🔒 [Assigned] " : "🟢 [Available] "}
-                      {item.task.name} {isAssigned ? `(${item.assignment.status})` : ""}
+                      {item.task.name} {isAssigned ? `(${item.assignment?.status})` : ""}
                     </option>
                   );
                 })}

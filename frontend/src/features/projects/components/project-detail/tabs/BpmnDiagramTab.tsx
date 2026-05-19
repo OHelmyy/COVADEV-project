@@ -189,8 +189,18 @@ export default function BpmnDiagramTab({ projectId, canEdit }: Props) {
 
       const xml = await res.text();
 
+      // if (!res.ok) {
+      //   throw new Error(xml || "Failed to load BPMN XML.");
+      // }
       if (!res.ok) {
-        throw new Error(xml || "Failed to load BPMN XML.");
+        let msg = "Failed to load BPMN XML.";
+        try {
+          const parsed = JSON.parse(xml);
+          msg = parsed.error || parsed.detail || msg;
+        } catch {
+          if (xml.trim()) msg = xml;
+        }
+        throw new Error(msg);
       }
 
       if (!containerRef.current) return;
@@ -269,6 +279,7 @@ export default function BpmnDiagramTab({ projectId, canEdit }: Props) {
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadBpmnXml();
 

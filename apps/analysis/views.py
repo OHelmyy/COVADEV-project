@@ -273,6 +273,104 @@ def project_bpmn_diagram(request, project_id: int):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+def _auto_add_bpmn_di(xml_text: str) -> str:
+    import xml.etree.ElementTree as ET
+    from io import StringIO
+
+    BPMN   = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+    BPMNDI = "http://www.omg.org/spec/BPMN/20100524/DI"
+    DC     = "http://www.omg.org/spec/DD/20100524/DC"
+    DI_NS  = "http://www.omg.org/spec/DD/20100524/DI"
+
+    for prefix, uri in [("", BPMN), ("bpmndi", BPMNDI), ("dc", DC), ("di", DI_NS)]:
+        ET.register_namespace(prefix, uri)
+
+    try:
+        tree = ET.parse(StringIO(xml_text))
+    except ET.ParseError:
+        return xml_text
+
+    root = tree.getroot()
+    process = root.find(f"{{{BPMN}}}process")
+    if process is None:
+        return xml_text
+    process_id = process.get("id", "Process_1")
+
+    SHAPE_SIZES = {
+        f"{{{BPMN}}}startEvent": (36,36), f"{{{BPMN}}}endEvent": (36,36),
+        f"{{{BPMN}}}intermediateThrowEvent": (36,36), f"{{{BPMN}}}intermediateCatchEvent": (36,36),
+        f"{{{BPMN}}}boundaryEvent": (36,36),
+        f"{{{BPMN}}}task": (100,80), f"{{{BPMN}}}userTask": (100,80),
+        f"{{{BPMN}}}serviceTask": (100,80), f"{{{BPMN}}}scriptTask": (100,80),
+        f"{{{BPMN}}}manualTask": (100,80), f"{{{BPMN}}}businessRuleTask": (100,80),
+        f"{{{BPMN}}}sendTask": (100,80), f"{{{BPMN}}}receiveTask": (100,80),
+        f"{{{BPMN}}}callActivity": (100,80), f"{{{BPMN}}}subProcess": (350,200),
+        f"{{{BPMN}}}exclusiveGateway": (50,50), f"{{{BPMN}}}parallelGateway": (50,50),
+        f"{{{BPMN}}}inclusiveGateway": (50,50), f"{{{BPMN}}}eventBasedGateway": (50,50),
+        f"{{{BPMN}}}complexGateway": (50,50),
+    }
+
+    elements, flows = [], []
+    for child in process:
+        eid = child.get("id")
+        if not eid:
+            continue
+        if child.tag in SHAPE_SIZES:
+            w, h = SHAPE_SIZES[child.tag]
+            elements.append((eid, w, h))
+        elif child.tag == f"{{{BPMN}}}sequenceFlow":
+            src, tgt = child.get("sourceRef",""), child.get("targetRef","")
+            if src and tgt:
+                flows.append((eid, src, tgt))
+
+    if not elements:
+        return xml_text
+
+    adj    = {e[0]: [] for e in elements}
+    in_deg = {e[0]: 0  for e in elements}
+    for _, src, tgt in flows:
+        if src in adj and tgt in adj:
+            adj[src].append(tgt); in_deg[tgt] += 1
+
+    queue = [e[0] for e in elements if in_deg[e[0]] == 0]
+    ordered, seen = [], set()
+    while queue:
+        node = queue.pop(0)
+        if node in seen: continue
+        seen.add(node); ordered.append(node)
+        for nb in adj.get(node, []):
+            in_deg[nb] -= 1
+            if in_deg[nb] == 0: queue.append(nb)
+    for eid, _, _ in elements:
+        if eid not in seen: ordered.append(eid)
+
+    elem_map = {e[0]: (e[1], e[2]) for e in elements}
+    positions, x = {}, 100
+    for eid in ordered:
+        if eid not in elem_map: continue
+        w, h = elem_map[eid]
+        positions[eid] = (x, 200 - h // 2, w, h)
+        x += w + 80
+
+    diag  = ET.SubElement(root,  f"{{{BPMNDI}}}BPMNDiagram", {"id": "BPMNDiagram_auto", "name": "diagram"})
+    plane = ET.SubElement(diag,  f"{{{BPMNDI}}}BPMNPlane",   {"id": "BPMNPlane_auto", "bpmnElement": process_id})
+
+    for eid, (ex, ey, ew, eh) in positions.items():
+        shape = ET.SubElement(plane, f"{{{BPMNDI}}}BPMNShape", {"id": f"shape_{eid}", "bpmnElement": eid})
+        ET.SubElement(shape, f"{{{DC}}}Bounds", {"x": str(ex), "y": str(ey), "width": str(ew), "height": str(eh)})
+
+    for fid, src, tgt in flows:
+        if src in positions and tgt in positions:
+            sx, sy, sw, sh = positions[src]
+            tx, ty, _, th  = positions[tgt]
+            edge = ET.SubElement(plane, f"{{{BPMNDI}}}BPMNEdge", {"id": f"edge_{fid}", "bpmnElement": fid})
+            ET.SubElement(edge, f"{{{DI_NS}}}waypoint", {"x": str(sx+sw), "y": str(sy+sh//2)})
+            ET.SubElement(edge, f"{{{DI_NS}}}waypoint", {"x": str(tx),    "y": str(ty+th//2)})
+
+    return ET.tostring(root, encoding="unicode")
+
+
 @login_required
 @require_GET
 def project_bpmn_xml(request, project_id: int):
@@ -295,16 +393,18 @@ def project_bpmn_xml(request, project_id: int):
     xml_text = bpmn_path.read_text(encoding="utf-8")
 
     # ✅ Check if BPMN has visual diagram layout
+    # if "BPMNDiagram" not in xml_text:
+    #     return JsonResponse(
+    #         {
+    #             "error": (
+    #                 "This BPMN file is valid but has no BPMN diagram layout "
+    #                 "(BPMN DI). Please upload a BPMN exported from a BPMN modeler."
+    #             )
+    #         },
+    #         status=400,
+    #     )
     if "BPMNDiagram" not in xml_text:
-        return JsonResponse(
-            {
-                "error": (
-                    "This BPMN file is valid but has no BPMN diagram layout "
-                    "(BPMN DI). Please upload a BPMN exported from a BPMN modeler."
-                )
-            },
-            status=400,
-        )
+       xml_text = _auto_add_bpmn_di(xml_text)
 
     return HttpResponse(
         xml_text,

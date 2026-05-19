@@ -24,57 +24,62 @@ EXECUTOR_MODEL_NAME = os.environ.get(
 )
 
 
-SYSTEM_PROMPT = """You are an autonomous Python developer agent.
+SYSTEM_PROMPT = """You are a Python developer working INSIDE an existing Django project codebase.
 
-You are given ONE software task. You must produce the Python code that implements it.
+You are given ONE software task to implement. Your code must integrate directly into the existing project — not standalone or generic code.
 
-HARD RULES (must follow exactly):
+HARD RULES:
 - You ONLY write Python. Never produce other languages.
 - Reply with ONE JSON object. No markdown fences, no commentary outside the JSON.
 - The JSON shape MUST be exactly:
   {
-    "explanation": "<2-4 sentence summary of what you produced and any assumptions>",
+    "explanation": "<2-4 sentence summary of what you produced, which files you changed/created, and how it connects to the existing code>",
     "files": [
-      {"filename": "<snake_case_name>.py", "language": "python", "content": "<full Python source>"}
+      {
+        "filepath": "<full project-relative path, e.g. apps/task_management/services/notify.py>",
+        "action": "create",
+        "content": "<full Python source>"
+      },
+      {
+        "filepath": "<path to existing file you are updating>",
+        "action": "update",
+        "content": "<complete updated file — not a diff, the full file>"
+      }
     ]
   }
-- "files" must contain at least one entry. All filenames must end with ".py".
-- Inside "content", use real newlines in the JSON string (escape them as \\n).
-- Do not include backticks. Do not wrap the JSON in ```json ... ```.
-- Produce importable library code ONLY. Do NOT include:
-  * "# Example usage:" blocks or similar demonstration sections.
-  * Sample object instantiations or fake data values at module scope.
-  * `if __name__ == "__main__":` blocks.
-  * `print(...)` calls that show how to use the function.
-  The module must contain only the requested functions/classes and their imports.
-- If the task is impossible or non-Python, still produce a Python module that documents why
-  (one file with a clear docstring explaining the limitation).
+- "files" must contain at least one entry.
+- "filepath" must be the full path relative to the project root (e.g. "apps/projects/models.py", NOT just "models.py").
+- "action" must be "create" (new file) or "update" (modifying an existing file shown in context).
+- For "update" files: provide the COMPLETE updated file content, not just the changed lines.
+- Inside "content", escape newlines as \\n.
+- Do not include backticks. Do not wrap JSON in ```json ... ```.
+- Do NOT add example usage blocks, if __name__ == "__main__" blocks, or print statements.
 
-STYLE GUIDELINES (follow unless the task explicitly says otherwise):
+INTEGRATION RULES (follow strictly):
+- Import from the EXACT module paths shown in the project context. Do NOT invent new module paths.
+- Use the EXACT model class names, field names, and method names you see in the provided models.py files.
+- Follow the same patterns you see in the existing code (class-based views, DRF Response objects, Django ORM, etc.).
+- If the task requires adding to an existing file (a new function in a service, a new URL pattern), include that file with action "update".
+- Your code must be ready to merge — no placeholder imports, no TODO stubs for integration points.
+
+STYLE GUIDELINES:
 - Use type hints on every function parameter and return value.
 - Add a concise docstring to every public function and class (one to three lines).
-- Use snake_case for functions and variables, PascalCase for classes, UPPER_SNAKE for constants.
-- Prefer small, single-purpose functions over long ones.
-- Use f-strings for string formatting; do not use % or .format() unless required.
-- Use dataclasses (with @dataclass) for plain data containers instead of tuples or dicts.
+- Use snake_case for functions/variables, PascalCase for classes, UPPER_SNAKE for constants.
+- Use f-strings for formatting.
+- Use dataclasses for plain data containers.
 - Validate inputs early and raise clear exceptions; never use bare except.
-- Do not print debug output; do not depend on global mutable state.
-- Use pathlib.Path for filesystem paths instead of string joins.
-- If the task implies a Django context, use Django ORM patterns (querysets, model methods,
-  transactions, signals) rather than raw SQL.
+- Use pathlib.Path for filesystem paths.
+- If the task implies a Django context, use Django ORM patterns (querysets, model methods, transactions).
 
-PROCESS HINTS (read the user message carefully before writing code).
-The user message may include PROJECT, PROJECT DESCRIPTION, BPMN PROCESS SUMMARY,
-SURROUNDING TASKS, EXISTING RELATED CODE, and the TASK itself.
-- The PROJECT and BPMN context tell you the domain; pick names and abstractions that fit it.
-- If EXISTING RELATED CODE is present, treat it as your project's actual codebase: reuse class
-  names, function names, and parameter conventions from those snippets. Do not invent parallel
-  abstractions if a similar one already exists. Import or call the existing classes/functions
-  explicitly when appropriate.
-- The SURROUNDING TASKS tell you what objects flow in from predecessors and out to successors.
-  Make your function signatures align with that data flow.
-- If the task description is sparse, infer the most plausible behavior from the BPMN context
-  and state your assumptions in the "explanation" field.
+PROCESS:
+The user message includes PROJECT, BPMN PROCESS SUMMARY, PROJECT FILE STRUCTURE, KEY PROJECT FILES, SURROUNDING TASKS, and the TASK.
+- PROJECT FILE STRUCTURE lists every file in the project — use these exact paths for imports and filepaths.
+- KEY PROJECT FILES shows full content of the most relevant files — use their imports, classes, and functions directly.
+- models.py content is always included — use the exact model names and fields you see there.
+- BPMN PROCESS SUMMARY tells you the domain; pick abstractions that fit it.
+- SURROUNDING TASKS tell you what flows in and out; align your signatures accordingly.
+- If the task description is sparse, infer the most plausible behavior from context and state assumptions in "explanation".
 """
 
 
@@ -132,15 +137,13 @@ def _build_user_prompt(
     task = assignment.bpmn_task
     project = assignment.project
 
-    parts = [
-        f"PROJECT: {project.name}",
-    ]
+    parts = [f"PROJECT: {project.name}"]
 
     project_description = (project.description or "").strip()
     if project_description:
         parts.append(f"PROJECT DESCRIPTION: {project_description}")
 
-    # --- Improvement 2: BPMN summary -------------------------------------
+    # BPMN summary
     bpmn_summary = ""
     active_bpmn = getattr(project, "active_bpmn", None)
     if active_bpmn is not None:
@@ -153,10 +156,37 @@ def _build_user_prompt(
         parts.append("BPMN PROCESS SUMMARY:")
         parts.append(bpmn_summary)
 
-    # --- Improvement 3: sibling tasks (BPMN flow context) ----------------
+    # File tree
+    try:
+        file_tree = _get_project_file_tree(project)
+    except Exception:
+        file_tree = ""
+
+    if file_tree:
+        parts.append("")
+        parts.append(
+            "PROJECT FILE STRUCTURE (every file in the project — use these exact paths for imports and new file locations):"
+        )
+        parts.append(file_tree)
+
+    # Full file contents (relevant files + models.py always)
+    try:
+        full_files = _get_full_file_contents(task, project)
+    except Exception:
+        full_files = []
+
+    if full_files:
+        parts.append("")
+        parts.append(
+            "KEY PROJECT FILES (read carefully — use these models, imports, and patterns exactly in your code):"
+        )
+        for filepath, content in full_files:
+            parts.append(f"\n--- {filepath} ---")
+            parts.append(content)
+
+    # Surrounding tasks
     incoming_ids = list(task.incoming_nodes or [])
     outgoing_ids = list(task.outgoing_nodes or [])
-
     predecessor_names: list[str] = []
     successor_names: list[str] = []
 
@@ -167,7 +197,6 @@ def _build_user_prompt(
             .exclude(id=task.id)
             .values_list("name", flat=True)
         )
-
     if outgoing_ids:
         successor_names = list(
             BpmnTask.objects
@@ -180,38 +209,14 @@ def _build_user_prompt(
         parts.append("")
         parts.append("SURROUNDING TASKS (BPMN flow context):")
         if predecessor_names:
-            parts.append(
-                f"- Predecessors (run before this task): {', '.join(predecessor_names)}"
-            )
+            parts.append(f"- Predecessors (run before this task): {', '.join(predecessor_names)}")
         if successor_names:
-            parts.append(
-                f"- Successors (run after this task): {', '.join(successor_names)}"
-            )
+            parts.append(f"- Successors (run after this task): {', '.join(successor_names)}")
 
-    # --- Improvement 5 (RAG): top-K related existing code snippets -------
-    try:
-        related = _get_related_code(task, project, k=8)
-    except Exception:
-        related = []
-
-    if related:
-        parts.append("")
-        parts.append(
-            "EXISTING RELATED CODE (most similar functions/classes already in the project; "
-            "reuse names and patterns where appropriate):"
-        )
-        for sim, artifact, snippet in related:
-            location = artifact.file_path or "(unknown file)"
-            symbol = artifact.symbol or "(unnamed)"
-            parts.append(f"--- {location} :: {symbol} (similarity {sim:.2f}) ---")
-            parts.append(snippet)
-
-    # --- TASK NAME / DESCRIPTION ------------------------------------------
+    # Task
     parts.append("")
     parts.append(f"TASK NAME: {task.name or '(unnamed task)'}")
-    parts.append(
-        f"TASK DESCRIPTION: {(task.description or '').strip() or '(no description)'}"
-    )
+    parts.append(f"TASK DESCRIPTION: {(task.description or '').strip() or '(no description)'}")
 
     if previous_attempt is not None:
         parts.append("")
@@ -235,6 +240,135 @@ def _build_user_prompt(
 
     return "\n".join(parts)
 
+
+
+def _get_project_file_tree(project, max_files: int = 300) -> str:
+    """
+    Return a sorted list of all indexed file paths in the project.
+    Used so the AI knows what modules exist and where to place new files.
+    """
+    from apps.projects.models import CodeFile
+
+    paths = list(
+        CodeFile.objects
+        .filter(project=project)
+        .values_list("relative_path", flat=True)
+        .order_by("relative_path")[:max_files]
+    )
+    return "\n".join(paths)
+
+
+def _get_full_file_contents(
+    task,
+    project,
+    max_relevant_files: int = 4,
+    max_chars_per_file: int = 3000,
+    total_char_budget: int = 14000,
+) -> list[tuple[str, str]]:
+    """
+    Return list of (filepath, content) for the most task-relevant files
+    plus all models.py files. Reads actual content from disk.
+    """
+    import numpy as np
+    from pathlib import Path
+    from apps.analysis.models import CodeEmbedding, TaskEmbedding
+    from apps.task_management.services.ai_match_service import _get_embedder
+
+    active_code = getattr(project, "active_code", None)
+    if active_code is None:
+        return []
+
+    extracted_dir = (getattr(active_code, "extracted_dir", "") or "").strip()
+    if not extracted_dir:
+        return []
+
+    extracted_path = Path(extracted_dir)
+    if not extracted_path.exists():
+        return []
+
+    # 1. Find most relevant file_paths via RAG (best score per file)
+    relevant_paths: list[str] = []
+    try:
+        task_emb = TaskEmbedding.objects.filter(project=project, bpmn_task=task).first()
+        if task_emb and task_emb.vector:
+            task_vector = task_emb.vector
+        else:
+            task_text = (task.summary_text or task.description or task.name or "").strip()
+            if task_text:
+                embedder = _get_embedder()
+                task_vector = embedder.embed_many([task_text])[0].vector
+            else:
+                task_vector = None
+
+        if task_vector is not None:
+            tv = np.asarray(task_vector, dtype=float)
+            tv_norm = float(np.linalg.norm(tv)) or 1e-9
+
+            code_embs = list(
+                CodeEmbedding.objects
+                .filter(project=project)
+                .select_related("code_artifact")
+            )
+
+            file_scores: dict[str, float] = {}
+            for ce in code_embs:
+                if not ce.vector:
+                    continue
+                fp = (ce.code_artifact.file_path or "").strip()
+                if not fp:
+                    continue
+                cv = np.asarray(ce.vector, dtype=float)
+                cv_norm = float(np.linalg.norm(cv)) or 1e-9
+                sim = float(np.dot(tv, cv) / (tv_norm * cv_norm))
+                if fp not in file_scores or sim > file_scores[fp]:
+                    file_scores[fp] = sim
+
+            relevant_paths = [
+                fp for fp, _ in sorted(file_scores.items(), key=lambda x: -x[1])[:max_relevant_files]
+            ]
+    except Exception:
+        pass
+
+    # 2. Always include models.py files
+    models_paths: list[str] = []
+    try:
+        for p in sorted(extracted_path.rglob("models*.py")):
+            rel = p.relative_to(extracted_path).as_posix()
+            if rel not in relevant_paths:
+                models_paths.append(rel)
+    except Exception:
+        pass
+
+    all_paths = models_paths + [p for p in relevant_paths if p not in models_paths]
+
+    # 3. Read file content from disk
+    result: list[tuple[str, str]] = []
+    budget = total_char_budget
+
+    for rel_path in all_paths:
+        if budget <= 0:
+            break
+        full_path = extracted_path / rel_path
+        if not full_path.exists() or not full_path.is_file():
+            continue
+        try:
+            content = full_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        content = content.strip()
+        if not content:
+            continue
+
+        if len(content) > max_chars_per_file:
+            content = content[:max_chars_per_file] + "\n... (truncated)"
+        if len(content) > budget:
+            content = content[:budget] + "\n... (truncated)"
+
+        result.append((rel_path, content))
+        budget -= len(content)
+
+    return result
 
 def _get_related_code(
     task,
@@ -461,16 +595,35 @@ def execute_ai_assignment(assignment_id: int) -> AISubmission:
     for index, raw_file in enumerate(data["files"]):
         if not isinstance(raw_file, dict):
             continue
-        filename = _safe_filename(
-            str(raw_file.get("filename", "")),
-            fallback=f"ai_output_{index + 1}.py",
+
+        # Support new format (filepath/action) and old format (filename)
+        filepath = (
+            str(raw_file.get("filepath", "") or raw_file.get("filename", "")).strip()
         )
+        if not filepath:
+            filepath = f"ai_output_{index + 1}.py"
+
+        # Sanitize each path segment but preserve directory structure
+        segments = filepath.replace("\\", "/").split("/")
+        clean_segments = [
+            re.sub(r"[^A-Za-z0-9_.\-]", "_", seg) for seg in segments if seg
+        ]
+        filepath = "/".join(clean_segments) if clean_segments else f"ai_output_{index + 1}.py"
+
+        # Ensure .py extension
+        if not filepath.endswith(".py"):
+            base = filepath.rsplit(".", 1)[0] if "." in filepath.split("/")[-1] else filepath
+            filepath = base + ".py"
+
+        filepath = filepath[:500]  # safety cap
+
         content = str(raw_file.get("content", ""))
         if not content.strip():
             continue
+
         AIGeneratedFile.objects.create(
             submission=submission,
-            filename=filename,
+            filename=filepath,
             language="python",
             content=content,
         )

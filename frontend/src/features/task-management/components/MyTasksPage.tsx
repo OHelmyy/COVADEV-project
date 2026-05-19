@@ -48,6 +48,7 @@ export default function MyTasksTab() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [submitMethod, setSubmitMethod] = useState<Record<number, "github" | "zip">>({});
   const [prNumber, setPrNumber] = useState<Record<number, string>>({});
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [prUrl, setPrUrl] = useState<Record<number, string>>({});
   const [subNote, setSubNote] = useState<Record<number, string>>({});
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
@@ -82,6 +83,7 @@ export default function MyTasksTab() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadMyTasks();
   }, []);
@@ -159,7 +161,7 @@ export default function MyTasksTab() {
           padding: "6px 10px",
           borderRadius: 999,
           background: tone.bg,
-          color: tone.color,
+          color: tone.fg,
           fontWeight: 800,
           fontSize: 12,
           border: `1px solid ${ui.colors.border}`,

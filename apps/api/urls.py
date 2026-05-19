@@ -20,6 +20,9 @@ from apps.api.projects_api.developer_submission_views import (
     api_dev_submission_reject,
     api_dev_submission_reassign,
     api_dev_submission_download,
+    api_dev_submission_file_tree,
+    api_dev_submission_file_content,
+    api_github_pr_accept,
 )
 from apps.api.projects_api.upload_views import (
     api_upload_bpmn,
@@ -74,10 +77,11 @@ urlpatterns = [
     path("projects/<int:project_id>/report/", api_project_report, name="project_report"),
     path("projects/<int:project_id>/recommendations/", api_project_recommendations, name="project_recommendations"),
     path("projects/<int:project_id>/bpmn-diagram/", analysis_views.project_bpmn_diagram, name="project_bpmn_diagram"),
-    path("projects/<int:project_id>/bpmn-xml/",analysis_views.project_bpmn_xml,name="project_bpmn_xml",),
-    path("projects/<int:project_id>/bpmn-diagnostics/",analysis_views.project_bpmn_diagnostics,name="project_bpmn_diagnostics",),
-    path("projects/<int:project_id>/bpmn-save-fixed/",analysis_views.save_fixed_bpmn,name="bpmn_save_fixed",),
-    path("projects/<int:project_id>/bpmn-match-status/",analysis_views.project_bpmn_match_status,name="project_bpmn_match_status",),
+    path("projects/<int:project_id>/bpmn-xml/", analysis_views.project_bpmn_xml, name="project_bpmn_xml"),
+    path("projects/<int:project_id>/bpmn-diagnostics/", analysis_views.project_bpmn_diagnostics, name="project_bpmn_diagnostics"),
+    path("projects/<int:project_id>/bpmn-save-fixed/", analysis_views.save_fixed_bpmn, name="bpmn_save_fixed"),
+    path("projects/<int:project_id>/bpmn-match-status/", analysis_views.project_bpmn_match_status, name="project_bpmn_match_status"),
+
     # Dashboard
     path("reports/dashboard/", analysis_views.dashboard_stats, name="dashboard_stats"),
 
@@ -95,7 +99,9 @@ urlpatterns = [
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/reject/", api_dev_submission_reject, name="dev_submission_reject"),
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/reassign/", api_dev_submission_reassign, name="dev_submission_reassign"),
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/download/", api_dev_submission_download, name="dev_submission_download"),
-
+    path("projects/<int:project_id>/developer-submissions/<int:submission_id>/files/", api_dev_submission_file_tree, name="dev_submission_file_tree"),
+    path("projects/<int:project_id>/developer-submissions/<int:submission_id>/file-content/", api_dev_submission_file_content, name="dev_submission_file_content"),
+    path("projects/<int:project_id>/github-pr/accept/", api_github_pr_accept, name="github_pr_accept"),
     # GitHub Integration
     path("", include("apps.github_integration.urls")),
 ]

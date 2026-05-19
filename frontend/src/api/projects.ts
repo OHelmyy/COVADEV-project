@@ -240,18 +240,39 @@ export type MyTask = {
   } | null;
 };
 
-export type DevSubmission = {
+export type SubmissionAttempt = {
   id: number;
-  assignmentId: number;
-  taskId: string;
-  taskName: string;
-  developerEmail: string;
   status: "PENDING" | "ACCEPTED" | "REJECTED" | "REASSIGNED";
   attemptNumber: number;
   feedback: string;
   submittedAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
   zipFileName: string | null;
   zipUrl: string | null;
+  hasFiles: boolean;
+  similarityScore: number | null;
+};
+
+export type DevSubmission = {
+  assignmentId: number;
+  taskId: string;
+  taskName: string;
+  taskDescription: string;
+  developerEmail: string;
+  developerName: string;
+  assignmentStatus: string;
+  latestStatus: "PENDING" | "ACCEPTED" | "REJECTED" | "REASSIGNED";
+  totalAttempts: number;
+  attempts: SubmissionAttempt[];
+};
+
+export type FileTreeNode = {
+  type: "file" | "dir";
+  name: string;
+  path?: string;
+  previewable?: boolean;
+  children?: Record<string, FileTreeNode>;
 };
 
 export function fetchMyTasks(projectId: number) {
@@ -292,4 +313,42 @@ export function reassignSubmission(projectId: number, submissionId: number, feed
     `/api/projects/${projectId}/developer-submissions/${submissionId}/reassign/`,
     { feedback }
   );
+}
+
+export function fetchSubmissionFileTree(projectId: number, submissionId: number) {
+  return apiGet<{
+    submissionId: number;
+    totalFiles: number;
+    tree: Record<string, FileTreeNode>;
+  }>(`/api/projects/${projectId}/developer-submissions/${submissionId}/files/`);
+}
+
+export function fetchSubmissionFileContent(projectId: number, submissionId: number, path: string) {
+  return apiGet<{
+    path: string;
+    content: string;
+    truncated: boolean;
+    language: string;
+  }>(`/api/projects/${projectId}/developer-submissions/${submissionId}/file-content/?path=${encodeURIComponent(path)}`);
+}
+
+
+export function acceptGitHubPR(
+  projectId: number,
+  assignmentId: number,
+  prNumber: number,
+  commitTitle?: string,
+) {
+  return apiPostJson<{
+    ok: boolean;
+    belowThreshold?: boolean;
+    similarity?: number;
+    threshold?: number;
+    detail?: string;
+    matchStatus?: string;
+  }>(`/api/projects/${projectId}/github-pr/accept/`, {
+    assignment_id: assignmentId,
+    pr_number: prNumber,
+    commit_title: commitTitle ?? `Merge PR #${prNumber}`,
+  });
 }

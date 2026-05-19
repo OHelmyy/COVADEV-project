@@ -47,6 +47,7 @@ export default function ProjectDetailPage() {
     setSubTabState(prev => ({ ...prev, [vm.activeTab]: key }));
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (vm.compareError) {
       const info = buildProjectErrorFromText(
@@ -58,6 +59,7 @@ export default function ProjectDetailPage() {
     }
   }, [vm.compareError]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (vm.resultsError) {
       const info = buildProjectErrorFromText(
@@ -69,6 +71,7 @@ export default function ProjectDetailPage() {
     }
   }, [vm.resultsError]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (vm.reportError) {
       const info = buildProjectErrorFromText(
@@ -80,6 +83,7 @@ export default function ProjectDetailPage() {
     }
   }, [vm.reportError]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (vm.recError) {
       const info = buildProjectErrorFromText(
@@ -169,6 +173,8 @@ export default function ProjectDetailPage() {
                 tasksCount={vm.data.counts.tasks}
                 matchesCount={vm.data.counts.matches}
                 onDeleteProject={vm.onDeleteProject}
+                onUpdateGithubUrl={vm.onUpdateGithubUrl}
+                githubRepoUrl={vm.data.project.github_repo_url}
               />
             )}
             {activeSubTab === "members" && (
@@ -187,6 +193,7 @@ export default function ProjectDetailPage() {
               tabs={[
                 { key: "uploads", label: "Uploads & Tools" },
                 { key: "bpmnCheck", label: "BPMN Check" },
+                { key: "bpmnDiagram", label: "BPMN Diagram" },
                 { key: "recommendations", label: "Recommendations" },
               ]}
               active={activeSubTab}
@@ -204,6 +211,8 @@ export default function ProjectDetailPage() {
                 onUploadBpmn={vm.onUploadBpmn}
                 onUploadCode={vm.onUploadCode}
                 onRunAnalysis={vm.onRunAnalysis}
+                onFetchGithubCode={vm.onFetchGithubCode}
+                githubRepoUrl={vm.data.project.github_repo_url}
                 projectId={projectId}
               />
             )}
@@ -214,6 +223,12 @@ export default function ProjectDetailPage() {
                 precheckWarnings={precheckWarnings}
                 precheckErrors={precheckErrors}
                 bpmnSummary={bpmnSummary}
+              />
+            )}
+            {activeSubTab === "bpmnDiagram" && (
+              <BpmnDiagramTab
+                projectId={projectId}
+                canEdit={vm.roleFlags.isEvaluator || vm.roleFlags.isAdmin}
               />
             )}
             {activeSubTab === "recommendations" && (
@@ -324,29 +339,216 @@ export default function ProjectDetailPage() {
           <MyTasksTab projectId={projectId} />
         ) : null}
 
-        <ConfirmModal
-          open={vm.showDeleteModal}
-          title="Delete project?"
-          message={`Delete "${vm.data.project.name}" permanently? This action cannot be undone.`}
-          confirmText={vm.deletingProject ? "Deleting..." : "Delete"}
-          cancelText="Cancel"
-          danger
-          onCancel={() => {
-            if (vm.deletingProject) return;
-            vm.setShowDeleteModal(false);
-          }}
-          onConfirm={vm.confirmDeleteProject}
-        />
+        {vm.activeTab === "devOverview" ? (
+          <DevOverviewTab
+            projectName={vm.data.project.name}
+            description={vm.data.project.description}
+            bpmnSummary={bpmnSummary}
+            projectId={projectId}
+          />
+        ) : null}
 
-        <ErrorModal
-          open={vm.errorModal.open}
-          title={vm.errorModal.title}
-          message={vm.errorModal.message}
-          cause={vm.errorModal.cause}
-          details={vm.errorModal.details}
-          onClose={vm.closeErrorModal}
-        />
+        {vm.activeTab === "devBpmn" ? (
+          <DevBpmnTab projectId={projectId} />
+        ) : null}
+
+        {vm.activeTab === "devRecommendations" ? (
+          <RecommendationsTab
+            recState={vm.recState}
+            recError={vm.recError}
+            recommendations={vm.recommendations}
+            recUpdatedAt={vm.recUpdatedAt}
+            hasSummary={vm.hasSummary}
+            canGenerate={false}
+            onRefresh={vm.loadRecommendations}
+            onGenerate={async () => {}}
+            onRetry={vm.loadRecommendations}
+          />
+        ) : null}
+
+        {vm.activeTab === "devHistory" ? (
+          <DevHistoryTab projectId={projectId} />
+        ) : null}
+
       </ProjectDetailLayout>
+
+      <ConfirmModal
+        open={vm.showDeleteModal}
+        title="Delete project?"
+        message={`Delete "${vm.data.project.name}" permanently? This action cannot be undone.`}
+        confirmText={vm.deletingProject ? "Deleting..." : "Delete"}
+        cancelText="Cancel"
+        danger
+        onCancel={() => {
+          if (vm.deletingProject) return;
+          vm.setShowDeleteModal(false);
+        }}
+        onConfirm={vm.confirmDeleteProject}
+      />
+      <ErrorModal
+        open={vm.errorModal.open}
+        title={vm.errorModal.title}
+        message={vm.errorModal.message}
+        cause={vm.errorModal.cause}
+        details={vm.errorModal.details}
+        onClose={vm.closeErrorModal}
+      />
+    </div>
+  );
+}
+
+// ── Developer: Overview Tab ───────────────────────────────────────────────────
+
+function DevOverviewTab({
+  projectName, description, bpmnSummary, projectId,
+}: {
+  projectName: string;
+  description?: string;
+  bpmnSummary?: string;
+  projectId: number;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: "24px 28px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 800 }}>{projectName}</h2>
+        {description && (
+          <p style={{ margin: "0 0 20px", color: "#555", fontSize: 14, lineHeight: 1.6 }}>{description}</p>
+        )}
+        {bpmnSummary && (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "16px 20px" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Process Summary
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "#334155", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{bpmnSummary}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Developer: BPMN Diagram + Assigned Task Descriptions ─────────────────────
+
+function DevBpmnTab({ projectId }: { projectId: number }) {
+  const [myTasks, setMyTasks] = useState<any[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+
+  useEffect(() => {
+    import("../../../api/projects").then(({ fetchMyTasks }) => {
+      fetchMyTasks(projectId)
+        .then(res => setMyTasks(res.tasks || []))
+        .catch(() => {})
+        .finally(() => setLoadingTasks(false));
+    });
+  }, [projectId]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <BpmnDiagramTab projectId={projectId} canEdit={false} />
+
+      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: "20px 24px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+        <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Your Assigned Tasks</h3>
+        {loadingTasks ? (
+          <div style={{ color: "#888", fontSize: 13 }}>Loading tasks…</div>
+        ) : myTasks.length === 0 ? (
+          <div style={{ color: "#888", fontSize: 13 }}>No tasks assigned to you yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {myTasks.map((t: any) => (
+              <div key={t.taskId} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 18px", background: "#f8fafc" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b", marginBottom: 6 }}>{t.taskName}</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", fontFamily: "monospace", marginBottom: 8 }}>ID: {t.taskId}</div>
+                {t.taskDescription && (
+                  <p style={{ margin: 0, fontSize: 13, color: "#475569", lineHeight: 1.6 }}>{t.taskDescription}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Developer: Submission History Tab ────────────────────────────────────────
+
+function DevHistoryTab({ projectId }: { projectId: number }) {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    import("../../../api/projects").then(({ fetchMyTasks }) => {
+      fetchMyTasks(projectId)
+        .then(res => setTasks(res.tasks || []))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    });
+  }, [projectId]);
+
+  const STATUS_COLORS: Record<string, { bg: string; fg: string; border: string }> = {
+    PENDING:    { bg: "#fff8e1", fg: "#8a5a00", border: "#ffe58f" },
+    ACCEPTED:   { bg: "#f0fdf4", fg: "#16a34a", border: "#bbf7d0" },
+    REJECTED:   { bg: "#fef2f2", fg: "#dc2626", border: "#fecaca" },
+    REASSIGNED: { bg: "#f5f3ff", fg: "#7c3aed", border: "#ddd6fe" },
+  };
+
+  if (loading) return <div style={{ padding: 24, color: "#888" }}>Loading history…</div>;
+  if (tasks.length === 0) return (
+    <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: "40px 0", textAlign: "center", color: "#888" }}>
+      <div style={{ fontSize: 36, marginBottom: 10 }}>📭</div>
+      <div style={{ fontWeight: 600 }}>No submissions yet</div>
+      <div style={{ fontSize: 13, marginTop: 4 }}>Submit your work via GitHub PR or ZIP from the My Tasks tab.</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {tasks.map((t: any) => {
+        const sub = t.submission;
+        const colors = sub ? (STATUS_COLORS[sub.status] ?? STATUS_COLORS.PENDING) : null;
+        return (
+          <div key={t.taskId} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${colors?.border ?? "#e5e7eb"}`, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{t.taskName}</div>
+                <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace", marginTop: 3 }}>{t.taskId}</div>
+              </div>
+              {sub && colors && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  {sub.similarityScore != null && (
+                    <span style={{
+                      background: sub.similarityScore >= 0.75 ? "#f0fdf4" : sub.similarityScore >= 0.5 ? "#fff8e1" : "#fef2f2",
+                      color: sub.similarityScore >= 0.75 ? "#16a34a" : sub.similarityScore >= 0.5 ? "#8a5a00" : "#dc2626",
+                      fontWeight: 700, fontSize: 11, padding: "2px 10px", borderRadius: 12,
+                    }}>
+                      {Math.round(sub.similarityScore * 100)}% match
+                    </span>
+                  )}
+                  <span style={{ background: colors.bg, color: colors.fg, fontWeight: 700, fontSize: 11, padding: "3px 10px", borderRadius: 12, border: `1px solid ${colors.border}` }}>
+                    {sub.status}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {sub ? (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  Attempt #{sub.attemptNumber} · Submitted {new Date(sub.submittedAt).toLocaleString()}
+                </div>
+                {sub.feedback && (
+                  <div style={{ marginTop: 10, background: "#fffbe6", border: "1px solid #ffe58f", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+                    <strong style={{ color: "#8a5a00" }}>Evaluator feedback: </strong>
+                    <span style={{ color: "#78350f" }}>{sub.feedback}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ marginTop: 10, fontSize: 13, color: "#94a3b8" }}>No submission yet.</div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
