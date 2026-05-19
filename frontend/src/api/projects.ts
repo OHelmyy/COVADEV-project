@@ -335,7 +335,6 @@ export function fetchSubmissionFileContent(projectId: number, submissionId: numb
 
 export function acceptGitHubPR(
   projectId: number,
-  assignmentId: number,
   prNumber: number,
   commitTitle?: string,
 ) {
@@ -347,7 +346,6 @@ export function acceptGitHubPR(
     detail?: string;
     matchStatus?: string;
   }>(`/api/projects/${projectId}/github-pr/accept/`, {
-    assignment_id: assignmentId,
     pr_number: prNumber,
     commit_title: commitTitle ?? `Merge PR #${prNumber}`,
   });

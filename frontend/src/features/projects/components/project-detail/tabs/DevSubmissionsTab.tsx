@@ -572,7 +572,6 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
   const [loadingContent, setLoadingContent] = useState(false);
   const [merging, setMerging] = useState(false);
   const [expanded, setExpanded] = useState(true);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | "">("");
   const [mergeMsg, setMergeMsg] = useState<string | null>(null);
 
 
@@ -581,7 +580,6 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
     setSelectedPr(pr);
     setSelectedFile(null);
     setFileContent(null);
-    setSelectedAssignmentId("");
     setMergeMsg(null);
     try {
       const [files, commits] = await Promise.all([
@@ -605,11 +603,10 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
   }
 
   async function handleAcceptAndMerge(pr: GitHubPullRequestApi) {
-    if (!selectedAssignmentId) return;
     setMerging(true);
     setMergeMsg(null);
     try {
-      const res = await acceptGitHubPR(projectId, Number(selectedAssignmentId), pr.number);
+      const res = await acceptGitHubPR(projectId, pr.number);
       if (res.ok) {
         setMergeMsg(`✅ Merged & matched! Similarity: ${res.similarity != null ? (res.similarity * 100).toFixed(1) + "%" : "N/A"}`);
         onRefresh();
@@ -695,34 +692,18 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
                           View on GitHub
                         </a>
                         {selectedPr.state === "open" && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
-                            <select
-                              value={selectedAssignmentId}
-                              onChange={e => setSelectedAssignmentId(e.target.value === "" ? "" : Number(e.target.value))}
-                              style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #d0d7de", fontSize: 12 }}
-                            >
-                              <option value="">— Link to assignment —</option>
-                              {submissions
-                                .filter(s => s.assignmentStatus !== "ACCEPTED" && s.assignmentStatus !== "MERGED")
-                                .map(s => (
-                                  <option key={s.assignmentId} value={s.assignmentId}>
-                                    {s.taskName} · {s.developerName || s.developerEmail}
-                                  </option>
-                                ))}
-                            </select>
-                            <button
-                              onClick={() => handleAcceptAndMerge(selectedPr)}
-                              disabled={merging || selectedAssignmentId === ""}
-                              style={{
-                                fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "none",
-                                background: merging || selectedAssignmentId === "" ? "#ccc" : "#2da44e",
-                                color: "#fff", fontWeight: 700,
-                                cursor: merging || selectedAssignmentId === "" ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              {merging ? "Running pipeline…" : "✅ Accept & Merge"}
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => handleAcceptAndMerge(selectedPr)}
+                            disabled={merging}
+                            style={{
+                              fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "none",
+                              background: merging ? "#ccc" : "#2da44e",
+                              color: "#fff", fontWeight: 700,
+                              cursor: merging ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {merging ? "Running pipeline…" : "✅ Accept & Merge"}
+                          </button>
                         )}
                       </div>
                     </div>

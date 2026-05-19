@@ -8,11 +8,15 @@ from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_GET
-
+from apps.github_integration.models import GitHubRepository
+from apps.github_integration.services.github_service import GitHubService
 from apps.projects.models import Project
 from apps.task_management.models import TaskAssignment, DeveloperSubmission
 from apps.accounts.rbac import is_evaluator, is_admin
 from .permissions import can_open_project
+from apps.github_integration.models import GitHubRepository
+from apps.github_integration.services.github_service import GitHubService
+from apps.github_integration.views import _reindex_default_branch_async
 
 # Text file extensions we'll try to display inline
 TEXT_EXTENSIONS = {
@@ -481,16 +485,43 @@ def api_github_pr_accept(request, project_id: int):
     except Exception:
         return JsonResponse({"detail": "Invalid JSON."}, status=400)
 
-    assignment_id = body.get("assignment_id")
     pr_number = body.get("pr_number")
     commit_title = body.get("commit_title") or ""
     commit_message = body.get("commit_message") or ""
 
-    if not assignment_id or not pr_number:
-        return JsonResponse({"detail": "assignment_id and pr_number are required."}, status=400)
+    if not pr_number:
+        return JsonResponse({"detail": "pr_number is required."}, status=400)
 
-    assignment = get_object_or_404(TaskAssignment, id=assignment_id, project=project)
+    # Auto-find assignment by matching PR author to developer in this project
+   
+    try:
+        github_repo = GitHubRepository.objects.get(project=project)
+        service = GitHubService(token=github_repo.access_token)
+        pr_data = service.get_pull_request(github_repo.owner, github_repo.repo_name, int(pr_number))
+        pr_author = pr_data.get("user", {}).get("login", "").lower()
+    except Exception as e:
+        return JsonResponse({"detail": f"Could not fetch PR: {e}"}, status=500)
 
+    pr_branch = pr_data.get("head", {}).get("ref", "")
+
+    # Match by branch name first (most reliable)
+    assignment = TaskAssignment.objects.filter(
+        project=project,
+        github_branch=pr_branch,
+    ).exclude(status__in=["ACCEPTED", "MERGED"]).first()
+
+    # Fallback: match by GitHub username
+    if not assignment:
+        assignment = TaskAssignment.objects.filter(
+            project=project,
+            developer_membership__user__username__iexact=pr_author,
+        ).exclude(status__in=["ACCEPTED", "MERGED"]).first()
+
+    if not assignment:
+        return JsonResponse(
+            {"detail": f"No active assignment found for branch '{pr_branch}' or user '{pr_author}' in this project."},
+            status=404,
+        )
     # Run the similarity pipeline
     try:
         from apps.task_management.services.developer_match_service import match_accepted_github_submission
@@ -514,11 +545,6 @@ def api_github_pr_accept(request, project_id: int):
 
     # Above threshold — merge the PR
     try:
-        from apps.github_integration.models import GitHubRepository
-        from apps.github_integration.services.github_service import GitHubService
-        from apps.github_integration.views import _reindex_default_branch_async
-
-        github_repo = GitHubRepository.objects.get(project=project)
         service = GitHubService(token=github_repo.access_token)
         service.merge_pull_request(
             github_repo.owner,
