@@ -110,22 +110,18 @@ export default function LoginPage() {
               textAlign: "center"
             }}
           >
-            <div
+            <img
+              src="/Logo.svg"
+              alt="COVADEV Logo"
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 14,
-                background: "rgba(255,255,255,0.14)",
-                display: "grid",
-                placeItems: "center",
-                fontWeight: 900,
-                fontSize: 24,
+                width: 80,
+                height: 80,
+                objectFit: "contain",
+                borderRadius: 20,
                 marginBottom: 16,
-                boxShadow: "0 8px 16px rgba(0,0,0,0.1)",
+                boxShadow: "0 12px 28px rgba(0,0,0,0.15)",
               }}
-            >
-              C
-            </div>
+            />
             <h2 style={{ margin: 0, fontSize: 28 }}>Welcome to COVADEV</h2>
             <div style={{ marginTop: 8, opacity: 0.96, lineHeight: 1.6 }}>
               Sign in to continue to your BPMN, code analysis, and traceability workspace.

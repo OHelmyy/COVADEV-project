@@ -47,21 +47,17 @@ export default function Navbar() {
     >
       <NavLink to="/" style={{ textDecoration: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
+          <img
+            src="/Logo.svg"
+            alt="COVADEV Logo"
             style={{
-              width: 38,
-              height: 38,
+              width: 42,
+              height: 42,
+              objectFit: "contain",
               borderRadius: 12,
-              background: "linear-gradient(135deg, #0f3d91 0%, #06b6d4 100%)",
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              fontWeight: 900,
-              boxShadow: "0 12px 24px rgba(15,61,145,0.22)",
+              boxShadow: "0 8px 16px rgba(15,61,145,0.15)",
             }}
-          >
-            C
-          </div>
+          />
           <div>
             <div style={{ color: ui.colors.text, fontWeight: 900, fontSize: 16 }}>
               COVADEV
