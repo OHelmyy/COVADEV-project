@@ -74,7 +74,7 @@ export function MiniStat(props: { label: string; value: string }) {
 }
 
 export function SectionTable(props: {
-  title: string;
+  title: React.ReactNode;
   emptyText: string;
   table: React.ReactNode | null;
 }) {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.contrib.auth.models import User
 
 from apps.accounts.rbac import is_admin, is_evaluator
-from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult
+from apps.analysis.models import AnalysisRun, BpmnTask, MatchResult, CodeArtifact
 from apps.projects.models import Project, ProjectMembership, CodeFile
 
 from .helpers import latest_file
@@ -59,6 +59,16 @@ def json_project_detail(project: Project, user: User):
     latest_code = latest_file(project, "CODE")
 
     code_files_count = CodeFile.objects.filter(project=project).count()
+
+    indexed_files = [
+        {
+            "name": artifact.symbol or artifact.code_uid,
+            "path": artifact.code_uid,
+            "type": artifact.kind,
+        }
+        for artifact in CodeArtifact.objects.filter(project=project).order_by("code_uid")
+    ]
+
     tasks_count = BpmnTask.objects.filter(project=project).count()
     matches_count = MatchResult.objects.filter(project=project).count()
 
@@ -85,6 +95,7 @@ def json_project_detail(project: Project, user: User):
             "description": project.description or "",
             "similarityThreshold": float(project.similarity_threshold),
             "github_repo_url": project.github_repo_url or "",
+            "indexed_files": indexed_files,
             "evaluator": {
                 "id": project.evaluator_id,
                 "username": project.evaluator.username if getattr(project, "evaluator", None) else None,
