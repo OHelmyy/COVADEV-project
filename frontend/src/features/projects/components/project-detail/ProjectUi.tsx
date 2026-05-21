@@ -124,7 +124,7 @@ export function CompareCard(props: { title: string; subtitle: string; body: stri
       <div style={{ color: ui.colors.textMuted, fontSize: 12, marginTop: 4, wordBreak: "break-all" }}>
         {props.subtitle}
       </div>
-      <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7, color: ui.colors.textSoft, wordBreak: "break-word" }}>
+      <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7, color: ui.colors.text, wordBreak: "break-word" }}>
         {props.body}
       </div>
     </div>

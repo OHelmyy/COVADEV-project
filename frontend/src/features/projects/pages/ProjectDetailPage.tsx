@@ -13,7 +13,7 @@ import BpmnCheckTab from "../components/project-detail/tabs/BpmnCheckTab";
 import BpmnDiagramTab from "../components/project-detail/tabs/BpmnDiagramTab";
 import UploadsTab from "../components/project-detail/tabs/UploadsTab";
 import ResultsTab from "../components/project-detail/tabs/ResultsTab";
-import CompareTab from "../components/project-detail/tabs/CompareTab";
+import SummariesTab from "../components/project-detail/tabs/SummariesTab";
 import RecommendationsTab from "../components/project-detail/tabs/RecommendationsTab";
 import ReportTab from "../components/project-detail/tabs/ReportTab";
 import RunsTab from "../components/project-detail/tabs/RunsTab";
@@ -280,7 +280,7 @@ export default function ProjectDetailPage() {
             <SubTabs
               tabs={[
                 { key: "results", label: "Results" },
-                { key: "compare", label: "Compare" },
+                { key: "summaries", label: "summaries" },
               ]}
               active={activeSubTab}
               onChange={handleSubTabChange}
@@ -297,10 +297,13 @@ export default function ProjectDetailPage() {
                 scoreAvg={vm.scoreAvg}
                 files={vm.files}
                 onRefresh={vm.loadResults}
+
+                canRunAnalysis={vm.permissions.canRunAnalysis}
+                onRunAnalysis={vm.onRunAnalysis}
               />
             )}
-            {activeSubTab === "compare" && (
-              <CompareTab
+            {activeSubTab === "summaries" && (
+              <SummariesTab
                 compareLoading={vm.compareLoading}
                 compareError={vm.compareError}
                 bpmnCompare={vm.bpmnCompare}

@@ -18,6 +18,9 @@ type Props = {
   scoreAvg: number;
   files: FileRow[];
   onRefresh: () => void;
+
+  canRunAnalysis: boolean;
+  onRunAnalysis: () => void;
 };
 
 function humanizeName(value?: string) {
@@ -288,6 +291,8 @@ export default function ResultsTab({
   scoreAvg,
   files,
   onRefresh,
+  canRunAnalysis,
+  onRunAnalysis,
 }: Props) {
   return (
     <Card>
@@ -295,22 +300,57 @@ export default function ResultsTab({
         style={{
           display: "flex",
           justifyContent: "space-between",
-          gap: 10,
+          alignItems: "center",
+          gap: 12,
           flexWrap: "wrap",
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Analysis Output</h3>
-        <button
-          onClick={onRefresh}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-          }}
-          disabled={resultsLoading}
-        >
-          {resultsLoading ? "Refreshing..." : "Refresh results"}
-        </button>
+        <div>
+          <h3 style={{ margin: 0 }}>Analysis Output</h3>
+          <div style={{ marginTop: 4, color: ui.colors.textMuted, fontSize: 13 }}>
+            Run the latest BPMN-to-code comparison and review the updated results below.
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={onRefresh}
+            style={{
+              padding: "11px 14px",
+              borderRadius: 12,
+              border: `1px solid ${ui.colors.border}`,
+              background: "#fff",
+              color: ui.colors.text,
+              fontWeight: 800,
+              cursor: resultsLoading ? "not-allowed" : "pointer",
+            }}
+            disabled={resultsLoading}
+          >
+            {resultsLoading ? "Refreshing..." : "Refresh Results"}
+          </button>
+
+          {canRunAnalysis ? (
+            <button
+              onClick={onRunAnalysis}
+              style={{
+                padding: "14px 22px",
+                borderRadius: 14,
+                border: "none",
+                background: ui.colors.primary,
+                color: "#fff",
+                fontWeight: 900,
+                fontSize: 15,
+                cursor: "pointer",
+                boxShadow: "0 10px 24px rgba(37, 99, 235, 0.25)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              ▶ Run Analysis
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {resultsError ? (
