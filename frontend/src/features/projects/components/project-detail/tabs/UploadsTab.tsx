@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card } from "../ProjectUi";
 import { fetchAndIndexGitHubBranch } from "../../../../../api/github";
-import { ui, inputBase } from "../../../../../theme/ui";
+import { ui } from "../../../../../theme/ui";
 
 type Props = {
   canUploadBpmn: boolean;
@@ -14,9 +14,7 @@ type Props = {
   onUploadBpmn: () => void;
   onUploadCode: () => void;
   onRunAnalysis: () => void;
-  onFetchGithubCode: (branch: string) => void;
   projectId: number;
-  githubRepoUrl?: string;
 };
 
 export default function UploadsTab({
@@ -30,193 +28,331 @@ export default function UploadsTab({
   onUploadBpmn,
   onUploadCode,
   onRunAnalysis,
-  onFetchGithubCode,
   projectId,
-  githubRepoUrl,
 }: Props) {
   const [fetchingGithub, setFetchingGithub] = useState(false);
   const [githubMsg, setGithubMsg] = useState("");
-  const [branch, setBranch] = useState("main");
 
   const handleFetchGithub = async () => {
     setFetchingGithub(true);
     setGithubMsg("");
+
     try {
       const res = await fetchAndIndexGitHubBranch(projectId, "main");
       setGithubMsg(res.message || "Successfully fetched and indexed main branch");
-      // Optional: you might want to reload project data here, but user can refresh.
     } catch (err: any) {
       setGithubMsg(err.message || "Failed to fetch from GitHub");
     } finally {
       setFetchingGithub(false);
     }
   };
+
+  const panelStyle: React.CSSProperties = {
+    border: `1px solid ${ui.colors.border}`,
+    borderRadius: ui.radius.lg,
+    padding: 16,
+    background: "#fff",
+    boxShadow: ui.shadow.sm,
+  };
+
+  const titleStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: 17,
+    fontWeight: 900,
+    color: ui.colors.text,
+  };
+
+  const descStyle: React.CSSProperties = {
+    color: ui.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 1.6,
+    marginTop: 6,
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    padding: "10px 14px",
+    borderRadius: ui.radius.md,
+    border: `1px solid ${ui.colors.border}`,
+    background: "#fff",
+    color: ui.colors.text,
+    fontWeight: 800,
+    cursor: "pointer",
+    transition: ui.transition,
+  };
+
+  const primaryButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    background: ui.colors.primary,
+    color: "#fff",
+    border: `1px solid ${ui.colors.primary}`,
+  };
+
+  const disabledButtonStyle: React.CSSProperties = {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  };
+
+  const fileBoxStyle: React.CSSProperties = {
+    marginTop: 14,
+    padding: 14,
+    border: `1px dashed ${ui.colors.border}`,
+    borderRadius: ui.radius.md,
+    background: ui.colors.bgSoft,
+  };
+
   return (
     <Card>
-      <h3 style={{ marginTop: 0 }}>Uploads & Tools</h3>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 14,
+          flexWrap: "wrap",
+          alignItems: "flex-start",
+          marginBottom: 18,
+        }}
+      >
+        <div>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: 22,
+              fontWeight: 900,
+              color: ui.colors.text,
+            }}
+          >
+            Uploads & Analysis
+          </h3>
+
+
+        </div>
+      </div>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-          marginTop: 12,
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 16,
         }}
       >
-        <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
-          <h4 style={{ marginTop: 0 }}>Upload BPMN</h4>
+        <div style={panelStyle}>
+          <h4 style={titleStyle}>1. BPMN Model</h4>
+
 
           {canUploadBpmn ? (
-            <>
+            <div style={fileBoxStyle}>
               <input
                 type="file"
                 accept=".bpmn,.xml"
                 onChange={(e) => setBpmnFile(e.target.files?.[0] ?? null)}
+                style={{ width: "100%" }}
               />
+
+              {bpmnFile && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    fontSize: 13,
+                    color: ui.colors.text,
+                    fontWeight: 700,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  Selected: {bpmnFile.name}
+                </div>
+              )}
+
               <button
                 onClick={onUploadBpmn}
                 disabled={!bpmnFile}
                 style={{
-                  marginTop: 10,
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
+                  ...primaryButtonStyle,
+                  ...(bpmnFile ? {} : disabledButtonStyle),
+                  width: "100%",
+                  marginTop: 12,
                 }}
               >
                 Upload BPMN
               </button>
-              <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
-                Evaluator-only.
-              </div>
-            </>
+
+              <div style={descStyle}>Evaluator-only upload.</div>
+            </div>
           ) : (
-            <div style={{ color: "#888" }}>Only the evaluator can upload BPMN.</div>
-          )}
-        </div>
-
-        <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
-          <h4 style={{ marginTop: 0 }}>Upload Code ZIP</h4>
-
-          {canUploadCode ? (
-            <>
-              <input
-                type="file"
-                accept=".zip"
-                onChange={(e) => setCodeZip(e.target.files?.[0] ?? null)}
-              />
-              <button
-                onClick={onUploadCode}
-                disabled={!codeZip}
-                style={{
-                  marginTop: 10,
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                }}
-              >
-                Upload & Index
-              </button>
-              <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
-                Allowed for evaluator and developers.
-              </div>
-            </>
-          ) : (
-            <div style={{ color: "#888" }}>You don't have permission to upload code.</div>
-          )}
-
-          {canUploadCode && (
-            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed #ddd" }}>
-              <h5 style={{ marginTop: 0, marginBottom: 10 }}>Or fetch from GitHub</h5>
-              <button
-                onClick={handleFetchGithub}
-                disabled={fetchingGithub}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                }}
-              >
-                {fetchingGithub ? "Fetching..." : "Fetch 'main' Branch & Index"}
-              </button>
-              {githubMsg && <div style={{ marginTop: 8, fontSize: 13, color: githubMsg.includes("Failed") ? "red" : "green" }}>{githubMsg}</div>}
-              <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
-                Requires GitHub to be connected in Tasks &amp; Submissions -&gt; GitHub.
-              </div>
+            <div style={{ ...fileBoxStyle, color: ui.colors.textMuted, fontSize: 14 }}>
+              Only the evaluator can upload BPMN files.
             </div>
           )}
         </div>
 
-        <div style={{ border: "1px solid #f0f0f0", borderRadius: 12, padding: 12 }}>
-          <h4 style={{ marginTop: 0 }}>Fetch from GitHub</h4>
+        <div style={panelStyle}>
+          <h4 style={titleStyle}>2. Code Source</h4>
+
 
           {canUploadCode ? (
-            githubRepoUrl ? (
-              <>
-                <div style={{ color: ui.colors.textMuted, fontSize: 13, marginBottom: 8 }}>
-                  Repo: <span style={{ color: ui.colors.text }}>{githubRepoUrl}</span>
-                </div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>Branch</span>
-                  <input
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                    style={{ ...inputBase, width: "100%", padding: "6px 10px" }}
-                    placeholder="main"
-                  />
-                </div>
-                <button
-                  onClick={() => onFetchGithubCode(branch)}
+            <>
+              <div style={fileBoxStyle}>
+                <div
                   style={{
-                    marginTop: 10,
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #ddd",
+                    fontWeight: 900,
+                    color: ui.colors.text,
+                    marginBottom: 10,
+                    fontSize: 14,
+                  }}
+                >
+                  Upload Code ZIP
+                </div>
+
+                <input
+                  type="file"
+                  accept=".zip"
+                  onChange={(e) => setCodeZip(e.target.files?.[0] ?? null)}
+                  style={{ width: "100%" }}
+                />
+
+                {codeZip && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      fontSize: 13,
+                      color: ui.colors.text,
+                      fontWeight: 700,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    Selected: {codeZip.name}
+                  </div>
+                )}
+
+                <button
+                  onClick={onUploadCode}
+                  disabled={!codeZip}
+                  style={{
+                    ...primaryButtonStyle,
+                    ...(codeZip ? {} : disabledButtonStyle),
+                    width: "100%",
+                    marginTop: 12,
+                  }}
+                >
+                  Upload & Index Code
+                </button>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 14,
+                  paddingTop: 16,
+                  borderTop: `1px dashed ${ui.colors.border}`,
+                }}
+              >
+                <h5
+                  style={{
+                    marginTop: 0,
+                    marginBottom: 10,
+                    color: ui.colors.text,
+                    fontSize: 15,
+                    fontWeight: 900,
+                  }}
+                >
+                  Or fetch from GitHub
+                </h5>
+
+                <button
+                  onClick={handleFetchGithub}
+                  disabled={fetchingGithub}
+                  style={{
+                    ...primaryButtonStyle,
+                    ...(fetchingGithub ? disabledButtonStyle : {}),
                     width: "100%",
                   }}
                 >
-                  Fetch & Index
+                  {fetchingGithub ? "Fetching..." : "Fetch 'main' Branch & Index"}
                 </button>
-              </>
-            ) : (
-              <div style={{ color: "#888", fontSize: 13 }}>
-                No GitHub repository linked. Add one in the <b>Overview</b> tab settings.
+
+                {githubMsg && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: githubMsg.includes("Failed")
+                        ? ui.colors.danger
+                        : ui.colors.primary,
+                    }}
+                  >
+                    {githubMsg}
+                  </div>
+                )}
+
+                <div style={descStyle}>
+                  Requires GitHub to be connected in Tasks &amp; Submissions -&gt; GitHub.
+                </div>
               </div>
-            )
+            </>
           ) : (
-            <div style={{ color: "#888" }}>You don't have permission to fetch code.</div>
+            <div style={{ ...fileBoxStyle, color: ui.colors.textMuted, fontSize: 14 }}>
+              You do not have permission to upload or fetch code.
+            </div>
           )}
         </div>
       </div>
 
       <div
         style={{
-          border: "1px solid #f0f0f0",
-          borderRadius: 12,
-          padding: 12,
-          marginTop: 12,
+          marginTop: 18,
+          border: `1px solid ${ui.colors.primary}`,
+          borderRadius: ui.radius.lg,
+          padding: 18,
+          background: `linear-gradient(180deg, ${ui.colors.primarySoft} 0%, #ffffff 100%)`,
+          boxShadow: ui.shadow.sm,
         }}
       >
-        <h4 style={{ marginTop: 0 }}>Run Analysis</h4>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h4
+              style={{
+                margin: 0,
+                fontSize: 19,
+                fontWeight: 900,
+                color: ui.colors.text,
+              }}
+            >
+              3. Run Analysis
+            </h4>
+          </div>
 
-        {canRunAnalysis ? (
-          <>
+          {canRunAnalysis ? (
             <button
               onClick={onRunAnalysis}
               style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
+                ...primaryButtonStyle,
+                padding: "14px 24px",
+                fontSize: 15,
+                minWidth: 180,
+                boxShadow: ui.shadow.sm,
               }}
             >
-              Run analysis
+              Run Analysis
             </button>
-            <div style={{ color: "#888", marginTop: 8, fontSize: 13 }}>
-              Runs analysis using current active uploads.
+          ) : (
+            <div
+              style={{
+                color: ui.colors.textMuted,
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              Only evaluators or developers can run analysis.
             </div>
-          </>
-        ) : (
-          <div style={{ color: "#888" }}>Only evaluator or developers can run analysis.</div>
-        )}
+          )}
+        </div>
       </div>
     </Card>
   );
