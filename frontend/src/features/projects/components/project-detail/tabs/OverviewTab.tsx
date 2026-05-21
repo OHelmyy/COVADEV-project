@@ -2,6 +2,12 @@ import { useState } from "react";
 import { ui, inputBase } from "../../../../../theme/ui";
 import { Card, MiniCard, Stat } from "../ProjectUi";
 
+type IndexedFile = {
+  name?: string;
+  path: string;
+  type?: string;
+};
+
 type Props = {
   projectName: string;
   description?: string | null;
@@ -10,6 +16,7 @@ type Props = {
   activeBpmnName?: string | null;
   activeCodeName?: string | null;
   codeFilesCount: number;
+  indexedFiles: IndexedFile[];
   tasksCount: number;
   matchesCount: number;
   githubRepoUrl?: string;
@@ -25,6 +32,7 @@ export default function OverviewTab({
   activeBpmnName,
   activeCodeName,
   codeFilesCount,
+  indexedFiles,
   tasksCount,
   matchesCount,
   githubRepoUrl,
@@ -33,6 +41,30 @@ export default function OverviewTab({
 }: Props) {
   const [newUrl, setNewUrl] = useState(githubRepoUrl || "");
   const isEvaluatorOrAdmin = role === "EVALUATOR" || isAdmin;
+
+  function getFileIcon(fileName: string) {
+    const ext = fileName.split(".").pop()?.toLowerCase();
+
+    if (ext === "py") return "🐍";
+    if (["js", "jsx"].includes(ext || "")) return "🟨";
+    if (["ts", "tsx"].includes(ext || "")) return "🔷";
+    if (ext === "java") return "☕";
+    if (ext === "cs") return "🟪";
+    if (ext === "php") return "🐘";
+
+    return "📄";
+  }
+
+  function getFileName(path: string) {
+    return path.replace(/\\/g, "/").split("/").pop() || path;
+  }
+
+  function getFolderPath(path: string) {
+    const clean = path.replace(/\\/g, "/");
+    const parts = clean.split("/");
+    parts.pop();
+    return parts.join("/");
+  }
   return (
     <>
       <Card>
@@ -77,7 +109,96 @@ export default function OverviewTab({
           <Stat label="Match results" value={matchesCount} />
         </div>
       </Card>
+      <Card>
+        <h3 style={{ marginTop: 0 }}>Indexed Code Files</h3>
 
+        {indexedFiles.length === 0 ? (
+          <div style={{ color: ui.colors.textMuted, fontSize: 13 }}>
+            No code files indexed yet.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: 12,
+              marginTop: 12,
+            }}
+          >
+            {indexedFiles.map((file, index) => {
+              const fileName = file.name || getFileName(file.path);
+              const folderPath = getFolderPath(file.path);
+
+              return (
+                <div
+                  key={`${file.path}-${index}`}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 14,
+                    padding: 12,
+                    background: "#fff",
+                    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        background: "#f1f5f9",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 18,
+                      }}
+                    >
+                      {getFileIcon(fileName)}
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: ui.colors.text,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={fileName}
+                      >
+                        {fileName}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: ui.colors.textMuted,
+                          marginTop: 2,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={folderPath}
+                      >
+                        {folderPath || "Root folder"}
+                      </div>
+                    </div>
+                  </div>
+
+
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
       <Card>
         <h3 style={{ marginTop: 0 }}>GitHub Settings</h3>
         <div style={{ display: "grid", gap: 14 }}>

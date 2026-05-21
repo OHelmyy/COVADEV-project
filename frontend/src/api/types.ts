@@ -16,7 +16,11 @@ export type ProjectSummaryApi = {
   github_repo_url?: string;
   membership?: { role: ProjectRole };
 };
-
+export type IndexedFile = {
+  name?: string;
+  path: string;
+  type?: string;
+};
 export type ProjectDetailApi = {
   project: {
     id: number;
@@ -24,7 +28,10 @@ export type ProjectDetailApi = {
     description: string;
     similarityThreshold: number;
     github_repo_url: string;
+
+    indexed_files?: IndexedFile[];
   };
+
   membership: { role: ProjectRole };
 
   activeUploads: {

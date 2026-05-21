@@ -171,6 +171,7 @@ export default function ProjectDetailPage() {
                 activeCodeName={vm.data.activeUploads.activeCode?.originalName}
                 codeFilesCount={vm.data.counts.codeFiles}
                 tasksCount={vm.data.counts.tasks}
+                indexedFiles={vm.data.project.indexed_files ?? []}
                 matchesCount={vm.data.counts.matches}
                 onDeleteProject={vm.onDeleteProject}
                 onUpdateGithubUrl={vm.onUpdateGithubUrl}
@@ -361,7 +362,7 @@ export default function ProjectDetailPage() {
             hasSummary={vm.hasSummary}
             canGenerate={false}
             onRefresh={vm.loadRecommendations}
-            onGenerate={async () => {}}
+            onGenerate={async () => { }}
             onRetry={vm.loadRecommendations}
           />
         ) : null}
@@ -437,7 +438,7 @@ function DevBpmnTab({ projectId }: { projectId: number }) {
     import("../../../api/projects").then(({ fetchMyTasks }) => {
       fetchMyTasks(projectId)
         .then(res => setMyTasks(res.tasks || []))
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setLoadingTasks(false));
     });
   }, [projectId]);
@@ -480,15 +481,15 @@ function DevHistoryTab({ projectId }: { projectId: number }) {
     import("../../../api/projects").then(({ fetchMyTasks }) => {
       fetchMyTasks(projectId)
         .then(res => setTasks(res.tasks || []))
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setLoading(false));
     });
   }, [projectId]);
 
   const STATUS_COLORS: Record<string, { bg: string; fg: string; border: string }> = {
-    PENDING:    { bg: "#fff8e1", fg: "#8a5a00", border: "#ffe58f" },
-    ACCEPTED:   { bg: "#f0fdf4", fg: "#16a34a", border: "#bbf7d0" },
-    REJECTED:   { bg: "#fef2f2", fg: "#dc2626", border: "#fecaca" },
+    PENDING: { bg: "#fff8e1", fg: "#8a5a00", border: "#ffe58f" },
+    ACCEPTED: { bg: "#f0fdf4", fg: "#16a34a", border: "#bbf7d0" },
+    REJECTED: { bg: "#fef2f2", fg: "#dc2626", border: "#fecaca" },
     REASSIGNED: { bg: "#f5f3ff", fg: "#7c3aed", border: "#ddd6fe" },
   };
 
