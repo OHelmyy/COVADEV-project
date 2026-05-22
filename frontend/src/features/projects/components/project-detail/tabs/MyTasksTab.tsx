@@ -8,7 +8,10 @@ import {
   previewScoreZip,
   type PreviewScoreResult,
 } from "../../../../task-management/api/taskManagementApi";
-import type { AssignmentWithTask } from "../../../../task-management/types";
+import type {
+  AssignmentWithTask,
+  TimeTrackingStatus,
+} from "../../../../task-management/types";
 import { Card } from "../ProjectUi";
 import { buttonBase, inputBase, ui } from "../../../../../theme/ui";
 import { useToast } from "../../../../../components/Toast";
@@ -45,6 +48,116 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string; border: string }> 
   REJECTED:     { bg: "#fef2f2", fg: "#991b1b", border: "#fca5a5" },
   MERGED:       { bg: "#ecfdf5", fg: "#065f46", border: "#6ee7b7" },
 };
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getLiveElapsedLabel(startedAt?: string | null) {
+  if (!startedAt) return "Not started yet";
+
+  const start = new Date(startedAt);
+  const now = new Date();
+
+  if (Number.isNaN(start.getTime())) return "—";
+
+  const diffMs = now.getTime() - start.getTime();
+
+  if (diffMs < 0) return "—";
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+
+  if (totalMinutes < 1) return "Less than 1 min";
+
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (minutes === 0) return `${hours}h`;
+
+  return `${hours}h ${minutes}m`;
+}
+function getTimeTrackingTone(status?: TimeTrackingStatus | null) {
+  switch (status) {
+    case "COMPLETED_EARLY":
+      return {
+        bg: "#ecfdf5",
+        fg: "#047857",
+        border: "#a7f3d0",
+        label: "Finished early",
+      };
+
+    case "ON_TIME":
+      return {
+        bg: "#eff6ff",
+        fg: "#1d4ed8",
+        border: "#bfdbfe",
+        label: "On time",
+      };
+
+    case "SLIGHTLY_OVER":
+      return {
+        bg: "#fffbeb",
+        fg: "#b45309",
+        border: "#fde68a",
+        label: "Slightly over",
+      };
+
+    case "OVER_ESTIMATE":
+      return {
+        bg: "#fef2f2",
+        fg: "#b91c1c",
+        border: "#fecaca",
+        label: "Over estimate",
+      };
+
+    case "IN_PROGRESS":
+      return {
+        bg: "#f5f3ff",
+        fg: "#6d28d9",
+        border: "#ddd6fe",
+        label: "In progress",
+      };
+
+    case "NOT_STARTED":
+      return {
+        bg: "#f8fafc",
+        fg: "#475569",
+        border: "#e2e8f0",
+        label: "Not started",
+      };
+
+    case "NO_ACTUAL_TIME":
+      return {
+        bg: "#f8fafc",
+        fg: "#475569",
+        border: "#e2e8f0",
+        label: "No actual time",
+      };
+
+    case "NO_ESTIMATE":
+    default:
+      return {
+        bg: "#f3f4f6",
+        fg: "#4b5563",
+        border: "#e5e7eb",
+        label: "No estimate",
+      };
+  }
+}
 
 function relativeTime(iso?: string | null): string {
   if (!iso) return "—";
@@ -92,10 +205,12 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState("");
 
-  // Submit state
-  const [submitMethod, setSubmitMethod] = useState<Record<number, "github" | "zip">>({});
-  const [prNumber,  setPrNumber]        = useState<Record<number, string>>({});
-  const [subNote,   setSubNote]         = useState<Record<number, string>>({});
+  const [submitMethod, setSubmitMethod] = useState<
+    Record<number, "github" | "zip">
+  >({});
+  const [prNumber, setPrNumber] = useState<Record<number, string>>({});
+  const [prUrl, setPrUrl] = useState<Record<number, string>>({});
+  const [subNote, setSubNote] = useState<Record<number, string>>({});
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
   const fileRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
@@ -116,8 +231,12 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
     try {
       setLoading(true);
       setError("");
+
       const res = await getMyTaskAssignments();
-      const filtered = (res.items || []).filter((item) => item.projectId === projectId);
+      const filtered = (res.items || []).filter(
+        (item) => item.projectId === projectId
+      );
+
       setTasks(filtered);
     } catch (e: any) {
       setError(e.message || "Failed to load tasks");
@@ -242,13 +361,33 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
 
   return (
     <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
-          <h3 style={{ margin: 0, fontSize: 20, color: ui.colors.text }}>My Assigned Tasks</h3>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: ui.colors.textMuted }}>
-            Work on your branch, start tasks, and submit via GitHub PR or ZIP.
+          <h3 style={{ margin: 0, fontSize: 20, color: ui.colors.text }}>
+            My Assigned Tasks
+          </h3>
+
+          <p
+            style={{
+              margin: "4px 0 0 0",
+              fontSize: 13,
+              color: ui.colors.textMuted,
+            }}
+          >
+            Develop on your branch, start work, submit via GitHub PR or ZIP,
+            and compare your actual time with the BPMN estimate.
           </p>
         </div>
+
         <button
           onClick={load}
           style={{
@@ -281,6 +420,7 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
             const isNeedsChanges = t.status === "NEEDS_CHANGES";
             const canSubmit = ["IN_PROGRESS", "NEEDS_CHANGES"].includes(t.status);
             const activeMethod = submitMethod[t.assignmentId] || "github";
+            const timeTone = getTimeTrackingTone(t.timeTracking?.status);
             const isCollapsed = collapsed[t.assignmentId] ?? (t.status !== "NEEDS_CHANGES");
             const isFirstNeedsChanges = isNeedsChanges && needsChangesRef.current === null;
 
@@ -321,17 +461,222 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
                   <span style={{ fontSize: 13, color: ui.colors.textMuted, display: "inline-block", flexShrink: 0, transform: isCollapsed ? "none" : "rotate(180deg)", transition: "transform 0.2s" }}>▾</span>
                 </div>
 
-                {/* ── Expanded Body ── */}
-                {!isCollapsed && (
+     {/* ── Expanded Body ── */}
+     {!isCollapsed && (
                   <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
 
-                    {/* Summary */}
-                    {t.task.description && (
-                      <div style={{ padding: "10px 14px", background: ui.colors.bgSoft, borderRadius: 8, border: `1px solid ${ui.colors.border}` }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: ui.colors.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.4 }}>Summary</div>
-                        <div style={{ fontSize: 13, color: ui.colors.textSoft, lineHeight: 1.6 }}>{t.task.description}</div>
+                {t.task.description && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: 12,
+                      background: "#f8fafc",
+                      borderRadius: 10,
+                      border: "1px solid #f1f5f9",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: ui.colors.textMuted,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Summary
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: ui.colors.textSoft,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {t.task.description}
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                    gap: 10,
+                    marginTop: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid #e5e7eb",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#64748b",
+                        fontWeight: 800,
+                      }}
+                    >
+                      Estimated Time
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 18,
+                        fontWeight: 950,
+                        color: "#0f172a",
+                      }}
+                    >
+                      {t.timeTracking?.estimatedLabel ||
+                        t.task.estimatedDurationLabel ||
+                        "—"}
+                    </div>
+
+                    {t.timeTracking?.estimatedSource ||
+                    t.task.estimatedDurationSource ? (
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 11,
+                          color: "#94a3b8",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Source:{" "}
+                        {t.timeTracking?.estimatedSource ||
+                          t.task.estimatedDurationSource}
                       </div>
-                    )}
+                    ) : null}
+                  </div>
+
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid #e5e7eb",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#64748b",
+                        fontWeight: 800,
+                      }}
+                    >
+                      Real Work Time
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 18,
+                        fontWeight: 950,
+                        color: "#0f172a",
+                      }}
+                    >
+                      {t.timeTracking?.actualLabel ||
+                        (t.timeTracking?.startedAt
+                          ? getLiveElapsedLabel(t.timeTracking.startedAt)
+                          : "Not started yet")}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 6,
+                        display: "grid",
+                        gap: 3,
+                        fontSize: 11,
+                        color: "#64748b",
+                        fontWeight: 700,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      <div>
+                        Started:{" "}
+                        <span style={{ color: "#334155" }}>
+                          {formatDateTime(t.timeTracking?.startedAt)}
+                        </span>
+                      </div>
+
+                      <div>
+                        Submitted:{" "}
+                        <span style={{ color: "#334155" }}>
+                          {formatDateTime(t.timeTracking?.submittedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      border: `1px solid ${timeTone.border}`,
+                      background: timeTone.bg,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: timeTone.fg,
+                        fontWeight: 800,
+                      }}
+                    >
+                      Time Result
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 14,
+                        fontWeight: 950,
+                        color: timeTone.fg,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {t.timeTracking?.differenceLabel || timeTone.label}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        color: timeTone.fg,
+                        opacity: 0.8,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {timeTone.label}
+                    </div>
+                  </div>
+                </div>
+
+                {(t.timeTracking?.estimatedReason ||
+                  t.task.estimatedDurationReason) && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      background: "#f8fafc",
+                      border: "1px dashed #cbd5e1",
+                      color: "#64748b",
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <strong style={{ color: "#475569" }}>
+                      Estimation reason:
+                    </strong>{" "}
+                    {t.timeTracking?.estimatedReason ||
+                      t.task.estimatedDurationReason}
+                  </div>
+                )}
 
                     {/* Branch */}
                     {t.githubBranch && (

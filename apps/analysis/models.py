@@ -55,7 +55,29 @@ class BpmnTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     incoming_nodes = models.JSONField(default=list, blank=True)              
     outgoing_nodes = models.JSONField(default=list, blank=True)
-    task_type = models.CharField(max_length=50, blank=True, default="")       
+    task_type = models.CharField(max_length=50, blank=True, default="") 
+    ESTIMATION_SOURCE_CHOICES = (
+        ("AI", "AI Estimated"),
+        ("FALLBACK", "Fallback Estimated"),
+        ("MANUAL", "Manually Edited"),
+    )
+
+    estimated_duration_minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Estimated time needed to complete this BPMN task in minutes.",
+    )
+
+    estimated_duration_source = models.CharField(
+        max_length=20,
+        choices=ESTIMATION_SOURCE_CHOICES,
+        default="FALLBACK",
+    )
+
+    estimated_duration_reason = models.TextField(
+        blank=True,
+        default="",
+    )      
     # AI suitability classification (filled by AI suitability classifier service)
     AI_SUITABILITY_CHOICES = (
         ("RECOMMENDED", "Recommended"),

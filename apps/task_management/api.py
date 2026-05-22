@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import io
 import zipfile
 import json
+
 from django.db import transaction
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
@@ -10,6 +12,7 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Avg, Q
+
 from apps.projects.models import Project, ProjectMembership
 from apps.analysis.models import BpmnTask
 from apps.task_management.models import (
@@ -31,7 +34,10 @@ from apps.task_management.services.assignment_service import (
     review_assignment,
     start_assignment,
 )
-from apps.task_management.services.evaluation_service import evaluate_assignment, auto_evaluate_assignment
+from apps.task_management.services.evaluation_service import (
+    evaluate_assignment,
+    auto_evaluate_assignment,
+)
 from apps.accounts.rbac import is_admin, is_evaluator
 
 
@@ -40,6 +46,101 @@ def _parse_json_body(request):
         return json.loads(request.body.decode("utf-8") or "{}")
     except Exception:
         return {}
+
+def _format_minutes(minutes):
+    if minutes is None:
+        return None
+
+    minutes = int(minutes)
+
+    if minutes < 60:
+        return f"{minutes} min"
+
+    hours = minutes // 60
+    remaining_minutes = minutes % 60
+
+    # Real-world working day format
+    working_day_minutes = 8 * 60
+
+    if minutes >= working_day_minutes:
+        days = minutes // working_day_minutes
+        remaining_after_days = minutes % working_day_minutes
+
+        remaining_hours = remaining_after_days // 60
+        remaining_mins = remaining_after_days % 60
+
+        if remaining_hours == 0 and remaining_mins == 0:
+            return f"{days} day" if days == 1 else f"{days} days"
+
+        if remaining_mins == 0:
+            return (
+                f"{days} day {remaining_hours}h"
+                if days == 1
+                else f"{days} days {remaining_hours}h"
+            )
+
+        return (
+            f"{days} day {remaining_hours}h {remaining_mins}m"
+            if days == 1
+            else f"{days} days {remaining_hours}h {remaining_mins}m"
+        )
+
+    if remaining_minutes == 0:
+        return f"{hours}h"
+
+    return f"{hours}h {remaining_minutes}m"
+
+def _serialize_time_tracking(assignment: TaskAssignment) -> dict:
+    task = assignment.bpmn_task
+
+    estimated = getattr(task, "estimated_duration_minutes", None)
+    actual = assignment.actual_duration_minutes
+    difference = assignment.time_difference_minutes
+    status = assignment.time_tracking_status
+
+    if difference is None:
+        label = "Time tracking not completed yet"
+    elif difference < 0:
+        label = f"{_format_minutes(abs(difference))} faster than estimate"
+    elif difference == 0:
+        label = "Completed exactly on estimate"
+    else:
+        label = f"{_format_minutes(difference)} over estimate"
+
+    return {
+        "estimatedMinutes": estimated,
+        "estimatedLabel": _format_minutes(estimated),
+        "estimatedSource": getattr(task, "estimated_duration_source", None),
+        "estimatedReason": getattr(task, "estimated_duration_reason", ""),
+        "actualMinutes": actual,
+        "actualLabel": _format_minutes(actual),
+        "differenceMinutes": difference,
+        "differenceLabel": label,
+        "status": status,
+        "startedAt": assignment.started_at.isoformat() if assignment.started_at else None,
+        "submittedAt": assignment.submitted_at.isoformat() if assignment.submitted_at else None,
+    }
+
+
+def _serialize_task(task: BpmnTask) -> dict:
+    return {
+        "id": task.id,
+        "taskId": task.task_id,
+        "name": task.name,
+        "description": task.description,
+        "summaryText": task.summary_text,
+        "estimatedDurationMinutes": task.estimated_duration_minutes,
+        "estimatedDurationLabel": _format_minutes(task.estimated_duration_minutes),
+        "estimatedDurationSource": task.estimated_duration_source,
+        "estimatedDurationReason": task.estimated_duration_reason,
+        "aiSuitability": task.ai_suitability,
+        "aiSuitabilityReason": task.ai_suitability_reason,
+        "aiSuitabilityCheckedAt": (
+            task.ai_suitability_checked_at.isoformat()
+            if task.ai_suitability_checked_at else None
+        ),
+    }
+
 
 def _serialize_notification(notification: Notification) -> dict:
     return {
@@ -55,53 +156,6 @@ def _serialize_notification(notification: Notification) -> dict:
             "name": getattr(notification.project, "name", f"Project #{notification.project.id}"),
         } if notification.project else None,
         "assignmentId": notification.assignment_id,
-    }
-
-def _serialize_assignment(assignment: TaskAssignment) -> dict:
-    membership = assignment.developer_membership
-    user = membership.user
-    task = assignment.bpmn_task
-
-    return {
-        "assignmentId": assignment.id,
-        "projectId": assignment.project_id,
-        "status": assignment.status,
-        "assignmentNotes": assignment.assignment_notes,
-        "submissionNotes": assignment.submission_notes,
-        "reviewNotes": assignment.review_notes,
-        "githubBranch": assignment.github_branch,
-        "githubPrNumber": assignment.github_pr_number,
-        "githubPrUrl": assignment.github_pr_url,
-        "assignedAt": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
-        "startedAt": assignment.started_at.isoformat() if assignment.started_at else None,
-        "submittedAt": assignment.submitted_at.isoformat() if assignment.submitted_at else None,
-        "reviewedAt": assignment.reviewed_at.isoformat() if assignment.reviewed_at else None,
-        "assignedBy": {
-            "id": assignment.assigned_by.id,
-            "username": assignment.assigned_by.username,
-        } if assignment.assigned_by else None,
-        "reviewedBy": {
-            "id": assignment.reviewed_by.id,
-            "username": assignment.reviewed_by.username,
-        } if assignment.reviewed_by else None,
-        "task": {
-            "id": task.id,
-            "taskId": task.task_id,
-            "name": task.name,
-            "description": task.description,
-        },
-        "developer": {
-            "membershipId": membership.id,
-            "userId": user.id,
-            "username": user.username,
-            "firstName": getattr(user, "first_name", ""),
-            "lastName": getattr(user, "last_name", ""),
-            "email": user.email,
-            "role": membership.role,
-            "isAiAgent": membership.is_ai_agent,
-        },
-        "evaluation": _serialize_evaluation(getattr(assignment, "evaluation", None)),
-        "aiRetryCount": assignment.ai_retry_count,
     }
 
 
@@ -123,6 +177,51 @@ def _serialize_evaluation(evaluation):
         "comments": evaluation.comments,
         "evaluatedAt": evaluation.evaluated_at.isoformat() if evaluation.evaluated_at else None,
     }
+
+
+def _serialize_assignment(assignment: TaskAssignment) -> dict:
+    membership = assignment.developer_membership
+    user = membership.user
+    task = assignment.bpmn_task
+
+    return {
+        "assignmentId": assignment.id,
+        "projectId": assignment.project_id,
+        "status": assignment.status,
+        "assignmentNotes": assignment.assignment_notes,
+        "submissionNotes": assignment.submission_notes,
+        "reviewNotes": assignment.review_notes,
+        "githubBranch": assignment.github_branch,
+        "githubPrNumber": assignment.github_pr_number,
+        "githubPrUrl": assignment.github_pr_url,
+        "assignedAt": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+        "startedAt": assignment.started_at.isoformat() if assignment.started_at else None,
+        "submittedAt": assignment.submitted_at.isoformat() if assignment.submitted_at else None,
+        "reviewedAt": assignment.reviewed_at.isoformat() if assignment.reviewed_at else None,
+        "timeTracking": _serialize_time_tracking(assignment),
+        "assignedBy": {
+            "id": assignment.assigned_by.id,
+            "username": assignment.assigned_by.username,
+        } if assignment.assigned_by else None,
+        "reviewedBy": {
+            "id": assignment.reviewed_by.id,
+            "username": assignment.reviewed_by.username,
+        } if assignment.reviewed_by else None,
+        "task": _serialize_task(task),
+        "developer": {
+            "membershipId": membership.id,
+            "userId": user.id,
+            "username": user.username,
+            "firstName": getattr(user, "first_name", ""),
+            "lastName": getattr(user, "last_name", ""),
+            "email": user.email,
+            "role": membership.role,
+            "isAiAgent": membership.is_ai_agent,
+        },
+        "evaluation": _serialize_evaluation(getattr(assignment, "evaluation", None)),
+        "aiRetryCount": assignment.ai_retry_count,
+    }
+
 
 @login_required
 @require_GET
@@ -160,8 +259,11 @@ def project_developers_api(request, project_id: int):
 def project_task_assignments_api(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
-    # Check project membership/evaluator role
-    is_project_evaluator = (project.evaluator_id == request.user.id) and is_evaluator(request.user)
+    is_project_evaluator = (
+        project.evaluator_id == request.user.id
+        and is_evaluator(request.user)
+    )
+
     try:
         membership = ProjectMembership.objects.get(project=project, user=request.user)
     except ProjectMembership.DoesNotExist:
@@ -172,20 +274,29 @@ def project_task_assignments_api(request, project_id: int):
     if request.method == "POST":
         return assign_task_api(request, project_id)
 
-    # GET logic
-    is_eval = is_admin(request.user) or (membership and membership.role in ["EVALUATOR", "ADMIN"]) or (project.evaluator_id == request.user.id)
-
-    tasks = list(
-        BpmnTask.objects.filter(project=project).order_by("id")
+    is_eval = (
+        is_admin(request.user)
+        or (membership and membership.role in ["EVALUATOR", "ADMIN"])
+        or project.evaluator_id == request.user.id
     )
 
-    assignments_query = TaskAssignment.objects.select_related(
-        "developer_membership__user",
-        "assigned_by",
-        "reviewed_by",
-        "bpmn_task",
-        "evaluation",
-    ).filter(project=project)
+    tasks = list(
+        BpmnTask.objects
+        .filter(project=project)
+        .order_by("id")
+    )
+
+    assignments_query = (
+        TaskAssignment.objects
+        .select_related(
+            "developer_membership__user",
+            "assigned_by",
+            "reviewed_by",
+            "bpmn_task",
+            "evaluation",
+        )
+        .filter(project=project)
+    )
 
     if not is_eval:
         if membership:
@@ -199,33 +310,19 @@ def project_task_assignments_api(request, project_id: int):
     }
 
     result = []
+
     for task in tasks:
         assignment = assignments.get(task.id)
+
         if is_eval:
             result.append({
-                "task": {
-                    "id": task.id,
-                    "taskId": task.task_id,
-                    "name": task.name,
-                    "description": task.description,
-                    "aiSuitability": task.ai_suitability,
-                    "aiSuitabilityReason": task.ai_suitability_reason,
-                    "aiSuitabilityCheckedAt": (
-                        task.ai_suitability_checked_at.isoformat()
-                        if task.ai_suitability_checked_at else None
-                    ),
-                },
+                "task": _serialize_task(task),
                 "assignment": _serialize_assignment(assignment) if assignment else None,
             })
         else:
             if assignment:
                 result.append({
-                    "task": {
-                        "id": task.id,
-                        "taskId": task.task_id,
-                        "name": task.name,
-                        "description": task.description,
-                    },
+                    "task": _serialize_task(task),
                     "assignment": _serialize_assignment(assignment),
                 })
 
@@ -240,25 +337,22 @@ def project_task_assignments_api(request, project_id: int):
 def assign_task_api(request, project_id: int):
     project = get_object_or_404(Project, id=project_id)
 
-    # Permission check
     if not can_assign_tasks(project, request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    # Parse request body
     body = _parse_json_body(request)
+
     bpmn_task_id = body.get("bpmnTaskId") or body.get("bpmn_task_id")
     developer_membership_id = body.get("developerMembershipId") or body.get("developer_id")
     notes = body.get("notes", "")
     create_branch = body.get("createBranch") or body.get("create_branch", False)
 
-    # Validate required fields
     if not bpmn_task_id or not developer_membership_id:
         return JsonResponse(
             {"detail": "bpmnTaskId and developerMembershipId are required."},
             status=400,
         )
 
-    # Call service with error handling
     try:
         assignment = assign_task(
             project=project,
@@ -266,21 +360,13 @@ def assign_task_api(request, project_id: int):
             developer_membership_id=developer_membership_id,
             assigned_by=request.user,
             notes=notes,
-            create_branch=bool(create_branch)
+            create_branch=bool(create_branch),
         )
     except ValidationError as e:
-        return JsonResponse(
-            {"detail": str(e)},
-            status=400,
-        )
+        return JsonResponse({"detail": str(e)}, status=400)
     except Exception as e:
-        # Catch unexpected errors (very important for debugging)
-        return JsonResponse(
-            {"detail": f"Unexpected error: {str(e)}"},
-            status=500,
-        )
+        return JsonResponse({"detail": f"Unexpected error: {str(e)}"}, status=500)
 
-    # Success response
     return JsonResponse(
         {
             "message": "Task assigned successfully.",
@@ -294,8 +380,12 @@ def assign_task_api(request, project_id: int):
 @require_POST
 def submit_task_assignment_api(request, assignment_id: int):
     assignment = get_object_or_404(
-        TaskAssignment.objects.select_related("developer_membership__user", "project"),
-        id=assignment_id
+        TaskAssignment.objects.select_related(
+            "developer_membership__user",
+            "project",
+            "bpmn_task",
+        ),
+        id=assignment_id,
     )
 
     if assignment.developer_membership.user_id != request.user.id and not is_admin(request.user):
@@ -306,6 +396,7 @@ def submit_task_assignment_api(request, assignment_id: int):
         TaskAssignment.Status.IN_PROGRESS,
         TaskAssignment.Status.NEEDS_CHANGES,
     ]
+
     if assignment.status not in valid_statuses:
         return JsonResponse(
             {"detail": f"Cannot submit assignment in status: {assignment.status}"},
@@ -313,6 +404,7 @@ def submit_task_assignment_api(request, assignment_id: int):
         )
 
     body = _parse_json_body(request)
+
     github_pr_number = body.get("github_pr_number") or body.get("githubPrNumber")
     github_pr_url = body.get("github_pr_url") or body.get("githubPrUrl") or ""
     submission_note = body.get("submission_note") or body.get("submissionNote") or ""
@@ -321,7 +413,10 @@ def submit_task_assignment_api(request, assignment_id: int):
         try:
             github_pr_number = int(github_pr_number)
         except ValueError:
-            return JsonResponse({"detail": "github_pr_number must be an integer."}, status=400)
+            return JsonResponse(
+                {"detail": "github_pr_number must be an integer."},
+                status=400,
+            )
 
     assignment, submission = submit_assignment(
         assignment=assignment,
@@ -343,8 +438,12 @@ def submit_task_assignment_api(request, assignment_id: int):
 @require_POST
 def review_task_assignment_api(request, assignment_id: int):
     assignment = get_object_or_404(
-        TaskAssignment.objects.select_related("project"),
-        id=assignment_id
+        TaskAssignment.objects.select_related(
+            "project",
+            "developer_membership__user",
+            "bpmn_task",
+        ),
+        id=assignment_id,
     )
 
     if not can_review_tasks(assignment.project, request.user):
@@ -364,19 +463,28 @@ def review_task_assignment_api(request, assignment_id: int):
         review_notes=review_notes,
     )
 
-    # If this was an AI accept, surface a warning when score is below threshold.
     ai_warning = None
+
     if accepted and assignment.developer_membership.is_ai_agent:
         try:
             from apps.analysis.models import MatchResult
+
             m = (
                 MatchResult.objects
-                .filter(project=assignment.project, task=assignment.bpmn_task, is_ai_generated=True)
+                .filter(
+                    project=assignment.project,
+                    task=assignment.bpmn_task,
+                    is_ai_generated=True,
+                )
                 .order_by("-created_at")
                 .first()
             )
+
             if m is not None:
-                threshold = float(getattr(assignment.project, "similarity_threshold", 0.6) or 0.6)
+                threshold = float(
+                    getattr(assignment.project, "similarity_threshold", 0.6) or 0.6
+                )
+
                 if m.similarity_score < threshold:
                     ai_warning = {
                         "similarity": round(float(m.similarity_score), 4),
@@ -402,12 +510,20 @@ def review_task_assignment_api(request, assignment_id: int):
 def my_task_assignments_api(request):
     assignments = (
         TaskAssignment.objects
-        .select_related("bpmn_task", "project")
+        .select_related(
+            "bpmn_task",
+            "project",
+            "developer_membership__user",
+            "assigned_by",
+            "reviewed_by",
+            "evaluation",
+        )
         .filter(developer_membership__user=request.user)
         .order_by("-assigned_at")
     )
 
     data = []
+
     for a in assignments:
         data.append({
             "assignmentId": a.id,
@@ -417,11 +533,10 @@ def my_task_assignments_api(request):
             "taskId": a.bpmn_task.task_id,
             "taskDescription": a.bpmn_task.summary_text or a.bpmn_task.description or "",
             "task": {
-                "id": a.bpmn_task.id,
-                "taskId": a.bpmn_task.task_id,
-                "name": a.bpmn_task.name,
+                **_serialize_task(a.bpmn_task),
                 "description": a.bpmn_task.summary_text or a.bpmn_task.description or "",
             },
+            "timeTracking": _serialize_time_tracking(a),
             "githubBranch": a.github_branch,
             "githubPrNumber": a.github_pr_number,
             "githubPrUrl": a.github_pr_url,
@@ -429,25 +544,43 @@ def my_task_assignments_api(request):
             "assignedAt": a.assigned_at.isoformat() if a.assigned_at else None,
             "startedAt": a.started_at.isoformat() if a.started_at else None,
             "submittedAt": a.submitted_at.isoformat() if a.submitted_at else None,
+            "reviewedAt": a.reviewed_at.isoformat() if a.reviewed_at else None,
+            "assignmentNotes": a.assignment_notes,
+            "submissionNotes": a.submission_notes,
+            "reviewNotes": a.review_notes,
+            "evaluation": _serialize_evaluation(getattr(a, "evaluation", None)),
         })
 
     return JsonResponse({
-        "items": data
+        "items": data,
     })
 
 
 @login_required
 @require_POST
 def start_task_assignment_api(request, assignment_id: int):
-    assignment = get_object_or_404(TaskAssignment, id=assignment_id)
+    assignment = get_object_or_404(
+        TaskAssignment.objects.select_related(
+            "developer_membership__user",
+            "project",
+            "bpmn_task",
+            "assigned_by",
+            "reviewed_by",
+            "evaluation",
+        ),
+        id=assignment_id,
+    )
 
     if assignment.developer_membership.user_id != request.user.id:
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
-    assignment = start_assignment(assignment=assignment, started_by=request.user)
+    assignment = start_assignment(
+        assignment=assignment,
+        started_by=request.user,
+    )
 
     return JsonResponse({
-        "assignment": _serialize_assignment(assignment)
+        "assignment": _serialize_assignment(assignment),
     })
 
 
@@ -456,25 +589,42 @@ def update_github_info_api(request, assignment_id: int):
     if request.method != "PATCH":
         return JsonResponse({"detail": "Method not allowed"}, status=405)
 
-    assignment = get_object_or_404(TaskAssignment, id=assignment_id)
+    assignment = get_object_or_404(
+        TaskAssignment.objects.select_related(
+            "developer_membership__user",
+            "project",
+            "bpmn_task",
+            "assigned_by",
+            "reviewed_by",
+            "evaluation",
+        ),
+        id=assignment_id,
+    )
 
     is_assigned_dev = assignment.developer_membership.user_id == request.user.id
     is_project_eval = assignment.project.evaluator_id == request.user.id
+
     if not (is_assigned_dev or is_project_eval or is_admin(request.user)):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     body = _parse_json_body(request)
+
     github_branch = body.get("github_branch") or body.get("githubBranch")
     github_pr_number = body.get("github_pr_number") or body.get("githubPrNumber")
     github_pr_url = body.get("github_pr_url") or body.get("githubPrUrl")
 
     if github_branch is not None:
         assignment.github_branch = github_branch
+
     if github_pr_number is not None:
         try:
             assignment.github_pr_number = int(github_pr_number) if github_pr_number else None
         except ValueError:
-            return JsonResponse({"detail": "github_pr_number must be an integer."}, status=400)
+            return JsonResponse(
+                {"detail": "github_pr_number must be an integer."},
+                status=400,
+            )
+
     if github_pr_url is not None:
         assignment.github_pr_url = github_pr_url
 
@@ -491,7 +641,7 @@ def update_github_info_api(request, assignment_id: int):
 def evaluate_task_assignment_api(request, assignment_id: int):
     assignment = get_object_or_404(
         TaskAssignment.objects.select_related("project"),
-        id=assignment_id
+        id=assignment_id,
     )
 
     if not can_review_tasks(assignment.project, request.user):
@@ -506,10 +656,18 @@ def evaluate_task_assignment_api(request, assignment_id: int):
         communication_score = body.get("communicationScore")
         comments = body.get("comments", "")
 
-        if correctness_score is None or quality_score is None or timeliness_score is None or communication_score is None:
-            return JsonResponse({"detail": "All score fields are required."}, status=400)
+        if (
+            correctness_score is None
+            or quality_score is None
+            or timeliness_score is None
+            or communication_score is None
+        ):
+            return JsonResponse(
+                {"detail": "All score fields are required."},
+                status=400,
+            )
 
-        evaluation = evaluate_assignment(
+        evaluate_assignment(
             assignment_id=assignment.id,
             evaluator=request.user,
             correctness_score=correctness_score,
@@ -518,10 +676,12 @@ def evaluate_task_assignment_api(request, assignment_id: int):
             communication_score=communication_score,
             comments=comments,
         )
+
     except Exception as e:
         return JsonResponse({"detail": str(e)}, status=400)
 
     assignment.refresh_from_db()
+
     return JsonResponse({
         "message": "Task evaluated successfully.",
         "assignment": _serialize_assignment(assignment),
@@ -533,14 +693,14 @@ def evaluate_task_assignment_api(request, assignment_id: int):
 def auto_evaluate_task_assignment_api(request, assignment_id: int):
     assignment = get_object_or_404(
         TaskAssignment.objects.select_related("project"),
-        id=assignment_id
+        id=assignment_id,
     )
 
     if not can_review_tasks(assignment.project, request.user):
         return JsonResponse({"detail": "Forbidden"}, status=403)
 
     try:
-        evaluation = auto_evaluate_assignment(
+        auto_evaluate_assignment(
             assignment_id=assignment.id,
             evaluator=request.user,
         )
@@ -548,11 +708,11 @@ def auto_evaluate_task_assignment_api(request, assignment_id: int):
         return JsonResponse({"detail": str(e)}, status=400)
 
     assignment.refresh_from_db()
+
     return JsonResponse({
         "message": "Task auto-evaluated successfully.",
         "assignment": _serialize_assignment(assignment),
     }, status=201)
-
 
 
 @login_required
@@ -570,10 +730,11 @@ def project_developer_performance_api(request, project_id: int):
     )
 
     items = []
+
     for membership in developer_memberships:
         assignments = TaskAssignment.objects.filter(
             project=project,
-            developer_membership=membership
+            developer_membership=membership,
         )
 
         total_assigned = assignments.count()
@@ -585,7 +746,10 @@ def project_developer_performance_api(request, project_id: int):
         evaluations = TaskEvaluation.objects.filter(assignment__in=assignments)
         avg_final_score = evaluations.aggregate(avg=Avg("final_score"))["avg"] or 0
 
-        acceptance_rate = (accepted_count / total_assigned * 100) if total_assigned else 0
+        acceptance_rate = (
+            accepted_count / total_assigned * 100
+            if total_assigned else 0
+        )
 
         items.append({
             "membershipId": membership.id,
@@ -601,12 +765,19 @@ def project_developer_performance_api(request, project_id: int):
             "averageScore": round(float(avg_final_score), 2),
         })
 
-    items.sort(key=lambda x: (-x["averageScore"], -x["acceptedCount"], x["username"].lower()))
+    items.sort(
+        key=lambda x: (
+            -x["averageScore"],
+            -x["acceptedCount"],
+            x["username"].lower(),
+        )
+    )
 
     return JsonResponse({
         "projectId": project.id,
         "items": items,
     })
+
 
 @login_required
 @require_GET
@@ -618,7 +789,10 @@ def my_notifications_api(request):
         .order_by("-created_at")[:30]
     )
 
-    unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+    unread_count = Notification.objects.filter(
+        user=request.user,
+        is_read=False,
+    ).count()
 
     return JsonResponse({
         "items": [_serialize_notification(item) for item in items],
@@ -649,7 +823,10 @@ def mark_notification_read_api(request, notification_id: int):
 @login_required
 @require_POST
 def mark_all_notifications_read_api(request):
-    unread_items = Notification.objects.filter(user=request.user, is_read=False)
+    unread_items = Notification.objects.filter(
+        user=request.user,
+        is_read=False,
+    )
 
     now = timezone.now()
     unread_items.update(is_read=True, read_at=now)
@@ -657,9 +834,6 @@ def mark_all_notifications_read_api(request):
     return JsonResponse({
         "message": "All notifications marked as read.",
     })
-
-    
-
 
 
 @login_required
@@ -682,6 +856,7 @@ def developer_performance_overview_api(request):
             .select_related("user", "project")
             .filter(role="DEVELOPER", project__evaluator_id=user.id)
         )
+
     membership_ids = list(memberships.values_list("id", flat=True))
 
     assignment_counts = (
@@ -698,7 +873,10 @@ def developer_performance_overview_api(request):
         )
     )
 
-    counts_by_membership = {r["developer_membership_id"]: r for r in assignment_counts}
+    counts_by_membership = {
+        r["developer_membership_id"]: r
+        for r in assignment_counts
+    }
 
     developer_map = {}
 
@@ -733,6 +911,7 @@ def developer_performance_overview_api(request):
             entry["avgScores"].append(float(avg))
 
     items = []
+
     for entry in developer_map.values():
         total_assigned = entry["totalAssigned"]
         accepted_count = entry["acceptedCount"]
@@ -745,8 +924,7 @@ def developer_performance_overview_api(request):
 
         acceptance_rate = (
             round((accepted_count / total_assigned) * 100, 2)
-            if total_assigned
-            else 0.0
+            if total_assigned else 0.0
         )
 
         items.append({
@@ -764,10 +942,15 @@ def developer_performance_overview_api(request):
         })
 
     items.sort(
-        key=lambda x: (-x["averageScore"], -x["acceptedCount"], x["username"].lower())
+        key=lambda x: (
+            -x["averageScore"],
+            -x["acceptedCount"],
+            x["username"].lower(),
+        )
     )
 
     return JsonResponse({"items": items})
+
 
 @login_required
 @require_GET
@@ -803,38 +986,50 @@ def my_performance_insights_api(request):
 
     evaluations = TaskEvaluation.objects.filter(assignment__in=assignments)
     avg_final_score = evaluations.aggregate(avg=Avg("final_score"))["avg"] or 0
-    acceptance_rate = (accepted_count / total_assigned * 100) if total_assigned else 0
+
+    acceptance_rate = (
+        total_assigned and accepted_count / total_assigned * 100
+    ) or 0
 
     project_items = []
+
     for membership in memberships:
         project = membership.project
         project_assignments = assignments.filter(developer_membership=membership)
 
         project_total = project_assignments.count()
         project_accepted = project_assignments.filter(
-            status=TaskAssignment.Status.ACCEPTED
+            status=TaskAssignment.Status.ACCEPTED,
         ).count()
         project_rejected = project_assignments.filter(
-            status=TaskAssignment.Status.REJECTED
+            status=TaskAssignment.Status.REJECTED,
         ).count()
         project_submitted = project_assignments.filter(
-            status=TaskAssignment.Status.SUBMITTED
+            status=TaskAssignment.Status.SUBMITTED,
         ).count()
         project_in_progress = project_assignments.filter(
-            status=TaskAssignment.Status.IN_PROGRESS
+            status=TaskAssignment.Status.IN_PROGRESS,
         ).count()
 
-        project_evaluations = TaskEvaluation.objects.filter(assignment__in=project_assignments)
-        project_avg_score = project_evaluations.aggregate(avg=Avg("final_score"))["avg"] or 0
+        project_evaluations = TaskEvaluation.objects.filter(
+            assignment__in=project_assignments,
+        )
+        project_avg_score = project_evaluations.aggregate(
+            avg=Avg("final_score"),
+        )["avg"] or 0
+
         project_acceptance_rate = (
-            (project_accepted / project_total) * 100 if project_total else 0
+            project_accepted / project_total * 100
+            if project_total else 0
         )
 
         project_items.append({
             "projectId": project.id,
-            "projectName": getattr(project, "name", None)
+            "projectName": (
+                getattr(project, "name", None)
                 or getattr(project, "title", None)
-                or f"Project #{project.id}",
+                or f"Project #{project.id}"
+            ),
             "totalAssigned": project_total,
             "acceptedCount": project_accepted,
             "rejectedCount": project_rejected,
@@ -845,24 +1040,23 @@ def my_performance_insights_api(request):
         })
 
     recent_items = []
+
     for assignment in assignments[:8]:
         recent_items.append({
             "assignmentId": assignment.id,
             "projectId": assignment.project_id,
-            "projectName": getattr(assignment.project, "name", None)
+            "projectName": (
+                getattr(assignment.project, "name", None)
                 or getattr(assignment.project, "title", None)
-                or f"Project #{assignment.project_id}",
+                or f"Project #{assignment.project_id}"
+            ),
             "status": assignment.status,
             "assignedAt": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
             "startedAt": assignment.started_at.isoformat() if assignment.started_at else None,
             "submittedAt": assignment.submitted_at.isoformat() if assignment.submitted_at else None,
             "reviewedAt": assignment.reviewed_at.isoformat() if assignment.reviewed_at else None,
-            "task": {
-                "id": assignment.bpmn_task.id,
-                "taskId": assignment.bpmn_task.task_id,
-                "name": assignment.bpmn_task.name,
-                "description": assignment.bpmn_task.description,
-            },
+            "timeTracking": _serialize_time_tracking(assignment),
+            "task": _serialize_task(assignment.bpmn_task),
             "evaluation": _serialize_evaluation(getattr(assignment, "evaluation", None)),
         })
 
@@ -886,7 +1080,8 @@ def my_performance_insights_api(request):
     )
 
     ranking_counts_by_membership = {
-        r["developer_membership_id"]: r for r in ranking_counts
+        r["developer_membership_id"]: r
+        for r in ranking_counts
     }
 
     developer_map = {}
@@ -916,6 +1111,7 @@ def my_performance_insights_api(request):
             entry["avgScores"].append(float(avg))
 
     ranking_items = []
+
     for entry in developer_map.values():
         avg_score = (
             round(sum(entry["avgScores"]) / len(entry["avgScores"]), 2)
@@ -924,10 +1120,10 @@ def my_performance_insights_api(request):
         )
 
         total_dev_assigned = entry["totalAssigned"]
+
         dev_acceptance_rate = (
             round((entry["acceptedCount"] / total_dev_assigned) * 100, 2)
-            if total_dev_assigned
-            else 0.0
+            if total_dev_assigned else 0.0
         )
 
         ranking_items.append({
@@ -942,19 +1138,29 @@ def my_performance_insights_api(request):
         })
 
     ranking_items.sort(
-        key=lambda x: (-x["averageScore"], -x["acceptedCount"], x["username"].lower())
+        key=lambda x: (
+            -x["averageScore"],
+            -x["acceptedCount"],
+            x["username"].lower(),
+        )
     )
 
     my_rank = None
+
     for index, item in enumerate(ranking_items, start=1):
         item["rank"] = index
+
         if item["userId"] == user.id:
             my_rank = item
 
     top_developers = ranking_items[:5]
 
     project_items.sort(
-        key=lambda x: (-x["averageScore"], -x["acceptedCount"], x["projectName"].lower())
+        key=lambda x: (
+            -x["averageScore"],
+            -x["acceptedCount"],
+            x["projectName"].lower(),
+        )
     )
 
     return JsonResponse({
@@ -980,10 +1186,11 @@ def my_performance_insights_api(request):
         },
     })
 
-#endpoint that returns the AI submission with its files
+
 def _serialize_ai_submission(submission):
     if submission is None:
         return None
+
     return {
         "id": submission.id,
         "attemptNumber": submission.attempt_number,
@@ -1003,14 +1210,45 @@ def _serialize_ai_submission(submission):
     }
 
 
+@login_required
+@require_GET
+def ai_submission_api(request, assignment_id: int):
+    assignment = get_object_or_404(
+        TaskAssignment.objects
+        .select_related(
+            "bpmn_task",
+            "developer_membership__user",
+            "project",
+        ),
+        id=assignment_id,
+    )
+
+    if not can_view_assignment(assignment, request.user):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    submissions_qs = (
+        assignment.ai_submissions
+        .prefetch_related("files")
+        .order_by("-attempt_number")
+    )
+
+    submissions = list(submissions_qs)
+    latest = submissions[0] if submissions else None
+
+    return JsonResponse({
+        "assignmentId": assignment.id,
+        "isAiAgent": assignment.developer_membership.is_ai_agent,
+        "status": assignment.status,
+        "task": _serialize_task(assignment.bpmn_task),
+        "latest": _serialize_ai_submission(latest),
+        "history": [_serialize_ai_submission(s) for s in submissions],
+        "retryCount": assignment.ai_retry_count,
+    })
+
 
 @login_required
 @require_GET
 def ai_submission_zip_api(request, assignment_id: int):
-    """
-    Returns the latest AI submission for an assignment as a zip file
-    containing each generated Python file plus a README.txt with metadata.
-    """
     assignment = get_object_or_404(
         TaskAssignment.objects.select_related(
             "bpmn_task",
@@ -1029,20 +1267,20 @@ def ai_submission_zip_api(request, assignment_id: int):
         .order_by("-attempt_number")
         .first()
     )
+
     if submission is None:
         return JsonResponse(
             {"detail": "No AI submission exists for this assignment."},
             status=404,
         )
 
-    # Build the zip in memory
     buffer = io.BytesIO()
+
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        # README with submission metadata
         readme_lines = [
-            f"AI Submission Bundle",
-            f"=====================",
-            f"",
+            "AI Submission Bundle",
+            "=====================",
+            "",
             f"Task:        {assignment.bpmn_task.name}",
             f"Task ID:     {assignment.bpmn_task.task_id}",
             f"Assignment:  #{assignment.id}",
@@ -1051,66 +1289,41 @@ def ai_submission_zip_api(request, assignment_id: int):
             f"Tokens used: {submission.tokens_used}",
             f"Created at:  {submission.created_at.isoformat() if submission.created_at else '(unknown)'}",
             f"Status:      {assignment.status}",
-            f"",
-            f"--- Explanation ---",
+            "",
+            "--- Explanation ---",
             f"{submission.explanation or '(no explanation)'}",
-            f"",
+            "",
         ]
+
         zf.writestr("README.txt", "\n".join(readme_lines))
 
-        # Each Python file
         for f in submission.files.all():
-            safe_name = (f.filename or "ai_output.py").replace("/", "_").replace("\\", "_")
+            safe_name = (
+                f.filename or "ai_output.py"
+            ).replace("/", "_").replace("\\", "_")
+
             zf.writestr(safe_name, f.content or "")
 
     buffer.seek(0)
 
     filename = f"ai_submission_{assignment.id}_attempt_{submission.attempt_number}.zip"
-    response = HttpResponse(buffer.read(), content_type="application/zip")
+
+    response = HttpResponse(
+        buffer.read(),
+        content_type="application/zip",
+    )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
     return response
 
-@login_required
-@require_GET
-def ai_submission_api(request, assignment_id: int):
-    assignment = get_object_or_404(
-        TaskAssignment.objects
-        .select_related(
-            "bpmn_task",
-            "developer_membership__user",
-            "project",
-        ),
-        id=assignment_id,
-    )
-
-    if not can_view_assignment(assignment, request.user):
-        return JsonResponse({"detail": "Forbidden"}, status=403)
-
-    submissions_qs = assignment.ai_submissions.prefetch_related("files").order_by("-attempt_number")
-    submissions = list(submissions_qs)
-
-    latest = submissions[0] if submissions else None
-
-    return JsonResponse({
-        "assignmentId": assignment.id,
-        "isAiAgent": assignment.developer_membership.is_ai_agent,
-        "status": assignment.status,
-        "task": {
-            "id": assignment.bpmn_task.id,
-            "name": assignment.bpmn_task.name,
-            "description": assignment.bpmn_task.description,
-        },
-        "latest": _serialize_ai_submission(latest),
-        "history": [_serialize_ai_submission(s) for s in submissions],
-        "retryCount": assignment.ai_retry_count,
-    })
 
 @login_required
 @require_POST
 def retry_ai_assignment_api(request, assignment_id: int):
     assignment = get_object_or_404(
         TaskAssignment.objects
-        .select_related("project", "developer_membership__user", "bpmn_task"),
+        .select_related("project", "developer_membership__user", "bpmn_task")
+        ,
         id=assignment_id,
     )
 
@@ -1119,7 +1332,8 @@ def retry_ai_assignment_api(request, assignment_id: int):
 
     if not assignment.developer_membership.is_ai_agent:
         return JsonResponse(
-            {"detail": "Only AI assignments can be retried."}, status=400
+            {"detail": "Only AI assignments can be retried."},
+            status=400,
         )
 
     allowed_for_retry = {
@@ -1127,6 +1341,7 @@ def retry_ai_assignment_api(request, assignment_id: int):
         TaskAssignment.Status.ACCEPTED,
         TaskAssignment.Status.REJECTED,
     }
+
     if assignment.status not in allowed_for_retry:
         return JsonResponse(
             {"detail": "AI assignment must be in SUBMITTED, ACCEPTED, or REJECTED to retry."},
@@ -1134,6 +1349,7 @@ def retry_ai_assignment_api(request, assignment_id: int):
         )
 
     MAX_RETRIES = 2
+
     if assignment.ai_retry_count >= MAX_RETRIES:
         return JsonResponse(
             {
@@ -1147,6 +1363,7 @@ def retry_ai_assignment_api(request, assignment_id: int):
 
     body = _parse_json_body(request)
     feedback = (body.get("feedback") or "").strip()
+
     if not feedback:
         return JsonResponse({"detail": "Feedback is required."}, status=400)
 
@@ -1156,6 +1373,7 @@ def retry_ai_assignment_api(request, assignment_id: int):
     assignment.submitted_at = None
     assignment.reviewed_at = None
     assignment.reviewed_by = None
+
     assignment.save(update_fields=[
         "review_notes",
         "ai_retry_count",
@@ -1167,6 +1385,7 @@ def retry_ai_assignment_api(request, assignment_id: int):
     ])
 
     from apps.task_management.signals import _schedule_executor
+
     transaction.on_commit(lambda: _schedule_executor(assignment.id))
 
     return JsonResponse(
@@ -1186,7 +1405,8 @@ def project_ai_runs_api(request, project_id: int):
 
     if not (is_admin(request.user) or is_evaluator(request.user)):
         if not ProjectMembership.objects.filter(
-            project=project, user=request.user
+            project=project,
+            user=request.user,
         ).exists():
             return JsonResponse({"detail": "Forbidden"}, status=403)
 
@@ -1202,9 +1422,11 @@ def project_ai_runs_api(request, project_id: int):
     )
 
     items = []
+
     for sub in submissions:
         assignment = sub.assignment
         task = assignment.bpmn_task
+
         items.append({
             "submissionId": sub.id,
             "assignmentId": assignment.id,
@@ -1217,9 +1439,11 @@ def project_ai_runs_api(request, project_id: int):
             "fileCount": sub.files.count(),
             "createdAt": sub.created_at.isoformat() if sub.created_at else None,
             "aiRetryCount": assignment.ai_retry_count,
+            "timeTracking": _serialize_time_tracking(assignment),
         })
 
     from collections import Counter
+
     status_counter = Counter(item["taskStatus"] for item in items)
 
     return JsonResponse({
@@ -1234,71 +1458,3 @@ def project_ai_runs_api(request, project_id: int):
         },
         "items": items,
     })
-
-
-import io
-import zipfile
-
-
-@login_required
-@require_GET
-def ai_submission_zip_api(request, assignment_id: int):
-    """
-    Returns the latest AI submission for an assignment as a zip file
-    containing each generated Python file plus a README.txt with metadata.
-    """
-    assignment = get_object_or_404(
-        TaskAssignment.objects.select_related(
-            "bpmn_task",
-            "developer_membership__user",
-            "project",
-        ),
-        id=assignment_id,
-    )
-
-    if not can_view_assignment(assignment, request.user):
-        return JsonResponse({"detail": "Forbidden"}, status=403)
-
-    submission = (
-        assignment.ai_submissions
-        .prefetch_related("files")
-        .order_by("-attempt_number")
-        .first()
-    )
-    if submission is None:
-        return JsonResponse(
-            {"detail": "No AI submission exists for this assignment."},
-            status=404,
-        )
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        readme_lines = [
-            "AI Submission Bundle",
-            "=====================",
-            "",
-            f"Task:        {assignment.bpmn_task.name}",
-            f"Task ID:     {assignment.bpmn_task.task_id}",
-            f"Assignment:  #{assignment.id}",
-            f"Attempt:     #{submission.attempt_number}",
-            f"Model:       {submission.model_used or '(unknown)'}",
-            f"Tokens used: {submission.tokens_used}",
-            f"Created at:  {submission.created_at.isoformat() if submission.created_at else '(unknown)'}",
-            f"Status:      {assignment.status}",
-            "",
-            "--- Explanation ---",
-            f"{submission.explanation or '(no explanation)'}",
-            "",
-        ]
-        zf.writestr("README.txt", "\n".join(readme_lines))
-
-        for f in submission.files.all():
-            safe_name = (f.filename or "ai_output.py").replace("/", "_").replace("\\", "_")
-            zf.writestr(safe_name, f.content or "")
-
-    buffer.seek(0)
-
-    filename = f"ai_submission_{assignment.id}_attempt_{submission.attempt_number}.zip"
-    response = HttpResponse(buffer.read(), content_type="application/zip")
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
