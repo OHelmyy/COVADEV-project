@@ -54,8 +54,14 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
   const selectedTask = taskAssignments.find(item => String(item.task.id) === selectedTaskId)?.task;
   const selectedDev = developers.find(dev => String(dev.membershipId) === selectedDevId);
 
+  function getDevName(dev: Developer) {
+    const name = `${dev.firstName || ""} ${dev.lastName || ""}`.trim();
+    if (name) return name;
+    return dev.username.split("@")[0];
+  }
+
   const branchPreview = selectedTask && selectedDev
-    ? `task/${slugify(selectedTask.name)}-${slugify(selectedDev.username)}`
+    ? `task/${slugify(selectedTask.name)}-${slugify(getDevName(selectedDev))}`
     : "";
 
   function openTaskError(operation: string, err: unknown, title?: string) {

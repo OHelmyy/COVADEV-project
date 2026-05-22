@@ -21,14 +21,14 @@ from apps.github_integration.services.github_service import GitHubService
 logger = logging.getLogger(__name__)
 
 
-def generate_clean_branch_name(task_name, developer_username, project):
+def generate_clean_branch_name(task_name, developer_name, project):
     # lowercase, replace spaces with hyphens, remove special characters
     task_slug = task_name.lower()
     task_slug = re.sub(r'[^a-z0-9\s-]', '', task_slug)
     task_slug = re.sub(r'[\s-]+', '-', task_slug)
     task_slug = task_slug.strip('-')
 
-    dev_slug = developer_username.lower()
+    dev_slug = developer_name.lower()
     dev_slug = re.sub(r'[^a-z0-9\s-]', '', dev_slug)
     dev_slug = re.sub(r'[\s-]+', '-', dev_slug)
     dev_slug = dev_slug.strip('-')
@@ -107,7 +107,11 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
     old_developer_user_id = old_assignment.developer_membership.user_id if old_assignment else None
 
     # Generate clean branch name
-    branch_name = generate_clean_branch_name(task.name, membership.user.username, project)
+    dev_name = f"{membership.user.first_name} {membership.user.last_name}".strip()
+    if not dev_name:
+        dev_name = membership.user.username.split('@')[0]
+    
+    branch_name = generate_clean_branch_name(task.name, dev_name, project)
 
     assignment, created = TaskAssignment.objects.update_or_create(
         bpmn_task=task,
