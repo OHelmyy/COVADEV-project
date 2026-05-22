@@ -71,6 +71,66 @@ class TaskAssignment(models.Model):
     # Number of times this AI assignment has been re-submitted to the AI
     # (only meaningful when the developer_membership is an AI agent)
     ai_retry_count = models.IntegerField(default=0)
+        
+    @property
+    def actual_duration_minutes(self):
+        if not self.started_at or not self.submitted_at:
+            return None
+
+        seconds = (self.submitted_at - self.started_at).total_seconds()
+        if seconds < 0:
+            return None
+
+        return round(seconds / 60)
+
+
+    @property
+    def estimated_duration_minutes(self):
+        return getattr(self.bpmn_task, "estimated_duration_minutes", None)
+
+
+    @property
+    def time_difference_minutes(self):
+        estimated = self.estimated_duration_minutes
+        actual = self.actual_duration_minutes
+
+        if estimated is None or actual is None:
+            return None
+
+        return actual - estimated
+
+
+    @property
+    def time_tracking_status(self):
+        estimated = self.estimated_duration_minutes
+        actual = self.actual_duration_minutes
+
+        if estimated is None:
+            return "NO_ESTIMATE"
+
+        if not self.started_at:
+            return "NOT_STARTED"
+
+        if self.started_at and not self.submitted_at:
+            return "IN_PROGRESS"
+
+        if actual is None:
+            return "NO_ACTUAL_TIME"
+
+        diff = actual - estimated
+
+        if diff <= -10:
+            return "COMPLETED_EARLY"
+
+        if diff <= 5:
+            return "ON_TIME"
+
+        if diff <= 20:
+            return "SLIGHTLY_OVER"
+
+        return "OVER_ESTIMATE"
+        
+    
     class Meta:
         ordering = ["-assigned_at"]
 
