@@ -331,6 +331,7 @@ export default function ProjectDetailPage() {
                 reportState={vm.reportState}
                 reportError={vm.reportError}
                 report={vm.report}
+                projectName={vm.data.project.name}
                 onRefresh={vm.loadReport}
                 onRetry={vm.loadReport}
                 onDownloadPdf={() => vm.downloadReport("pdf")}
