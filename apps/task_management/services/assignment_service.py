@@ -86,7 +86,7 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
     if membership.role != "DEVELOPER":
         raise ValidationError("Selected member is not a developer.")
 
-    # Prevent duplicate active assignments for the same BPMN task and Developer
+    # Prevent re-assigning the same developer who is already active on this task
     active_statuses = [
         TaskAssignment.Status.ASSIGNED,
         TaskAssignment.Status.IN_PROGRESS,
@@ -136,8 +136,10 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
         note=f"Task assigned to {membership.user.username}."
     )
 
-    # Attempt to create GitHub branch if requested
-    if create_branch:
+    # Attempt to create GitHub branch:
+    # - always for AI agents (they need a branch to push generated files to)
+    # - for human developers only when explicitly requested
+    if membership.is_ai_agent or create_branch:
         success, msg = try_create_github_branch(project, branch_name)
         if not success:
             logger.warning(f"Could not create GitHub branch during assignment: {msg}")

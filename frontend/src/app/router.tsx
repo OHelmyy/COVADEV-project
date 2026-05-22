@@ -4,8 +4,7 @@ import MainLayout from "../layouts/MainLayout";
 import RequireAuth from "./RequireAuth";
 import LoginPage from "../pages/LoginPage";
 import AdminUsersPage from "../pages/AdminUsersPage";
-
-
+import HelpPage from "../pages/HelpPage";
 import ProjectsPage from "../pages/ProjectsPage";
 import ProjectCreatePage from "../pages/ProjectCreatePage";
 import ProjectDetailPage from "../features/projects/pages/ProjectDetailPage";
@@ -151,7 +150,15 @@ export const router = createBrowserRouter([
             <DeveloperPerformancePage />
           </RequireAuth>
         ),
-      }
+      },
+      {
+        path: "help",
+        element: (
+          <RequireAuth>
+            <HelpPage />
+          </RequireAuth>
+        ),
+      },
     ],
   },
 ]);

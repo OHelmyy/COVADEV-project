@@ -146,10 +146,127 @@ class GitHubService:
         Downloads the repository archive as a zipball for the given ref.
         Returns raw bytes.
         """
-        url = f"{self.BASE_URL}/repos/{owner}/{repo}/zipball/{ref}"
-        # Zipball endpoint returns a redirect, requests follows it automatically
-        response = requests.get(url, headers=self.headers)
+        from urllib.parse import quote
+        # URL-encode the ref so slashes in branch names (e.g. task/foo) don't
+        # break the URL path segment.
+        encoded_ref = quote(ref, safe="")
+        url = f"{self.BASE_URL}/repos/{owner}/{repo}/zipball/{encoded_ref}"
+        # GitHub returns a redirect to S3; allow_redirects=True handles it.
+        # Stream the response so large repos don't time out.
+        response = requests.get(url, headers=self.headers, allow_redirects=True, stream=True)
+        if response.status_code == 404:
+            raise Exception(
+                f"Branch '{ref}' not found on GitHub. "
+                "Make sure you have pushed your branch before previewing."
+            )
         if response.status_code != 200:
             raise Exception(f"Failed to download repository zip archive. Status code: {response.status_code}")
         return response.content
+
+    def push_files_to_branch(self, owner, repo, branch, files, commit_message):
+        """
+        Pushes multiple files to an existing branch using the Git Data API.
+
+        files: list of dicts with keys 'path' (str) and 'content' (str).
+        Uses a single commit: get branch tip → create tree → create commit → update ref.
+        Returns the new commit data.
+        """
+        import base64
+
+        # 1. Get the latest commit SHA on the branch
+        ref_data = self._get(f"repos/{owner}/{repo}/git/refs/heads/{branch}")
+        latest_commit_sha = ref_data["object"]["sha"]
+
+        # 2. Get the tree SHA for that commit
+        commit_data = self._get(f"repos/{owner}/{repo}/git/commits/{latest_commit_sha}")
+        base_tree_sha = commit_data["tree"]["sha"]
+
+        # 3. Build a new tree with all generated files (mode 100644 = regular file)
+        tree_items = []
+        for f in files:
+            content = f["content"]
+            # Encode content as base64 blob then create blob object
+            blob_url = f"{self.BASE_URL}/repos/{owner}/{repo}/git/blobs"
+            blob_resp = requests.post(
+                blob_url,
+                headers=self.headers,
+                json={
+                    "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+                    "encoding": "base64",
+                },
+            )
+            if blob_resp.status_code != 201:
+                raise Exception(f"Failed to create blob for {f['path']}: {blob_resp.text}")
+            blob_sha = blob_resp.json()["sha"]
+
+            tree_items.append({
+                "path": f["path"],
+                "mode": "100644",
+                "type": "blob",
+                "sha": blob_sha,
+            })
+
+        # 4. Create the new tree
+        tree_url = f"{self.BASE_URL}/repos/{owner}/{repo}/git/trees"
+        tree_resp = requests.post(
+            tree_url,
+            headers=self.headers,
+            json={"base_tree": base_tree_sha, "tree": tree_items},
+        )
+        if tree_resp.status_code != 201:
+            raise Exception(f"Failed to create Git tree: {tree_resp.text}")
+        new_tree_sha = tree_resp.json()["sha"]
+
+        # 5. Create the commit
+        commit_url = f"{self.BASE_URL}/repos/{owner}/{repo}/git/commits"
+        commit_resp = requests.post(
+            commit_url,
+            headers=self.headers,
+            json={
+                "message": commit_message,
+                "tree": new_tree_sha,
+                "parents": [latest_commit_sha],
+            },
+        )
+        if commit_resp.status_code != 201:
+            raise Exception(f"Failed to create Git commit: {commit_resp.text}")
+        new_commit_sha = commit_resp.json()["sha"]
+
+        # 6. Update the branch ref to point to the new commit
+        ref_url = f"{self.BASE_URL}/repos/{owner}/{repo}/git/refs/heads/{branch}"
+        ref_resp = requests.patch(
+            ref_url,
+            headers=self.headers,
+            json={"sha": new_commit_sha, "force": False},
+        )
+        if ref_resp.status_code != 200:
+            raise Exception(f"Failed to update branch ref: {ref_resp.text}")
+
+        return commit_resp.json()
+
+    def create_pull_request(self, owner, repo, title, head, base, body=""):
+        """
+        Creates a pull request from head branch into base branch.
+        Returns the PR data dict including 'number' and 'html_url'.
+        """
+        url = f"{self.BASE_URL}/repos/{owner}/{repo}/pulls"
+        response = requests.post(
+            url,
+            headers=self.headers,
+            json={
+                "title": title,
+                "head": head,
+                "base": base,
+                "body": body,
+            },
+        )
+        if response.status_code != 201:
+            error_data = response.json()
+            message = error_data.get("message", "Unknown error")
+            errors = error_data.get("errors", [])
+            # If a PR already exists for this branch, surface a clear message
+            if errors and any("already exists" in str(e).lower() for e in errors):
+                raise Exception(f"A pull request for branch '{head}' already exists.")
+            raise Exception(f"Failed to create pull request: {message}")
+        return response.json()
 

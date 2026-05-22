@@ -49,8 +49,8 @@ export type TabKey =
   | "analysis"
   | "report"
   | "myTasks"
-  | "devOverview"
   | "devBpmn"
+  | "devOverview"
   | "devRecommendations"
   | "devHistory";
 

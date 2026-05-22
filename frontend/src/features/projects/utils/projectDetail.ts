@@ -7,8 +7,6 @@ import type {
   ProjectPermissions,
   ProjectRoleFlags,
   ProjectTabItem,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  TabKey,
   TaskRow,
 } from "../types/projectDetail";
 
@@ -37,16 +35,15 @@ export function getPermissions(flags: ProjectRoleFlags): ProjectPermissions {
 
 export function getTabs(
   isAdmin: boolean,
-  canViewReport: boolean,
+  _canViewReport: boolean,
   isDeveloper: boolean = false,
-  isEvaluator: boolean = false
+  _isEvaluator: boolean = false
 ): ProjectTabItem[] {
   // Developers only see My Tasks
   if (isDeveloper) {
     return [
       { key: "myTasks",           label: "My Tasks",          visible: true },
-      { key: "devOverview",       label: "Overview",          visible: true },
-      { key: "devBpmn",           label: "BPMN Diagram",      visible: true },
+      { key: "devBpmn",           label: "BPMN & Tasks",      visible: true },
       { key: "devRecommendations",label: "Recommendations",   visible: true },
       { key: "devHistory",        label: "Submission History",visible: true },
     ];

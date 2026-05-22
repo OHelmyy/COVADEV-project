@@ -112,6 +112,7 @@ export default function Navbar() {
           </>
         ) : null}
 
+
         {isDeveloper ? <NotificationsBell /> : null}
 
         {user?.email ? (

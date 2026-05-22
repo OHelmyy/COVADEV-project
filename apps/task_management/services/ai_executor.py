@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
 from typing import Optional
 
-from django.utils import timezone
+logger = logging.getLogger(__name__)
 
+from django.utils import timezone
+from apps.github_integration.models import GitHubRepository
+from apps.github_integration.services.github_service import GitHubService
 from apps.analysis.models import BpmnTask
 from apps.analysis.summary.shared_model_singleton import ModelProvider
 from apps.task_management.models import (
@@ -660,5 +664,65 @@ def execute_ai_assignment(assignment_id: int) -> AISubmission:
     assignment.save(update_fields=[
         "status", "submission_notes", "submitted_at", "updated_at",
     ])
+
+    # Push generated files to the assignment's GitHub branch and open a PR.
+    # Failures here are non-fatal — the submission is already saved to the DB.
+    try:
+        github_repo = GitHubRepository.objects.filter(
+            project=assignment.project, is_connected=True
+        ).first()
+
+        if github_repo and assignment.github_branch:
+            files_to_push = [
+                {"path": f.filename, "content": f.content}
+                for f in submission.files.all()
+                if f.content and f.content.strip()
+            ]
+
+            if files_to_push:
+                service = GitHubService(token=github_repo.access_token)
+
+                commit_message = (
+                    f"AI: implement {task.name}\n\n"
+                    f"Task ID: {task.task_id}\n"
+                    f"Assignment: #{assignment.id}\n"
+                    f"Attempt: #{submission.attempt_number}"
+                )
+                service.push_files_to_branch(
+                    github_repo.owner,
+                    github_repo.repo_name,
+                    assignment.github_branch,
+                    files_to_push,
+                    commit_message,
+                )
+
+                pr_title = f"[AI] {task.name}"
+                pr_body = (
+                    f"## AI-Generated Implementation\n\n"
+                    f"**Task:** {task.name}\n"
+                    f"**Task ID:** {task.task_id}\n"
+                    f"**Assignment:** #{assignment.id}\n"
+                    f"**Attempt:** #{submission.attempt_number}\n\n"
+                    f"### Explanation\n{explanation or '(none)'}"
+                )
+                pr_data = service.create_pull_request(
+                    github_repo.owner,
+                    github_repo.repo_name,
+                    title=pr_title,
+                    head=assignment.github_branch,
+                    base=github_repo.default_branch,
+                    body=pr_body,
+                )
+
+                assignment.github_pr_number = pr_data["number"]
+                assignment.github_pr_url = pr_data["html_url"]
+                assignment.save(update_fields=["github_pr_number", "github_pr_url", "updated_at"])
+
+    except Exception as github_err:
+        logger.warning(
+            "Could not push AI files to GitHub for assignment_id=%s: %s",
+            assignment.id,
+            github_err,
+        )
 
     return submission

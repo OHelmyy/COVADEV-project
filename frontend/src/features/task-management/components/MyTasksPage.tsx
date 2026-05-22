@@ -29,7 +29,7 @@ const EMPTY_ERROR: ErrorState = {
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
   ASSIGNED:      { bg: "#eff6ff", fg: "#1e40af" },
-  IN_PROGRESS:   { bg: "#f0fdf4", fg: "#166534" },
+  IN_PROGRESS:   { bg: "#f0f9ff", fg: "#0369a1" },
   SUBMITTED:     { bg: "#fef3c7", fg: "#92400e" },
   UNDER_REVIEW:  { bg: "#fef3c7", fg: "#92400e" },
   NEEDS_CHANGES: { bg: "#f5f3ff", fg: "#5b21b6" },
@@ -215,7 +215,7 @@ export default function MyTasksTab() {
           style={{
             ...cardBase,
             padding: 18,
-            background: "linear-gradient(135deg, #0f3d91 0%, #6d28d9 100%)",
+            background: `linear-gradient(135deg, ${ui.colors.primary} 0%, ${ui.colors.accent} 100%)`,
             color: "#fff",
           }}
         >

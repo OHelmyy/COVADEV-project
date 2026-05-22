@@ -341,7 +341,7 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
                 })}
               </select>
               <div style={{ marginTop: 6, fontSize: 12, color: ui.colors.textMuted }}>
-                Only unassigned tasks can be assigned to developers.
+                Only unassigned tasks can be assigned here. Use the Reassign button on a row to change the developer.
               </div>
             </div>
 
