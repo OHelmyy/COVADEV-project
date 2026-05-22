@@ -21,14 +21,14 @@ from apps.github_integration.services.github_service import GitHubService
 logger = logging.getLogger(__name__)
 
 
-def generate_clean_branch_name(task_name, developer_username, project):
+def generate_clean_branch_name(task_name, developer_name, project):
     # lowercase, replace spaces with hyphens, remove special characters
     task_slug = task_name.lower()
     task_slug = re.sub(r'[^a-z0-9\s-]', '', task_slug)
     task_slug = re.sub(r'[\s-]+', '-', task_slug)
     task_slug = task_slug.strip('-')
 
-    dev_slug = developer_username.lower()
+    dev_slug = developer_name.lower()
     dev_slug = re.sub(r'[^a-z0-9\s-]', '', dev_slug)
     dev_slug = re.sub(r'[\s-]+', '-', dev_slug)
     dev_slug = dev_slug.strip('-')
@@ -86,7 +86,7 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
     if membership.role != "DEVELOPER":
         raise ValidationError("Selected member is not a developer.")
 
-    # Prevent duplicate active assignments for the same BPMN task and Developer
+    # Prevent re-assigning the same developer who is already active on this task
     active_statuses = [
         TaskAssignment.Status.ASSIGNED,
         TaskAssignment.Status.IN_PROGRESS,
@@ -107,7 +107,11 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
     old_developer_user_id = old_assignment.developer_membership.user_id if old_assignment else None
 
     # Generate clean branch name
-    branch_name = generate_clean_branch_name(task.name, membership.user.username, project)
+    dev_name = f"{membership.user.first_name} {membership.user.last_name}".strip()
+    if not dev_name:
+        dev_name = membership.user.username.split('@')[0]
+    
+    branch_name = generate_clean_branch_name(task.name, dev_name, project)
 
     assignment, created = TaskAssignment.objects.update_or_create(
         bpmn_task=task,
@@ -136,8 +140,10 @@ def assign_task(*, project, bpmn_task_id, developer_membership_id, assigned_by, 
         note=f"Task assigned to {membership.user.username}."
     )
 
-    # Attempt to create GitHub branch if requested
-    if create_branch:
+    # Attempt to create GitHub branch:
+    # - always for AI agents (they need a branch to push generated files to)
+    # - for human developers only when explicitly requested
+    if membership.is_ai_agent or create_branch:
         success, msg = try_create_github_branch(project, branch_name)
         if not success:
             logger.warning(f"Could not create GitHub branch during assignment: {msg}")

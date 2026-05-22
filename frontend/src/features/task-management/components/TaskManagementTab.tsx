@@ -201,18 +201,18 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
       .trim();
   }
 
-  const selectedTask = taskAssignments.find(
-    (item) => String(item.task.id) === selectedTaskId
-  )?.task;
+  const selectedTask = taskAssignments.find(item => String(item.task.id) === selectedTaskId)?.task;
+  const selectedDev = developers.find(dev => String(dev.membershipId) === selectedDevId);
 
-  const selectedDev = developers.find(
-    (dev) => String(dev.membershipId) === selectedDevId
-  );
+  function getDevName(dev: Developer) {
+    const name = `${dev.firstName || ""} ${dev.lastName || ""}`.trim();
+    if (name) return name;
+    return dev.username.split("@")[0];
+  }
 
-  const branchPreview =
-    selectedTask && selectedDev
-      ? `task/${slugify(selectedTask.name)}-${slugify(selectedDev.username)}`
-      : "";
+  const branchPreview = selectedTask && selectedDev
+    ? `task/${slugify(selectedTask.name)}-${slugify(getDevName(selectedDev))}`
+    : "";
 
   function openTaskError(operation: string, err: unknown, title?: string) {
     const info = buildTaskManagementError(operation, err, title);
@@ -559,7 +559,7 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
                     color: ui.colors.textMuted,
                   }}
                 >
-                  Only unassigned tasks can be assigned to developers.
+                  Only unassigned tasks can be assigned here. Use the Reassign button on a row to change the developer.
                 </div>
               </div>
 

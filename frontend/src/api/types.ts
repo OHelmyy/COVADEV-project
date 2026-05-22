@@ -17,6 +17,15 @@ export type ProjectSummaryApi = {
   membership?: { role: ProjectRole };
 };
 
+export type IndexedFile = {
+  id?: number;
+  name?: string | null;
+  originalName?: string | null;
+  path?: string | null;
+  filePath?: string | null;
+  type?: string | null;
+};
+
 export type ProjectDetailApi = {
   project: {
     id: number;
@@ -24,14 +33,36 @@ export type ProjectDetailApi = {
     description: string;
     similarityThreshold: number;
     github_repo_url: string;
+    indexed_files?: IndexedFile[];
   };
+
   membership: { role: ProjectRole };
 
   activeUploads: {
-    activeBpmn: null | { id: number; originalName: string; createdAt: string; uploadedBy: string | null };
-    activeCode: null | { id: number; originalName: string; createdAt: string; uploadedBy: string | null };
-    latestBpmn: null | { id: number; originalName: string; createdAt: string; uploadedBy: string | null };
-    latestCode: null | { id: number; originalName: string; createdAt: string; uploadedBy: string | null };
+    activeBpmn: null | {
+      id: number;
+      originalName: string;
+      createdAt: string;
+      uploadedBy: string | null;
+    };
+    activeCode: null | {
+      id: number;
+      originalName: string;
+      createdAt: string;
+      uploadedBy: string | null;
+    };
+    latestBpmn: null | {
+      id: number;
+      originalName: string;
+      createdAt: string;
+      uploadedBy: string | null;
+    };
+    latestCode: null | {
+      id: number;
+      originalName: string;
+      createdAt: string;
+      uploadedBy: string | null;
+    };
   };
 
   counts: { codeFiles: number; tasks: number; matches: number };
@@ -61,8 +92,8 @@ export type AnalysisStatus = "pending" | "done";
 export type DashboardProjectSummary = {
   id: string;
   name: string;
-  status: AnalysisStatus; // "pending" | "done"
-  updatedAt: string;      // ISO string
+  status: AnalysisStatus;
+  updatedAt: string;
 };
 
 export type DashboardStats = {
@@ -72,7 +103,6 @@ export type DashboardStats = {
   analysesDone: number;
   recentProjects: DashboardProjectSummary[];
 };
-
 
 export type ActiveUpload = {
   id: number;

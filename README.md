@@ -4,7 +4,7 @@
 
 ## 📌 Overview
 
-**COVADEV** is a Django-based web application that validates whether a software implementation **semantically aligns** with a given **BPMN (Business Process Model and Notation)** specification.
+**COVADEV** is a full-stack web application that validates whether a software implementation **semantically aligns** with a given **BPMN (Business Process Model and Notation)** specification.
 
 The system bridges the gap between **business process design** and **software implementation** by using **AI and NLP-based semantic similarity techniques** to:
 
@@ -29,8 +29,9 @@ This repository contains the **final, clean, and actively developed implementati
 
 ### Core Features
 
-* BPMN XML upload and parsing
-* Source code upload and analysis
+* BPMN XML upload, parsing, and visualization (React Flow & BPMN-js)
+* Source code upload and analysis via GitHub Integration
+* Task tracking and assignment mapping
 * Semantic embedding and similarity matching
 * Traceability mapping (BPMN ↔ Code)
 * Detection of:
@@ -52,7 +53,7 @@ This repository contains the **final, clean, and actively developed implementati
 ## 🏗️ High-Level Architecture
 
 ```
-BPMN XML + Source Code
+BPMN XML + Source Code (GitHub / Local)
         │
         ▼
 Parsing & Code Analysis
@@ -67,18 +68,18 @@ Similarity & Traceability Engine
 Metrics & Developer Evaluation
         │
         ▼
-Dashboard & Reports
+Dashboard & Reports (React Frontend)
 ```
 
 
 ## 🧱 Tech Stack
 
-* **Backend:** Django (Python)
+* **Backend:** Django (Python) & Django REST Framework
+* **Frontend:** React 19, TypeScript, Vite, React Flow, BPMN-js
 * **AI / NLP:** Transformer-based sentence embeddings
 * **Similarity:** Cosine similarity
-* **Frontend:** Django templates (HTML / CSS / JS)
 * **Database:** SQLite (MVP)
-* **Version Control:** Git & GitHub
+* **Version Control & Integrations:** Git & GitHub API
 
 
 ## 📁 Repository Structure
@@ -86,16 +87,18 @@ Dashboard & Reports
 ```
 covadev/
 ├── config/               # Django project configuration
-├── apps/
+├── apps/                 # Django backend applications
 │   ├── accounts/         # Authentication & roles
-│   ├── projects/         # Project & upload management
 │   ├── analysis/         # BPMN parsing, AI, metrics
+│   ├── api/              # RESTful API endpoints
+│   ├── github_integration/# GitHub webhooks and API
+│   ├── projects/         # Project & upload management
 │   ├── reports/          # Dashboards & reports
-│   └── common/           # Shared utilities
-├── templates/            # HTML templates
-├── static/               # CSS / JS assets
+│   └── task_management/  # Developer tasks & assignments
+├── frontend/             # React SPA (TypeScript, Vite)
+│   ├── public/           # Static assets
+│   └── src/              # React components & hooks
 ├── media/                # Uploaded files (gitignored)
-├── docs/                 # Architecture & documentation
 ├── tests/                # Unit & integration tests
 ├── manage.py
 ├── requirements.txt
@@ -108,46 +111,42 @@ covadev/
 ### 1️⃣ Clone Repository
 
 ```bash
-git clone <https://github.com/OHelmyy/COVADEV.git>
-cd covadev
+git clone https://github.com/OHelmyy/COVADEV-project.git
+cd COVADEV-project
 ```
 
-### 2️⃣ Create Virtual Environment
+### 2️⃣ Backend Setup (Django)
 
 ```bash
+# Create Virtual Environment
 python -m venv venv
-# Windows
+
+# Activate it (Windows)
 venv\Scripts\activate
-# macOS / Linux
+# Activate it (macOS / Linux)
 source venv/bin/activate
-```
 
-### 3️⃣ Install Dependencies
-
-```bash
+# Install Dependencies
 pip install -r requirements.txt
-```
 
-### 4️⃣ Run Migrations
-
-```bash
+# Run Migrations
 python manage.py migrate
-```
 
-### 5️⃣ Create Admin User
-
-```bash
-python manage.py createsuperuser
-```
-
-### 6️⃣ Start Server
-
-```bash
+# Start Django Server
 python manage.py runserver
 ```
+The API will be running at `http://127.0.0.1:8000`.
 
-Access the app at:
-➡️ `http://127.0.0.1:8000`
+### 3️⃣ Frontend Setup (React/Vite)
+
+Open a **new terminal tab/window**:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+The React frontend will be accessible at the URL provided by Vite (typically `http://localhost:5173`).
 
 ---
 
@@ -193,6 +192,3 @@ Early experimental work is archived separately and **not included in this reposi
 # 📬 Contact
 
 For issues or contributions, please use **GitHub Issues**.
-
-
-

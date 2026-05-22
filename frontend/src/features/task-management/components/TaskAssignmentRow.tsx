@@ -62,6 +62,10 @@ export default function TaskAssignmentRow({
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
   const [showAiSubmission, setShowAiSubmission] = useState(false);
   const [showAiRetryForm, setShowAiRetryForm] = useState(false);
+
+  // Reassign state
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignDevId, setReassignDevId] = useState("");
   async function handleAssign() {
     if (!developerMembershipId) {
       onError(
@@ -99,6 +103,25 @@ export default function TaskAssignmentRow({
       await onChanged();
     } catch (error: any) {
       onError("assign task", error, "Task assignment failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleReassign() {
+    if (!reassignDevId) return;
+    setSaving(true);
+    try {
+      await assignTask(projectId, {
+        bpmnTaskId: task.id,
+        developerMembershipId: Number(reassignDevId),
+        notes: "",
+      });
+      setShowReassign(false);
+      setReassignDevId("");
+      await onChanged();
+    } catch (error: any) {
+      onError("reassign task", error, "Reassignment failed");
     } finally {
       setSaving(false);
     }
@@ -330,21 +353,42 @@ export default function TaskAssignmentRow({
         <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 
-            {/* Row 1 — Primary actions (Reassign, Accept, Reject, Evaluate) */}
+            {/* Row 1 — Primary actions */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <button
-                onClick={handleAssign}
-                disabled={saving}
-                style={{
-                  ...buttonBase,
-                  padding: "8px 12px",
-                  border: `1px solid ${ui.colors.borderStrong}`,
-                  background: "#fff",
-                  color: ui.colors.text,
-                }}
-              >
-                {saving ? "Saving..." : assignment ? "Reassign" : "Assign"}
-              </button>
+              {/* Assign (unassigned tasks) */}
+              {!assignment && (
+                <button
+                  onClick={handleAssign}
+                  disabled={saving}
+                  style={{
+                    ...buttonBase,
+                    padding: "8px 12px",
+                    background: "#6366f1",
+                    color: "#fff",
+                    border: "none",
+                  }}
+                >
+                  {saving ? "Assigning…" : "Assign"}
+                </button>
+              )}
+
+              {/* Reassign (already-assigned tasks) */}
+              {assignment && (
+                <button
+                  onClick={() => { setShowReassign((v) => !v); setReassignDevId(""); }}
+                  disabled={saving}
+                  style={{
+                    ...buttonBase,
+                    padding: "8px 12px",
+                    background: showReassign ? "#fef3c7" : "#fff",
+                    border: `1px solid ${showReassign ? "#fbbf24" : ui.colors.borderStrong}`,
+                    color: showReassign ? "#92400e" : ui.colors.text,
+                    fontWeight: 700,
+                  }}
+                >
+                  🔄 Reassign
+                </button>
+              )}
 
               {assignment?.status === "SUBMITTED" && (
                 <>
@@ -444,6 +488,51 @@ export default function TaskAssignmentRow({
           </div>
         </td>
       </tr>
+
+      {/* Reassign inline form */}
+      {showReassign && assignment && (
+        <tr>
+          <td colSpan={7} style={{ padding: "14px 20px", background: "#fffbeb", borderBottom: `1px solid ${ui.colors.border}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 700, fontSize: 13, color: "#92400e" }}>🔄 Change developer for this task:</span>
+              <select
+                value={reassignDevId}
+                onChange={(e) => setReassignDevId(e.target.value)}
+                style={{ ...inputBase, padding: "8px 12px", minWidth: 200, fontSize: 13 }}
+              >
+                <option value="">-- Select new developer --</option>
+                {developers
+                  .filter((d) => String(d.membershipId) !== String(assignment.developer?.membershipId))
+                  .map((dev) => (
+                    <option key={dev.membershipId} value={dev.membershipId}>
+                      {dev.username} {dev.isAiAgent ? "🤖 (AI)" : "👨‍💻"}
+                    </option>
+                  ))}
+              </select>
+              <button
+                onClick={handleReassign}
+                disabled={saving || !reassignDevId}
+                style={{
+                  ...buttonBase,
+                  padding: "8px 16px",
+                  background: !reassignDevId ? "#e2e8f0" : "#16a34a",
+                  color: !reassignDevId ? "#94a3b8" : "#fff",
+                  fontWeight: 800,
+                  border: "none",
+                }}
+              >
+                {saving ? "Reassigning…" : "Confirm Reassign"}
+              </button>
+              <button
+                onClick={() => { setShowReassign(false); setReassignDevId(""); }}
+                style={{ ...buttonBase, padding: "8px 12px", background: "#fff", border: `1px solid ${ui.colors.border}`, color: ui.colors.textMuted }}
+              >
+                Cancel
+              </button>
+            </div>
+          </td>
+        </tr>
+      )}
 
       {showEvaluationForm && assignment ? (
         <tr>

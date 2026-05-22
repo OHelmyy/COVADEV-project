@@ -1,4 +1,4 @@
-import { apiJson } from "../../../lib/api";
+import { apiJson, apiUpload } from "../../../lib/api";
 import type {
   DevelopersResponse,
   TaskAssignmentsResponse,
@@ -279,5 +279,31 @@ export function markAllNotificationsRead() {
     {
       method: "POST",
     }
+  );
+}
+
+export type PreviewScoreResult = {
+  similarity: number;
+  threshold: number;
+  passes: boolean;
+  similarityPct: number;
+  thresholdPct: number;
+};
+
+export function previewScoreGithub(projectId: number, assignmentId: number) {
+  const form = new FormData();
+  form.append("mode", "github");
+  return apiUpload<PreviewScoreResult>(
+    `/api/projects/${projectId}/assignments/${assignmentId}/preview-score/`,
+    form
+  );
+}
+
+export function previewScoreZip(projectId: number, assignmentId: number, file: File) {
+  const form = new FormData();
+  form.append("zip_file", file);
+  return apiUpload<PreviewScoreResult>(
+    `/api/projects/${projectId}/assignments/${assignmentId}/preview-score/`,
+    form
   );
 }

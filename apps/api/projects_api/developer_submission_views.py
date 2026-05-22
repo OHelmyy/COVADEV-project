@@ -569,3 +569,63 @@ def api_github_pr_accept(request, project_id: int):
         "similarity": result["similarity"] if result else None,
         "matchStatus": result["match"].status if result else None,
     })
+
+
+# ── Developer: preview score before submitting ───────────────────────────────
+
+@login_required
+def api_preview_score(request, project_id: int, assignment_id: int):
+    """
+    Returns a similarity score for the developer's current code WITHOUT
+    saving any result or changing any status. Supports two modes:
+      - POST with zip_file  → score the uploaded ZIP
+      - POST with mode=github → download the assignment branch and score it
+    Only the assigned developer (or admin) may call this.
+    """
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    project = get_object_or_404(Project, id=project_id)
+    assignment = get_object_or_404(TaskAssignment, id=assignment_id, project=project)
+
+    if assignment.developer_membership.user != request.user and not is_admin(request.user):
+        return JsonResponse({"detail": "Not your assignment."}, status=403)
+
+    from apps.task_management.services.developer_match_service import (
+        preview_score_from_zip,
+        preview_score_from_branch,
+    )
+
+    mode = request.POST.get("mode") or (request.GET.get("mode"))
+
+    if mode == "github":
+        result = preview_score_from_branch(project, assignment)
+    else:
+        zip_file = request.FILES.get("zip_file")
+        if not zip_file:
+            return JsonResponse({"detail": "Provide zip_file or mode=github."}, status=400)
+        if not zip_file.name.endswith(".zip"):
+            return JsonResponse({"detail": "Only .zip files are accepted."}, status=400)
+
+        import tempfile
+        from pathlib import Path
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            for chunk in zip_file.chunks():
+                tmp.write(chunk)
+            tmp_path = Path(tmp.name)
+
+        try:
+            result = preview_score_from_zip(project, assignment, tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    if "error" in result:
+        return JsonResponse({"detail": result["error"]}, status=400)
+
+    return JsonResponse({
+        "similarity": result["similarity"],
+        "threshold": result["threshold"],
+        "passes": result["passes"],
+        "similarityPct": round(result["similarity"] * 100, 1),
+        "thresholdPct": round(result["threshold"] * 100, 1),
+    })

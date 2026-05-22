@@ -315,3 +315,82 @@ def match_accepted_github_submission(project, assignment, pr_number: int) -> Opt
         "threshold": threshold,
         "below_threshold": best_score < threshold,
     }
+
+
+# ── Preview helpers (no DB writes) ───────────────────────────────────────────
+
+def _run_similarity_pipeline(project, task, name_summary_pairs: list) -> dict:
+    """
+    Embed summaries, cosine-compare vs the task embedding, return score dict.
+    Nothing is saved to the DB.
+    """
+    embedder = LocalEmbedder()
+
+    task_emb = TaskEmbedding.objects.filter(project=project, bpmn_task=task).first()
+    if task_emb and task_emb.vector:
+        task_vector = task_emb.vector
+    else:
+        task_text = (task.summary_text or task.description or task.name or "").strip()
+        if not task_text:
+            return {"similarity": 0.0, "threshold": 0.6, "passes": False}
+        task_vector = embedder.embed_many([task_text])[0].vector
+
+    threshold = float(getattr(project, "similarity_threshold", 0.6) or 0.6)
+
+    if not name_summary_pairs:
+        return {"similarity": 0.0, "threshold": threshold, "passes": False}
+
+    summaries = [s for _, s in name_summary_pairs]
+    code_embeddings = embedder.embed_many(summaries)
+    scores = [_cosine_similarity(emb.vector, task_vector) for emb in code_embeddings]
+    best_score = max(scores)
+
+    return {
+        "similarity": round(best_score, 4),
+        "threshold": round(threshold, 4),
+        "passes": best_score >= threshold,
+    }
+
+
+def preview_score_from_zip(project, assignment, zip_path: Path) -> dict:
+    """
+    Score a ZIP against the assignment's BPMN task without saving anything.
+    zip_path must be a Path to an existing zip file on disk.
+    """
+    name_summary_pairs = _extract_summaries_from_zip(zip_path)
+    return _run_similarity_pipeline(project, assignment.bpmn_task, name_summary_pairs)
+
+
+def preview_score_from_branch(project, assignment) -> dict:
+    """
+    Download the assignment's GitHub branch as a zipball and score it
+    against the BPMN task without saving anything.
+    """
+    from apps.github_integration.models import GitHubRepository
+    from apps.github_integration.services.github_service import GitHubService
+
+    branch = assignment.github_branch
+    if not branch:
+        return {"error": "No GitHub branch linked to this assignment."}
+
+    try:
+        github_repo = GitHubRepository.objects.get(project=project, is_connected=True)
+    except GitHubRepository.DoesNotExist:
+        return {"error": "GitHub repository not connected for this project."}
+
+    service = GitHubService(token=github_repo.access_token)
+
+    try:
+        zip_bytes = service.download_zipball(github_repo.owner, github_repo.repo_name, branch)
+    except Exception as e:
+        return {"error": f"Could not download branch '{branch}': {e}"}
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp.write(zip_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        name_summary_pairs = _extract_summaries_from_zip(tmp_path)
+        return _run_similarity_pipeline(project, assignment.bpmn_task, name_summary_pairs)
+    finally:
+        tmp_path.unlink(missing_ok=True)

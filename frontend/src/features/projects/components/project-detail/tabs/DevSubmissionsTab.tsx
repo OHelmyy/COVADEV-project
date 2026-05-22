@@ -96,9 +96,19 @@ const [githubConnected, setGithubConnected] = useState(false);
         </div>
         <button
           onClick={load}
-          style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", cursor: "pointer", fontSize: 13, background: "#fff" }}
+          disabled={loading}
+          style={{
+            padding: "11px 14px",
+            borderRadius: 12,
+            border: "1px solid #e2e8f0",
+            background: "#fff",
+            color: "#0f172a",
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
         >
-          ↻ Refresh
+          {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
@@ -633,7 +643,6 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", cursor: "pointer", background: "#f6f8fa", borderBottom: expanded ? "1px solid #d0d7de" : "none" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 20 }}>🐙</span>
           <span style={{ fontWeight: 700, fontSize: 15 }}>GitHub Pull Requests</span>
           {!loading && connected && (
             <>

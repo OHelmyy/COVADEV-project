@@ -23,6 +23,7 @@ from apps.api.projects_api.developer_submission_views import (
     api_dev_submission_file_tree,
     api_dev_submission_file_content,
     api_github_pr_accept,
+    api_preview_score,
 )
 from apps.api.projects_api.upload_views import (
     api_upload_bpmn,
@@ -102,6 +103,7 @@ urlpatterns = [
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/files/", api_dev_submission_file_tree, name="dev_submission_file_tree"),
     path("projects/<int:project_id>/developer-submissions/<int:submission_id>/file-content/", api_dev_submission_file_content, name="dev_submission_file_content"),
     path("projects/<int:project_id>/github-pr/accept/", api_github_pr_accept, name="github_pr_accept"),
+    path("projects/<int:project_id>/assignments/<int:assignment_id>/preview-score/", api_preview_score, name="preview_score"),
     # GitHub Integration
     path("", include("apps.github_integration.urls")),
 ]

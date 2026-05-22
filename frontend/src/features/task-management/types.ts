@@ -48,6 +48,8 @@ export type Developer = {
   membershipId: number;
   userId: number;
   username: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   role: string;
   isAiAgent?: boolean;
@@ -57,6 +59,8 @@ export type AssignmentDeveloper = {
   membershipId: number;
   userId: number;
   username: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   role: string;
   isAiAgent?: boolean;

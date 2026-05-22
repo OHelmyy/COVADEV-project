@@ -76,9 +76,19 @@ export default function ProjectSidebar({
                 fontWeight: active ? 800 : 700,
                 cursor: "pointer",
                 transition: ui.transition,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
               }}
             >
-              {tab.label}
+              {tab.label.endsWith(" ?") ? (
+                <>
+                  <span>{tab.label.slice(0, -2)}</span>
+                  <span style={{ color: active ? ui.colors.primary : "#94a3b8", fontWeight: 900, fontSize: 17 }}>?</span>
+                </>
+              ) : (
+                tab.label
+              )}
             </button>
           );
         })}

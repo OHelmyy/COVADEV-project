@@ -51,6 +51,52 @@ def json_file_payload(f):
     return payload
 
 
+def _normalize_file_path(value):
+    return (value or "").replace("\\", "/")
+
+
+def _basename(value):
+    clean = _normalize_file_path(value)
+    if not clean:
+        return ""
+    return clean.split("/")[-1]
+
+
+def _serialize_indexed_code_file(code_file: CodeFile):
+    raw_path = (
+        getattr(code_file, "path", None)
+        or getattr(code_file, "file_path", None)
+        or getattr(code_file, "relative_path", None)
+        or getattr(code_file, "original_name", None)
+        or ""
+    )
+
+    raw_name = (
+        getattr(code_file, "name", None)
+        or getattr(code_file, "filename", None)
+        or getattr(code_file, "original_name", None)
+        or _basename(raw_path)
+        or ""
+    )
+
+    display_name = _basename(raw_name) or _basename(raw_path)
+
+    if not display_name or str(display_name).isdigit():
+        display_name = f"Code File #{code_file.id}"
+
+    return {
+        "id": code_file.id,
+        "name": display_name,
+        "originalName": getattr(code_file, "original_name", None) or display_name,
+        "path": _normalize_file_path(raw_path),
+        "type": (
+            getattr(code_file, "language", None)
+            or getattr(code_file, "file_type", None)
+            or "code"
+        ),
+    }
+
+
 def json_project_detail(project: Project, user: User):
     active_bpmn = project.active_bpmn
     active_code = project.active_code
@@ -58,7 +104,10 @@ def json_project_detail(project: Project, user: User):
     latest_bpmn = latest_file(project, "BPMN")
     latest_code = latest_file(project, "CODE")
 
-    code_files_count = CodeFile.objects.filter(project=project).count()
+    code_files = CodeFile.objects.filter(project=project).order_by("id")
+    code_files_count = code_files.count()
+    indexed_files = [_serialize_indexed_code_file(code_file) for code_file in code_files]
+
     tasks_count = BpmnTask.objects.filter(project=project).count()
     matches_count = MatchResult.objects.filter(project=project).count()
 
@@ -85,6 +134,7 @@ def json_project_detail(project: Project, user: User):
             "description": project.description or "",
             "similarityThreshold": float(project.similarity_threshold),
             "github_repo_url": project.github_repo_url or "",
+            "indexed_files": indexed_files,
             "evaluator": {
                 "id": project.evaluator_id,
                 "username": project.evaluator.username if getattr(project, "evaluator", None) else None,
