@@ -1,0 +1,17 @@
+<svg width="32" height="32" viewBox="28 28 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Mark container -->
+  <rect x="28" y="28" width="200" height="200" rx="40" fill="#0F3D91"/>
+
+  <!-- Left node (BPMN task) -->
+  <circle cx="88" cy="128" r="19" fill="#E1F5EE" opacity="0.9"/>
+  <!-- Right node (Code artifact) -->
+  <circle cx="168" cy="128" r="19" fill="#06B6D4" opacity="0.9"/>
+
+  <!-- Curved connector arc (top) -->
+  <path d="M100 117 Q128 82 156 117" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round"/>
+  <!-- Curved connector arc (bottom) -->
+  <path d="M100 139 Q128 174 156 139" fill="none" stroke="#5DCAA5" stroke-width="6" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- Middle match dot -->
+  <circle cx="128" cy="128" r="10" fill="#ffffff"/>
+</svg>
