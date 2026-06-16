@@ -73,65 +73,7 @@ function formatCodeRef(codeRef?: string) {
   };
 }
 
-function getFileValue(file: FileRow, keys: string[]) {
-  const anyFile = file as Record<string, unknown>;
 
-  for (const key of keys) {
-    const value = anyFile[key];
-
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-
-    if (typeof value === "number") {
-      return String(value);
-    }
-  }
-
-  return "";
-}
-
-function getFileName(file: FileRow) {
-  const raw =
-    getFileValue(file, ["originalName", "original_name", "name", "filename", "path", "file_path"]) ||
-    "Unknown file";
-
-  const clean = normalizePath(raw);
-  const name = clean.split("/").pop() || clean;
-
-  if (/^\d+$/.test(name)) {
-    return "Indexed code file";
-  }
-
-  return name;
-}
-
-function getFilePath(file: FileRow) {
-  const raw = getFileValue(file, ["path", "file_path", "relativePath", "relative_path"]);
-  const clean = normalizePath(raw);
-
-  if (!clean) return "";
-
-  const parts = clean.split("/");
-
-  if (parts.length <= 1) return "";
-
-  parts.pop();
-  return parts.join("/");
-}
-
-function getFileIcon(fileName: string) {
-  const ext = fileName.split(".").pop()?.toLowerCase();
-
-  if (ext === "py") return "🐍";
-  if (["js", "jsx"].includes(ext || "")) return "🟨";
-  if (["ts", "tsx"].includes(ext || "")) return "🔷";
-  if (ext === "java") return "☕";
-  if (ext === "cs") return "🟪";
-  if (ext === "php") return "🐘";
-
-  return "📄";
-}
 
 function CodeReferenceCell({ codeRef }: { codeRef?: string }) {
   const ref = formatCodeRef(codeRef);
@@ -289,7 +231,6 @@ export default function ResultsTab({
   extra,
   coverage,
   scoreAvg,
-  files,
   onRefresh,
   canRunAnalysis,
   onRunAnalysis,

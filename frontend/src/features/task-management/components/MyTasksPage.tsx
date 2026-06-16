@@ -28,14 +28,14 @@ const EMPTY_ERROR: ErrorState = {
 };
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  ASSIGNED:      { bg: "#eff6ff", fg: "#1e40af" },
-  IN_PROGRESS:   { bg: "#f0f9ff", fg: "#0369a1" },
-  SUBMITTED:     { bg: "#fef3c7", fg: "#92400e" },
-  UNDER_REVIEW:  { bg: "#fef3c7", fg: "#92400e" },
+  ASSIGNED: { bg: "#eff6ff", fg: "#1e40af" },
+  IN_PROGRESS: { bg: "#f0f9ff", fg: "#0369a1" },
+  SUBMITTED: { bg: "#fef3c7", fg: "#92400e" },
+  UNDER_REVIEW: { bg: "#fef3c7", fg: "#92400e" },
   NEEDS_CHANGES: { bg: "#f5f3ff", fg: "#5b21b6" },
-  ACCEPTED:      { bg: "#ecfdf5", fg: "#065f46" },
-  REJECTED:      { bg: "#fef2f2", fg: "#991b1b" },
-  MERGED:        { bg: "#ecfdf5", fg: "#065f46" },
+  ACCEPTED: { bg: "#ecfdf5", fg: "#065f46" },
+  REJECTED: { bg: "#fef2f2", fg: "#991b1b" },
+  MERGED: { bg: "#ecfdf5", fg: "#065f46" },
 };
 
 export default function MyTasksTab() {
@@ -48,8 +48,6 @@ export default function MyTasksTab() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [submitMethod, setSubmitMethod] = useState<Record<number, "github" | "zip">>({});
   const [prNumber, setPrNumber] = useState<Record<number, string>>({});
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [prUrl, setPrUrl] = useState<Record<number, string>>({});
   const [subNote, setSubNote] = useState<Record<number, string>>({});
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
   const [actionMsg, setActionMsg] = useState<Record<number, string>>({});
@@ -102,7 +100,7 @@ export default function MyTasksTab() {
     }
   }
 
-  async function handleGitHubSubmit(assignmentId: number, projectId: number) {
+  async function handleGitHubSubmit(assignmentId: number) {
     const num = prNumber[assignmentId] ? Number(prNumber[assignmentId]) : null;
     const note = subNote[assignmentId] || "";
 
@@ -391,7 +389,7 @@ export default function MyTasksTab() {
                                     </div>
 
                                     <button
-                                      onClick={() => handleGitHubSubmit(item.assignmentId, item.projectId)}
+                                      onClick={() => handleGitHubSubmit(item.assignmentId)}
                                       disabled={actionLoading[item.assignmentId]}
                                       style={{
                                         ...buttonBase,

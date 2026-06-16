@@ -209,7 +209,6 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
     Record<number, "github" | "zip">
   >({});
   const [prNumber, setPrNumber] = useState<Record<number, string>>({});
-  const [prUrl, setPrUrl] = useState<Record<number, string>>({});
   const [subNote, setSubNote] = useState<Record<number, string>>({});
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
   const fileRefs = useRef<Record<number, HTMLInputElement | null>>({});
