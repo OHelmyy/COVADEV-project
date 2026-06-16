@@ -1,12 +1,16 @@
+# --- CPU-only PyTorch index ---
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # --- Top Level Web Framework ---
+
 Django==6.0.1
 djangorestframework==3.17.1
 django-cors-headers==4.9.0
 python-dotenv==1.2.2
 
 # --- AI & Embeddings ---
-groq==1.1.2
-sentence-transformers==5.4.0
 
-# --- Fall back to PyPI for PyTorch (Warning: this will download the large GPU version) ---
-torch==2.11.0
+groq==1.1.2
+torch==2.11.0+cpu
+sentence-transformers==5.4.0
