@@ -87,3 +87,8 @@ temp/
 # ==============================
 .idea/
 *.iml
+
+
+
+#====================
+models\covadev-finetuned-embedder
