@@ -8,6 +8,5 @@ python-dotenv==1.2.2
 groq==1.1.2
 sentence-transformers==5.4.0
 
-# --- CRITICAL: Force CPU-only PyTorch to save ~2.5GB of disk space ---
---extra-index-url https://download.pytorch.org/whl/cpu
+# --- Fall back to PyPI for PyTorch (Warning: this will download the large GPU version) ---
 torch==2.11.0
