@@ -9,7 +9,6 @@ from sentence_transformers import SentenceTransformer
 
 DEFAULT_MODEL_NAME = "models/covadev-finetuned-embedder"
 
-
 @dataclass(frozen=True)
 class EmbeddingResult:
     """
