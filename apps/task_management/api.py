@@ -427,6 +427,14 @@ def submit_task_assignment_api(request, assignment_id: int):
         status=TaskAssignment.Status.SUBMITTED,
     )
 
+    # Compute similarity score now so the evaluator sees it before deciding
+    if github_pr_number:
+        try:
+            from apps.task_management.services.developer_match_service import compute_github_submission_score
+            compute_github_submission_score(assignment.project, assignment, github_pr_number)
+        except Exception as e:
+            print(f"[submit_task_assignment_api] GitHub score computation failed (non-blocking): {e}")
+
     return JsonResponse({
         "message": "Assignment submitted successfully.",
         "assignment": _serialize_assignment(assignment),

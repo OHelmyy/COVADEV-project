@@ -290,9 +290,10 @@ export type PreviewScoreResult = {
   thresholdPct: number;
 };
 
-export function previewScoreGithub(projectId: number, assignmentId: number) {
+export function previewScoreGithub(projectId: number, assignmentId: number, prNumber: number) {
   const form = new FormData();
   form.append("mode", "github");
+  form.append("pr_number", String(prNumber));
   return apiUpload<PreviewScoreResult>(
     `/api/projects/${projectId}/assignments/${assignmentId}/preview-score/`,
     form

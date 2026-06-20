@@ -7,6 +7,7 @@ import {
   rejectSubmission,
   reassignSubmission,
   acceptGitHubPR,
+  evaluatorCheckScore,
   type DevSubmission,
   type SubmissionAttempt,
   type FileTreeNode,
@@ -583,6 +584,9 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
   const [merging, setMerging] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [mergeMsg, setMergeMsg] = useState<string | null>(null);
+  const [checkingScore, setCheckingScore] = useState(false);
+  const [scoreResult, setScoreResult] = useState<{ similarityPct: number; thresholdPct: number; passes: boolean } | null>(null);
+  const [scoreError, setScoreError] = useState<string | null>(null);
 
 
   async function handleSelectPr(pr: GitHubPullRequestApi) {
@@ -591,6 +595,8 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
     setSelectedFile(null);
     setFileContent(null);
     setMergeMsg(null);
+    setScoreResult(null);
+    setScoreError(null);
     try {
       const [files, commits] = await Promise.all([
         fetchGitHubPullRequestFiles(projectId, pr.number),
@@ -615,10 +621,12 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
   async function handleAcceptAndMerge(pr: GitHubPullRequestApi) {
     setMerging(true);
     setMergeMsg(null);
+    setScoreResult(null);
+    setScoreError(null);
     try {
       const res = await acceptGitHubPR(projectId, pr.number);
       if (res.ok) {
-        setMergeMsg(`✅ Merged & matched! Similarity: ${res.similarity != null ? (res.similarity * 100).toFixed(1) + "%" : "N/A"}`);
+        setSelectedPr(null);
         onRefresh();
       } else if (res.belowThreshold) {
         setMergeMsg(`⚠️ Score ${((res.similarity ?? 0) * 100).toFixed(1)}% is below threshold ${((res.threshold ?? 0) * 100).toFixed(1)}%. Reject or reassign this developer.`);
@@ -626,9 +634,28 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
         setMergeMsg(`❌ ${res.detail ?? "Failed"}`);
       }
     } catch (e: any) {
-      setMergeMsg(`❌ ${e?.message ?? "Error"}`);
+      const raw = e?.message ?? "Error";
+      if (raw.toLowerCase().includes("merge conflict")) {
+        setMergeMsg("❌ This PR has merge conflicts. Ask the developer to resolve them on their branch and push again before merging.");
+      } else {
+        setMergeMsg(`❌ ${raw}`);
+      }
     } finally {
       setMerging(false);
+    }
+  }
+
+  async function handleCheckScore(pr: GitHubPullRequestApi) {
+    setCheckingScore(true);
+    setScoreResult(null);
+    setScoreError(null);
+    try {
+      const res = await evaluatorCheckScore(projectId, pr.number);
+      setScoreResult({ similarityPct: res.similarityPct, thresholdPct: res.thresholdPct, passes: res.passes });
+    } catch (e: any) {
+      setScoreError(e?.message ?? "Could not compute score.");
+    } finally {
+      setCheckingScore(false);
     }
   }
 
@@ -701,22 +728,53 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
                           View on GitHub
                         </a>
                         {selectedPr.state === "open" && (
-                          <button
-                            onClick={() => handleAcceptAndMerge(selectedPr)}
-                            disabled={merging}
-                            style={{
-                              fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "none",
-                              background: merging ? "#ccc" : "#2da44e",
-                              color: "#fff", fontWeight: 700,
-                              cursor: merging ? "not-allowed" : "pointer",
-                            }}
-                          >
-                            {merging ? "Running pipeline…" : "✅ Accept & Merge"}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleCheckScore(selectedPr)}
+                              disabled={checkingScore || merging}
+                              style={{
+                                fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "1px solid #1677ff",
+                                background: checkingScore ? "#e6f0ff" : "#fff",
+                                color: "#1677ff", fontWeight: 700,
+                                cursor: (checkingScore || merging) ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {checkingScore ? "Checking…" : "Check Score"}
+                            </button>
+                            <button
+                              onClick={() => handleAcceptAndMerge(selectedPr)}
+                              disabled={merging || checkingScore}
+                              style={{
+                                fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "none",
+                                background: merging ? "#ccc" : "#2da44e",
+                                color: "#fff", fontWeight: 700,
+                                cursor: (merging || checkingScore) ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {merging ? "Running pipeline…" : "Accept & Merge"}
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
                   </div>
+
+                  {scoreResult && (
+                    <div style={{
+                      padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                      background: scoreResult.passes ? "#f0fdf4" : "#fffbe6",
+                      color: scoreResult.passes ? "#16a34a" : "#8a5a00",
+                      border: `1px solid ${scoreResult.passes ? "#bbf7d0" : "#ffe58f"}`,
+                    }}>
+                      {scoreResult.passes ? "✅" : "⚠️"} Similarity Score: <strong>{scoreResult.similarityPct}%</strong> — Threshold: {scoreResult.thresholdPct}% — {scoreResult.passes ? "Passes" : "Below threshold"}
+                    </div>
+                  )}
+
+                  {scoreError && (
+                    <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>
+                      ❌ {scoreError}
+                    </div>
+                  )}
 
                   {mergeMsg && (
                     <div style={{

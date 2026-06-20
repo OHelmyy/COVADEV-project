@@ -122,6 +122,13 @@ def api_submit_zip(request, project_id: int, assignment_id: int):
     assignment.submitted_at = timezone.now()
     assignment.save(update_fields=["status", "submitted_at"])
 
+    # Compute similarity score now so the evaluator sees it before deciding
+    try:
+        from apps.task_management.services.developer_match_service import compute_submission_score
+        compute_submission_score(submission)
+    except Exception as e:
+        print(f"[api_submit_zip] Score computation failed (non-blocking): {e}")
+
     return JsonResponse({
         "ok": True,
         "submissionId": submission.id,
@@ -593,13 +600,16 @@ def api_preview_score(request, project_id: int, assignment_id: int):
 
     from apps.task_management.services.developer_match_service import (
         preview_score_from_zip,
-        preview_score_from_branch,
+        preview_score_from_pr,
     )
 
     mode = request.POST.get("mode") or (request.GET.get("mode"))
 
     if mode == "github":
-        result = preview_score_from_branch(project, assignment)
+        pr_number = request.POST.get("pr_number") or request.GET.get("pr_number")
+        if not pr_number:
+            return JsonResponse({"detail": "pr_number is required when mode=github."}, status=400)
+        result = preview_score_from_pr(project, assignment, int(pr_number))
     else:
         zip_file = request.FILES.get("zip_file")
         if not zip_file:
@@ -618,6 +628,75 @@ def api_preview_score(request, project_id: int, assignment_id: int):
             result = preview_score_from_zip(project, assignment, tmp_path)
         finally:
             tmp_path.unlink(missing_ok=True)
+
+    if "error" in result:
+        return JsonResponse({"detail": result["error"]}, status=400)
+
+    return JsonResponse({
+        "similarity": result["similarity"],
+        "threshold": result["threshold"],
+        "passes": result["passes"],
+        "similarityPct": round(result["similarity"] * 100, 1),
+        "thresholdPct": round(result["threshold"] * 100, 1),
+    })
+
+
+# ── Evaluator: preview score for a PR before accepting ───────────────────────
+
+@login_required
+def api_evaluator_check_score(request, project_id: int):
+    """
+    Returns a similarity score for a given PR branch WITHOUT merging or saving.
+    Only evaluators and admins may call this.
+    POST body: { "pr_number": <int> }
+    """
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed."}, status=405)
+
+    project = get_object_or_404(Project, id=project_id)
+    if not (is_admin(request.user) or (is_evaluator(request.user) and project.evaluator_id == request.user.id)):
+        return JsonResponse({"detail": "Forbidden"}, status=403)
+
+    try:
+        import json as _json
+        body = _json.loads(request.body)
+    except Exception:
+        return JsonResponse({"detail": "Invalid JSON."}, status=400)
+
+    pr_number = body.get("pr_number")
+    if not pr_number:
+        return JsonResponse({"detail": "pr_number is required."}, status=400)
+
+    try:
+        github_repo = GitHubRepository.objects.get(project=project, is_connected=True)
+        service = GitHubService(token=github_repo.access_token)
+        pr_data = service.get_pull_request(github_repo.owner, github_repo.repo_name, int(pr_number))
+    except Exception as e:
+        return JsonResponse({"detail": f"Could not fetch PR: {e}"}, status=500)
+
+    pr_branch = pr_data.get("head", {}).get("ref", "")
+    pr_author = pr_data.get("user", {}).get("login", "").lower()
+
+    # Find assignment by branch first, then by author
+    assignment = TaskAssignment.objects.filter(
+        project=project,
+        github_branch=pr_branch,
+    ).exclude(status__in=["ACCEPTED", "MERGED"]).first()
+
+    if not assignment:
+        assignment = TaskAssignment.objects.filter(
+            project=project,
+            developer_membership__user__username__iexact=pr_author,
+        ).exclude(status__in=["ACCEPTED", "MERGED"]).first()
+
+    if not assignment:
+        return JsonResponse(
+            {"detail": f"No active assignment found for branch '{pr_branch}' or user '{pr_author}'."},
+            status=404,
+        )
+
+    from apps.task_management.services.developer_match_service import preview_score_from_pr
+    result = preview_score_from_pr(project, assignment, int(pr_number))
 
     if "error" in result:
         return JsonResponse({"detail": result["error"]}, status=400)

@@ -333,6 +333,22 @@ export function fetchSubmissionFileContent(projectId: number, submissionId: numb
 }
 
 
+export function evaluatorCheckScore(
+  projectId: number,
+  prNumber: number,
+) {
+  return apiPostJson<{
+    similarity: number;
+    threshold: number;
+    passes: boolean;
+    similarityPct: number;
+    thresholdPct: number;
+    detail?: string;
+  }>(`/api/projects/${projectId}/github-pr/check-score/`, {
+    pr_number: prNumber,
+  });
+}
+
 export function acceptGitHubPR(
   projectId: number,
   prNumber: number,

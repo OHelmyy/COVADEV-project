@@ -57,11 +57,11 @@ def _extract_summaries_from_zip(zip_path: Path) -> list[tuple[str, str]]:
         return []
 
 
-def match_accepted_developer_submission(submission: DeveloperSubmission) -> Optional[dict]:
+def _score_zip_against_task(submission: DeveloperSubmission) -> tuple[float, str, float]:
     """
-    Runs when an evaluator accepts a developer ZIP submission.
-    Extracts functions, summarizes, embeds, compares vs task embedding,
-    saves a MatchResult.
+    Shared helper: extract functions from ZIP, embed, cosine-compare vs task embedding.
+    Returns (best_score, best_summary, threshold).
+    Does NOT touch the database (except to cache the task embedding).
     """
     assignment = submission.assignment
     task: BpmnTask = assignment.bpmn_task
@@ -69,14 +69,13 @@ def match_accepted_developer_submission(submission: DeveloperSubmission) -> Opti
 
     embedder = LocalEmbedder()
 
-    # Get or compute task embedding
     task_emb = TaskEmbedding.objects.filter(project=project, bpmn_task=task).first()
     if task_emb and task_emb.vector:
         task_vector = task_emb.vector
     else:
         task_text = (task.summary_text or task.description or task.name or "").strip()
         if not task_text:
-            return None
+            return 0.0, "", float(getattr(project, "similarity_threshold", 0.6) or 0.6)
         task_vector = embedder.embed_many([task_text])[0].vector
         TaskEmbedding.objects.update_or_create(
             project=project,
@@ -84,7 +83,6 @@ def match_accepted_developer_submission(submission: DeveloperSubmission) -> Opti
             defaults={"vector": task_vector},
         )
 
-    # Extract and summarize functions from ZIP
     zip_path = Path(submission.zip_file.path)
     name_summary_pairs = _extract_summaries_from_zip(zip_path)
 
@@ -99,7 +97,69 @@ def match_accepted_developer_submission(submission: DeveloperSubmission) -> Opti
         best_score = scores[best_idx]
         best_summary = summaries[best_idx]
 
-    # Remove any old result for this task from a previous submission
+    threshold = float(getattr(project, "similarity_threshold", 0.6) or 0.6)
+    return best_score, best_summary, threshold
+
+
+def compute_submission_score(submission: DeveloperSubmission) -> Optional[dict]:
+    """
+    Runs when a developer submits a ZIP, so the evaluator can see the
+    similarity score immediately — before making any accept/reject decision.
+
+    Saves a MatchResult with status MATCHED or MISSING based on threshold.
+    When the evaluator later accepts, match_accepted_developer_submission
+    will replace this record with a definitive MATCHED result.
+    """
+    assignment = submission.assignment
+    task: BpmnTask = assignment.bpmn_task
+    project = submission.project
+
+    best_score, best_summary, threshold = _score_zip_against_task(submission)
+
+    code_ref = (
+        f"Developer submission #{submission.id} "
+        f"(assignment #{assignment.id}, attempt {submission.attempt_number})"
+    )
+
+    # Replace any pre-existing score for this task
+    MatchResult.objects.filter(
+        project=project, task=task, is_ai_generated=False,
+        code_ref__startswith="Developer submission"
+    ).delete()
+
+    status = "MATCHED" if best_score >= threshold else "MISSING"
+
+    match = MatchResult.objects.create(
+        project=project,
+        task=task,
+        code_ref=code_ref,
+        similarity_score=best_score,
+        status=status,
+        is_ai_generated=False,
+        matched_summary=best_summary,
+    )
+
+    return {
+        "match": match,
+        "similarity": best_score,
+        "threshold": threshold,
+        "below_threshold": best_score < threshold,
+    }
+
+
+def match_accepted_developer_submission(submission: DeveloperSubmission) -> Optional[dict]:
+    """
+    Runs when an evaluator accepts a developer ZIP submission.
+    Extracts functions, summarizes, embeds, compares vs task embedding,
+    saves a MatchResult.
+    """
+    assignment = submission.assignment
+    task: BpmnTask = assignment.bpmn_task
+    project = submission.project
+
+    best_score, best_summary, threshold = _score_zip_against_task(submission)
+
+    # Remove any old result for this task (including the pre-submit score)
     MatchResult.objects.filter(
         project=project, task=task, is_ai_generated=False,
         code_ref__startswith="Developer submission"
@@ -108,10 +168,7 @@ def match_accepted_developer_submission(submission: DeveloperSubmission) -> Opti
         project=project, task=task, is_ai_generated=False, status="MISSING"
     ).delete()
 
-    threshold = float(getattr(project, "similarity_threshold", 0.6) or 0.6)
     # Evaluator manually reviewed and accepted — always MATCHED
-    status = "MATCHED"
-    
     code_ref = (
         f"Developer submission #{submission.id} "
         f"(assignment #{assignment.id}, attempt {submission.attempt_number})"
@@ -122,7 +179,7 @@ def match_accepted_developer_submission(submission: DeveloperSubmission) -> Opti
         task=task,
         code_ref=code_ref,
         similarity_score=best_score,
-        status=status,
+        status="MATCHED",
         is_ai_generated=False,
         matched_summary=best_summary,
     )
@@ -233,6 +290,83 @@ def _extract_developer_functions_from_pr(service, github_repo, pr_files: list, h
         ]
     except Exception:
         return []
+
+
+def compute_github_submission_score(project, assignment, pr_number: int) -> Optional[dict]:
+    """
+    Runs when a developer submits with a GitHub PR number, so the evaluator
+    can see the similarity score before making any accept/reject decision.
+    Saves a MatchResult with MATCHED or MISSING based on threshold.
+    Does NOT merge the PR.
+    """
+    from apps.github_integration.models import GitHubRepository
+    from apps.github_integration.services.github_service import GitHubService
+
+    try:
+        github_repo = GitHubRepository.objects.get(project=project)
+    except GitHubRepository.DoesNotExist:
+        return None
+
+    service = GitHubService(token=github_repo.access_token)
+    task: BpmnTask = assignment.bpmn_task
+    embedder = LocalEmbedder()
+
+    task_emb = TaskEmbedding.objects.filter(project=project, bpmn_task=task).first()
+    if task_emb and task_emb.vector:
+        task_vector = task_emb.vector
+    else:
+        task_text = (task.summary_text or task.description or task.name or "").strip()
+        if not task_text:
+            return None
+        task_vector = embedder.embed_many([task_text])[0].vector
+        TaskEmbedding.objects.update_or_create(
+            project=project, bpmn_task=task, defaults={"vector": task_vector},
+        )
+
+    try:
+        pr_files = service.get_pull_request_files(github_repo.owner, github_repo.repo_name, pr_number)
+        pr_data = service.get_pull_request(github_repo.owner, github_repo.repo_name, pr_number)
+        head_sha = pr_data.get("head", {}).get("sha", "")
+    except Exception:
+        return None
+
+    name_summary_pairs = _extract_developer_functions_from_pr(service, github_repo, pr_files, head_sha)
+
+    best_summary = ""
+    best_score = 0.0
+
+    if name_summary_pairs:
+        summaries = [s for _, s in name_summary_pairs]
+        code_embeddings = embedder.embed_many(summaries)
+        scores = [_cosine_similarity(emb.vector, task_vector) for emb in code_embeddings]
+        best_idx = int(max(range(len(scores)), key=lambda i: scores[i]))
+        best_score = scores[best_idx]
+        best_summary = summaries[best_idx]
+
+    MatchResult.objects.filter(
+        project=project, task=task, is_ai_generated=False,
+        code_ref__startswith="GitHub PR"
+    ).delete()
+
+    threshold = float(getattr(project, "similarity_threshold", 0.6) or 0.6)
+    status = "MATCHED" if best_score >= threshold else "MISSING"
+
+    match = MatchResult.objects.create(
+        project=project,
+        task=task,
+        code_ref=f"GitHub PR #{pr_number} (assignment #{assignment.id})",
+        similarity_score=best_score,
+        status=status,
+        is_ai_generated=False,
+        matched_summary=best_summary,
+    )
+
+    return {
+        "match": match,
+        "similarity": best_score,
+        "threshold": threshold,
+        "below_threshold": best_score < threshold,
+    }
 
 
 def match_accepted_github_submission(project, assignment, pr_number: int) -> Optional[dict]:
@@ -359,6 +493,56 @@ def preview_score_from_zip(project, assignment, zip_path: Path) -> dict:
     """
     name_summary_pairs = _extract_summaries_from_zip(zip_path)
     return _run_similarity_pipeline(project, assignment.bpmn_task, name_summary_pairs)
+
+
+def preview_score_from_pr(project, assignment, pr_number: int) -> dict:
+    """
+    Score only the PR diff (changed/added functions) against the assignment's
+    BPMN task WITHOUT saving anything — same logic as match_accepted_github_submission.
+    """
+    from apps.github_integration.models import GitHubRepository
+    from apps.github_integration.services.github_service import GitHubService
+
+    try:
+        github_repo = GitHubRepository.objects.get(project=project, is_connected=True)
+    except GitHubRepository.DoesNotExist:
+        return {"error": "GitHub repository not connected for this project."}
+
+    service = GitHubService(token=github_repo.access_token)
+    task: BpmnTask = assignment.bpmn_task
+    embedder = LocalEmbedder()
+
+    task_emb = TaskEmbedding.objects.filter(project=project, bpmn_task=task).first()
+    if task_emb and task_emb.vector:
+        task_vector = task_emb.vector
+    else:
+        task_text = (task.summary_text or task.description or task.name or "").strip()
+        if not task_text:
+            return {"error": "No task description to compare against."}
+        task_vector = embedder.embed_many([task_text])[0].vector
+
+    try:
+        pr_files = service.get_pull_request_files(github_repo.owner, github_repo.repo_name, pr_number)
+        pr_data  = service.get_pull_request(github_repo.owner, github_repo.repo_name, pr_number)
+        head_sha = pr_data.get("head", {}).get("sha", "")
+    except Exception as e:
+        return {"error": f"Could not fetch PR #{pr_number}: {e}"}
+
+    name_summary_pairs = _extract_developer_functions_from_pr(service, github_repo, pr_files, head_sha)
+
+    best_score = 0.0
+    if name_summary_pairs:
+        summaries = [s for _, s in name_summary_pairs]
+        code_embeddings = embedder.embed_many(summaries)
+        scores = [_cosine_similarity(emb.vector, task_vector) for emb in code_embeddings]
+        best_score = max(scores)
+
+    threshold = float(getattr(project, "similarity_threshold", 0.6) or 0.6)
+    return {
+        "similarity": best_score,
+        "threshold": threshold,
+        "passes": best_score >= threshold,
+    }
 
 
 def preview_score_from_branch(project, assignment) -> dict:

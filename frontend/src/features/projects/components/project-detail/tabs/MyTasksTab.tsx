@@ -308,11 +308,13 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
   }
 
   async function handlePreviewGithub(assignmentId: number) {
+    const num = prNumber[assignmentId] ? Number(prNumber[assignmentId]) : null;
+    if (!num) { toast.warning("Please enter the Pull Request number first."); return; }
     setPreviewLoading((p) => ({ ...p, [assignmentId]: true }));
     setPreviewResult((p)  => ({ ...p, [assignmentId]: null }));
     setPreviewError((p)   => ({ ...p, [assignmentId]: "" }));
     try {
-      const res = await previewScoreGithub(projectId, assignmentId);
+      const res = await previewScoreGithub(projectId, assignmentId, num);
       setPreviewResult((p) => ({ ...p, [assignmentId]: res }));
     } catch (e: any) {
       setPreviewError((p) => ({ ...p, [assignmentId]: e.message || "Preview failed." }));

@@ -386,7 +386,7 @@ export default function TaskAssignmentRow({
                     fontWeight: 700,
                   }}
                 >
-                  🔄 Reassign
+                  Reassign
                 </button>
               )}
 
@@ -494,7 +494,7 @@ export default function TaskAssignmentRow({
         <tr>
           <td colSpan={7} style={{ padding: "14px 20px", background: "#fffbeb", borderBottom: `1px solid ${ui.colors.border}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <span style={{ fontWeight: 700, fontSize: 13, color: "#92400e" }}>🔄 Change developer for this task:</span>
+              <span style={{ fontWeight: 700, fontSize: 13, color: "#92400e" }}>Change developer for this task:</span>
               <select
                 value={reassignDevId}
                 onChange={(e) => setReassignDevId(e.target.value)}
