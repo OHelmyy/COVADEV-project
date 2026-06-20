@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { buttonBase, ui } from "../theme/ui";
 
 type Props = {

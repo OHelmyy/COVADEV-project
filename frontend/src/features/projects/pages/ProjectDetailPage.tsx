@@ -213,8 +213,6 @@ export default function ProjectDetailPage() {
                 onUploadBpmn={vm.onUploadBpmn}
                 onUploadCode={vm.onUploadCode}
                 onRunAnalysis={vm.onRunAnalysis}
-                onFetchGithubCode={vm.onFetchGithubCode}
-                githubRepoUrl={vm.data.project.github_repo_url}
                 projectId={projectId}
               />
             )}
@@ -327,11 +325,11 @@ export default function ProjectDetailPage() {
             />
             {activeSubTab === "report" && (
               <ReportTab
+                projectName={vm.data.project.name}
                 canViewReport={vm.permissions.canViewReport}
                 reportState={vm.reportState}
                 reportError={vm.reportError}
                 report={vm.report}
-                projectName={vm.data.project.name}
                 onRefresh={vm.loadReport}
                 onRetry={vm.loadReport}
                 onDownloadPdf={() => vm.downloadReport("pdf")}
@@ -436,7 +434,7 @@ function DevBpmnTab({ projectId, bpmnSummary }: { projectId: number; bpmnSummary
       <SubTabs
         tabs={[
           { key: "summary", label: "Process Summary & Diagram" },
-          { key: "tasks",   label: "Your Assigned Tasks" },
+          { key: "tasks", label: "Your Assigned Tasks" },
         ]}
         active={activeSubTab}
         onChange={(k) => setActiveSubTab(k as "summary" | "tasks")}
@@ -577,7 +575,6 @@ function DevBpmnTab({ projectId, bpmnSummary }: { projectId: number; bpmnSummary
 function ScoreBar({ label, score, max = 10 }: { label: string; score: number; max?: number }) {
   const pct = Math.min(100, Math.round((score / max) * 100));
   const color = pct >= 70 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
-  const bg = pct >= 70 ? "#dcfce7" : pct >= 50 ? "#fef3c7" : "#fee2e2";
   return (
     <div style={{ marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -617,17 +614,17 @@ function DevHistoryTab({ projectId }: { projectId: number }) {
   }, [projectId]);
 
   const SUB_META: Record<string, { dot: string; label: string; bg: string; fg: string; border: string }> = {
-    ACCEPTED:   { dot: "#16a34a", label: "Accepted",    bg: "#f0fdf4", fg: "#166534", border: "#86efac" },
-    REJECTED:   { dot: "#dc2626", label: "Rejected",    bg: "#fef2f2", fg: "#991b1b", border: "#fca5a5" },
-    PENDING:    { dot: "#d97706", label: "Under Review", bg: "#fef3c7", fg: "#92400e", border: "#fde68a" },
-    REASSIGNED: { dot: "#7c3aed", label: "Reassigned",  bg: "#f5f3ff", fg: "#5b21b6", border: "#ddd6fe" },
+    ACCEPTED: { dot: "#16a34a", label: "Accepted", bg: "#f0fdf4", fg: "#166534", border: "#86efac" },
+    REJECTED: { dot: "#dc2626", label: "Rejected", bg: "#fef2f2", fg: "#991b1b", border: "#fca5a5" },
+    PENDING: { dot: "#d97706", label: "Under Review", bg: "#fef3c7", fg: "#92400e", border: "#fde68a" },
+    REASSIGNED: { dot: "#7c3aed", label: "Reassigned", bg: "#f5f3ff", fg: "#5b21b6", border: "#ddd6fe" },
   };
 
   function relTime(iso?: string | null) {
     if (!iso) return "—";
     const diff = Date.now() - new Date(iso).getTime();
     const m = Math.floor(diff / 60000), h = Math.floor(diff / 3600000), d = Math.floor(diff / 86400000);
-    if (m < 1)  return "just now";
+    if (m < 1) return "just now";
     if (m < 60) return `${m}m ago`;
     if (h < 24) return `${h}h ago`;
     if (d < 30) return `${d}d ago`;
@@ -635,12 +632,12 @@ function DevHistoryTab({ projectId }: { projectId: number }) {
   }
 
   // ── Stats ────────────────────────────────────────────────────────────────────
-  const accepted   = tasks.filter(t => t.submission?.status === "ACCEPTED").length;
-  const rejected   = tasks.filter(t => t.submission?.status === "REJECTED").length;
-  const pending    = tasks.filter(t => t.submission?.status === "PENDING").length;
-  const noSub      = tasks.filter(t => !t.submission).length;
-  const scores     = Object.values(insights).map((e: any) => e.finalScore).filter(Boolean);
-  const avgScore   = scores.length ? (scores.reduce((a: number, b: number) => a + b, 0) / scores.length).toFixed(1) : null;
+  const accepted = tasks.filter(t => t.submission?.status === "ACCEPTED").length;
+  const rejected = tasks.filter(t => t.submission?.status === "REJECTED").length;
+  const pending = tasks.filter(t => t.submission?.status === "PENDING").length;
+  const noSub = tasks.filter(t => !t.submission).length;
+  const scores = Object.values(insights).map((e: any) => e.finalScore).filter(Boolean);
+  const avgScore = scores.length ? (scores.reduce((a: number, b: number) => a + b, 0) / scores.length).toFixed(1) : null;
 
   // ── Skeleton ─────────────────────────────────────────────────────────────────
   if (loading) return (
@@ -673,10 +670,10 @@ function DevHistoryTab({ projectId }: { projectId: number }) {
       {/* ── Stats header ── */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
         {[
-          { label: "Accepted",    value: accepted,          bg: "#f0fdf4", fg: "#16a34a", dot: "#16a34a" },
-          { label: "Under Review",value: pending,           bg: "#fef3c7", fg: "#92400e", dot: "#d97706" },
-          { label: "Rejected",    value: rejected,          bg: "#fef2f2", fg: "#991b1b", dot: "#dc2626" },
-          { label: "Not Started", value: noSub,             bg: "#f8fafc", fg: "#64748b", dot: "#cbd5e1" },
+          { label: "Accepted", value: accepted, bg: "#f0fdf4", fg: "#16a34a", dot: "#16a34a" },
+          { label: "Under Review", value: pending, bg: "#fef3c7", fg: "#92400e", dot: "#d97706" },
+          { label: "Rejected", value: rejected, bg: "#fef2f2", fg: "#991b1b", dot: "#dc2626" },
+          { label: "Not Started", value: noSub, bg: "#f8fafc", fg: "#64748b", dot: "#cbd5e1" },
           ...(avgScore ? [{ label: "Avg Score", value: `${avgScore}/10`, bg: "#eff6ff", fg: "#1d4ed8", dot: "#3b82f6" }] : []),
         ].map((s) => (
           <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 8, background: s.bg, border: `1px solid ${s.bg}`, borderRadius: 10, padding: "8px 14px" }}>
@@ -729,7 +726,7 @@ function DevHistoryTab({ projectId }: { projectId: number }) {
                           title="How closely your code matched the expected task implementation"
                           style={{
                             background: sub.similarityScore >= 0.75 ? "#f0fdf4" : sub.similarityScore >= 0.5 ? "#fef3c7" : "#fef2f2",
-                            color:      sub.similarityScore >= 0.75 ? "#16a34a" : sub.similarityScore >= 0.5 ? "#92400e" : "#dc2626",
+                            color: sub.similarityScore >= 0.75 ? "#16a34a" : sub.similarityScore >= 0.5 ? "#92400e" : "#dc2626",
                             fontWeight: 700, fontSize: 11, padding: "3px 10px", borderRadius: 999,
                             border: "1px solid currentColor", cursor: "help",
                           }}
@@ -768,16 +765,16 @@ function DevHistoryTab({ projectId }: { projectId: number }) {
                           <span style={{ fontWeight: 800, fontSize: 13, color: "#334155" }}>Evaluation Scores</span>
                           <span style={{
                             fontWeight: 900, fontSize: 15,
-                            color:      evaluation.finalScore >= 7 ? "#16a34a" : evaluation.finalScore >= 5 ? "#d97706" : "#dc2626",
+                            color: evaluation.finalScore >= 7 ? "#16a34a" : evaluation.finalScore >= 5 ? "#d97706" : "#dc2626",
                             background: evaluation.finalScore >= 7 ? "#f0fdf4" : evaluation.finalScore >= 5 ? "#fef3c7" : "#fee2e2",
                             padding: "3px 12px", borderRadius: 8,
                           }}>
                             Final: {evaluation.finalScore} / 10
                           </span>
                         </div>
-                        <ScoreBar label="Correctness"   score={evaluation.correctnessScore} />
-                        <ScoreBar label="Quality"       score={evaluation.qualityScore} />
-                        <ScoreBar label="Timeliness"    score={evaluation.timelinessScore} />
+                        <ScoreBar label="Correctness" score={evaluation.correctnessScore} />
+                        <ScoreBar label="Quality" score={evaluation.qualityScore} />
+                        <ScoreBar label="Timeliness" score={evaluation.timelinessScore} />
                         <ScoreBar label="Communication" score={evaluation.communicationScore} />
                         {evaluation.comments && (
                           <div style={{ marginTop: 10, fontSize: 12, color: "#475569", fontStyle: "italic" }}>

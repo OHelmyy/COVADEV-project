@@ -49,7 +49,6 @@ htmlcov/
 # Packaging / Build
 # ==============================
 build/
-dist/
 *.egg-info/
 
 # ==============================
@@ -88,3 +87,8 @@ temp/
 # ==============================
 .idea/
 *.iml
+
+
+
+#====================
+models\covadev-finetuned-embedder

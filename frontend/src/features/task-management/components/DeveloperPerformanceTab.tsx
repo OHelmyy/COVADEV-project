@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getProjectDeveloperPerformance } from "../api/taskManagementApi";
 import type { DeveloperPerformanceItem } from "../types";
 import { cardBase, ui } from "../../../theme/ui";

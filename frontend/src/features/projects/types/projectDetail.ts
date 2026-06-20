@@ -52,7 +52,9 @@ export type TabKey =
   | "devBpmn"
   | "devOverview"
   | "devRecommendations"
-  | "devHistory";
+  | "devHistory"
+  | "devHelp"
+  | "evalHelp";
 
 export type TraceRow = {
   taskId: string;

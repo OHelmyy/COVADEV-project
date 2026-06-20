@@ -27,9 +27,9 @@ import { Card } from "../ProjectUi";
 type Props = { projectId: number; isAdmin?: boolean };
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string; border: string }> = {
-  PENDING:    { bg: "#fff8e1", fg: "#8a5a00", border: "#ffe58f" },
-  ACCEPTED:   { bg: "#eef5e0", fg: "#2d6a0f", border: "#b7eb8f" },
-  REJECTED:   { bg: "#ffecec", fg: "#a00000", border: "#ffccc7" },
+  PENDING: { bg: "#fff8e1", fg: "#8a5a00", border: "#ffe58f" },
+  ACCEPTED: { bg: "#eef5e0", fg: "#2d6a0f", border: "#b7eb8f" },
+  REJECTED: { bg: "#ffecec", fg: "#a00000", border: "#ffccc7" },
   REASSIGNED: { bg: "#f0ecff", fg: "#4a1fa8", border: "#d3adf7" },
 };
 
@@ -42,7 +42,7 @@ const STATUS_ICONS: Record<string, string> = {
 
 // ── Main Tab ─────────────────────────────────────────────────────────────────
 
-export default function DevSubmissionsTab({ projectId, isAdmin }: Props) {
+export default function DevSubmissionsTab({ projectId }: Props) {
   const [submissions, setSubmissions] = useState<DevSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -61,7 +61,7 @@ export default function DevSubmissionsTab({ projectId, isAdmin }: Props) {
   }
 
   useEffect(() => { load(); }, [projectId]);
-const [githubConnected, setGithubConnected] = useState(false);
+  const [githubConnected, setGithubConnected] = useState(false);
   const [prs, setPrs] = useState<GitHubPullRequestApi[]>([]);
   const [githubLoading, setGithubLoading] = useState(true);
 
@@ -75,13 +75,13 @@ const [githubConnected, setGithubConnected] = useState(false);
         return [];
       })
       .then(data => setPrs(data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setGithubLoading(false));
   }, [projectId]);
   if (loading) return <Card><div style={{ color: "#888", padding: 24, textAlign: "center" }}>Loading submissions…</div></Card>;
-  if (error)   return <Card><div style={{ color: "#a00", padding: 24 }}>{error}</div></Card>;
+  if (error) return <Card><div style={{ color: "#a00", padding: 24 }}>{error}</div></Card>;
 
-  const pending  = submissions.filter(s => s.latestStatus === "PENDING");
+  const pending = submissions.filter(s => s.latestStatus === "PENDING");
   const reviewed = submissions.filter(s => s.latestStatus !== "PENDING");
 
   return (
@@ -119,12 +119,10 @@ const [githubConnected, setGithubConnected] = useState(false);
         prs={prs}
         loading={githubLoading}
         connected={githubConnected}
-        isAdmin={isAdmin}
-        submissions={submissions}
         onRefresh={() => {
           fetchGitHubPullRequests(projectId, "all")
             .then(data => setPrs(data))
-            .catch(() => {});
+            .catch(() => { });
         }}
       />
 
@@ -458,7 +456,7 @@ function FileBrowser({ projectId, submissionId }: { projectId: number; submissio
   }
 
   if (loading) return <div style={{ padding: "12px 0", color: "#888", fontSize: 13 }}>Loading file tree…</div>;
-  if (error)   return <div style={{ padding: "12px 0", color: "#a00", fontSize: 13 }}>{error}</div>;
+  if (error) return <div style={{ padding: "12px 0", color: "#a00", fontSize: 13 }}>{error}</div>;
   if (!tree || Object.keys(tree).length === 0) return <div style={{ padding: "12px 0", color: "#888", fontSize: 13 }}>No files found.</div>;
 
   return (
@@ -567,12 +565,11 @@ function TreeNode({ node, depth, selectedPath, onSelect }: {
 }
 // ── GitHub PR Section ─────────────────────────────────────────────────────────
 
-function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRefresh }: {  projectId: number;
+function GitHubPRSection({ projectId, prs, loading, connected, onRefresh }: {
+  projectId: number;
   prs: GitHubPullRequestApi[];
   loading: boolean;
   connected: boolean;
-  isAdmin?: boolean;
-  submissions: DevSubmission[];
   onRefresh: () => void;
 }) {
   const [selectedPr, setSelectedPr] = useState<GitHubPullRequestApi | null>(null);
@@ -604,7 +601,7 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
       ]);
       setPrFiles(files);
       setPrCommits(commits);
-    } catch {}
+    } catch { }
   }
 
   async function handleViewFile(file: GitHubFileApi) {
@@ -722,7 +719,7 @@ function GitHubPRSection({ projectId, prs, loading, connected, submissions, onRe
                           #{selectedPr.number} by <strong>{selectedPr.user.login}</strong> · {selectedPr.head.ref} → {selectedPr.base.ref}
                         </div>
                       </div>
-<div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                         <a href={selectedPr.html_url} target="_blank" rel="noreferrer"
                           style={{ fontSize: 12, padding: "6px 12px", borderRadius: 6, border: "1px solid #d0d7de", background: "#fff", color: "#24292f", textDecoration: "none", fontWeight: 600 }}>
                           View on GitHub
@@ -873,7 +870,7 @@ function PRCard({ pr, selected, onSelect }: { pr: GitHubPullRequestApi; selected
 function ScoreBadge({ score }: { score: number }) {
   const pct = Math.round(score * 100);
   const color = pct >= 75 ? "#2d6a0f" : pct >= 50 ? "#8a5a00" : "#a00000";
-  const bg    = pct >= 75 ? "#eef5e0" : pct >= 50 ? "#fff8e1" : "#ffecec";
+  const bg = pct >= 75 ? "#eef5e0" : pct >= 50 ? "#fff8e1" : "#ffecec";
   return (
     <span style={{ background: bg, color, fontWeight: 700, fontSize: 11, padding: "2px 10px", borderRadius: 12, border: `1px solid ${color}33` }}>
       {pct}% match
