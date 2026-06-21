@@ -973,29 +973,33 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
             </div>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
+          <div>
             <table
               style={{
                 width: "100%",
                 borderCollapse: "separate",
                 borderSpacing: 0,
+                tableLayout: "fixed",
               }}
             >
+              <colgroup>
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "15%" }} />
+              </colgroup>
               <thead>
                 <tr style={{ background: ui.colors.bgSoft }}>
-                  <th style={{ textAlign: "left", padding: 14 }}>BPMN Task</th>
-                  <th style={{ textAlign: "left", padding: 14 }}>
-                    Assigned Developer
-                  </th>
-                  <th style={{ textAlign: "left", padding: 14 }}>
-                    GitHub Branch
-                  </th>
-                  <th style={{ textAlign: "left", padding: 14 }}>PR Link</th>
-                  <th style={{ textAlign: "left", padding: 14 }}>Status</th>
-                  <th style={{ textAlign: "left", padding: 14 }}>
-                    Assigned Date
-                  </th>
-                  <th style={{ textAlign: "left", padding: 14 }}>Action</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 13 }}>BPMN Task</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 13 }}>Assigned Developer</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 13 }}>GitHub Branch</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 13 }}>PR Link</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 13 }}>Status</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 13 }}>Assigned Date</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 13 }}>Action</th>
                 </tr>
               </thead>
 

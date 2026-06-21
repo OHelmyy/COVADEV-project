@@ -244,16 +244,16 @@ export default function TaskAssignmentRow({
   return (
     <>
       <tr>
-        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-          <div style={{ fontWeight: 800, color: ui.colors.text }}>{task.name}</div>
-          <div style={{ color: ui.colors.textMuted, fontSize: 12, marginTop: 4 }}>
-            {task.id}
+        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ui.colors.border}`, overflow: "hidden", maxWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+            <span style={{ fontWeight: 800, color: ui.colors.text, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={task.name}>{task.name}</span>
+            <span style={{ color: ui.colors.textMuted, fontSize: 11, flexShrink: 0 }}>{task.id}</span>
           </div>
         </td>
 
-        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ui.colors.border}`, overflow: "hidden", maxWidth: 0 }}>
           {assignment ? (
-            <span style={{ fontWeight: 700, color: ui.colors.text }}>
+            <span style={{ fontWeight: 700, color: ui.colors.text, fontSize: 13, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={assignment.developer?.username || "—"}>
               {assignment.developer?.username || "—"} {assignment.developer?.isAiAgent ? "(AI)" : ""}
             </span>
           ) : (
@@ -316,15 +316,15 @@ export default function TaskAssignmentRow({
           )}
         </td>
 
-        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, color: ui.colors.text, fontSize: 13 }}>
+        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ui.colors.border}`, overflow: "hidden", maxWidth: 0 }}>
           {assignment?.githubBranch ? (
-            <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: 4, fontWeight: 700, color: ui.colors.primary }}>
+            <code title={assignment.githubBranch} style={{ background: "#f1f5f9", padding: "2px 5px", borderRadius: 4, fontWeight: 700, color: ui.colors.primary, fontSize: 11, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {assignment.githubBranch}
             </code>
           ) : "—"}
         </td>
 
-        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ui.colors.border}` }}>
           {assignment?.githubPrUrl ? (
             <a
               href={assignment.githubPrUrl}
@@ -332,29 +332,29 @@ export default function TaskAssignmentRow({
               rel="noreferrer"
               style={{ color: ui.colors.primary, textDecoration: "underline", fontWeight: 700, fontSize: 13 }}
             >
-              #{assignment.githubPrNumber || "PR Link"}
+              #{assignment.githubPrNumber || "PR"}
             </a>
           ) : "—"}
         </td>
 
-        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
+        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ui.colors.border}` }}>
           <div>{statusBadge()}</div>
           {assignment?.evaluation && (
-            <div style={{ marginTop: 8, fontSize: 12, color: ui.colors.textMuted }}>
+            <div style={{ marginTop: 4, fontSize: 11, color: ui.colors.textMuted }}>
               Score: <strong style={{ color: ui.colors.text }}>{assignment.evaluation.finalScore}</strong>
             </div>
           )}
         </td>
 
-        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}`, color: ui.colors.textMuted, fontSize: 13 }}>
+        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ui.colors.border}`, color: ui.colors.textMuted, fontSize: 12 }}>
           {assignment?.assignedAt ? formatDate(assignment.assignedAt) : "—"}
         </td>
 
-        <td style={{ padding: 14, borderBottom: `1px solid ${ui.colors.border}` }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <td style={{ padding: "10px 12px", borderBottom: `1px solid ${ui.colors.border}` }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 
             {/* Row 1 — Primary actions */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {/* Assign (unassigned tasks) */}
               {!assignment && (
                 <button
@@ -379,8 +379,9 @@ export default function TaskAssignmentRow({
                   disabled={saving}
                   style={{
                     ...buttonBase,
-                    padding: "8px 0",
-                    width: 90,
+                    padding: "6px 0",
+                    width: 84,
+                    fontSize: 13,
                     textAlign: "center",
                     background: showReassign ? "#fef3c7" : "#fff",
                     border: `1px solid ${showReassign ? "#fbbf24" : ui.colors.borderStrong}`,
@@ -399,8 +400,9 @@ export default function TaskAssignmentRow({
                     disabled={saving}
                     style={{
                       ...buttonBase,
-                      padding: "8px 0",
-                      width: 90,
+                      padding: "6px 0",
+                      width: 84,
+                      fontSize: 13,
                       textAlign: "center",
                       background: "#fff",
                       border: `1px solid ${ui.colors.borderStrong}`,
@@ -415,8 +417,9 @@ export default function TaskAssignmentRow({
                     disabled={saving}
                     style={{
                       ...buttonBase,
-                      padding: "8px 0",
-                      width: 90,
+                      padding: "6px 0",
+                      width: 84,
+                      fontSize: 13,
                       textAlign: "center",
                       background: "#fff",
                       border: `1px solid ${ui.colors.borderStrong}`,
@@ -435,8 +438,9 @@ export default function TaskAssignmentRow({
                   disabled={saving}
                   style={{
                     ...buttonBase,
-                    padding: "8px 0",
-                    width: 90,
+                    padding: "6px 0",
+                    width: 84,
+                    fontSize: 13,
                     textAlign: "center",
                     background: ui.colors.primarySoft,
                     border: "1px solid #bfdbfe",
