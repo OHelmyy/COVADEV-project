@@ -153,7 +153,7 @@ class SummaryService:
                     {"role": "system", "content": "You are a precise software analyst."},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.2,
+                temperature=0,
                 max_tokens=80,
             )
             return response.choices[0].message.content.strip()

@@ -379,7 +379,9 @@ export default function TaskAssignmentRow({
                   disabled={saving}
                   style={{
                     ...buttonBase,
-                    padding: "8px 12px",
+                    padding: "8px 0",
+                    width: 90,
+                    textAlign: "center",
                     background: showReassign ? "#fef3c7" : "#fff",
                     border: `1px solid ${showReassign ? "#fbbf24" : ui.colors.borderStrong}`,
                     color: showReassign ? "#92400e" : ui.colors.text,
@@ -397,9 +399,11 @@ export default function TaskAssignmentRow({
                     disabled={saving}
                     style={{
                       ...buttonBase,
-                      padding: "8px 12px",
-                      background: ui.colors.successSoft,
-                      border: "1px solid #bbf7d0",
+                      padding: "8px 0",
+                      width: 90,
+                      textAlign: "center",
+                      background: "#fff",
+                      border: `1px solid ${ui.colors.borderStrong}`,
                       color: ui.colors.success,
                     }}
                   >
@@ -411,9 +415,11 @@ export default function TaskAssignmentRow({
                     disabled={saving}
                     style={{
                       ...buttonBase,
-                      padding: "8px 12px",
-                      background: ui.colors.dangerSoft,
-                      border: "1px solid #fecaca",
+                      padding: "8px 0",
+                      width: 90,
+                      textAlign: "center",
+                      background: "#fff",
+                      border: `1px solid ${ui.colors.borderStrong}`,
                       color: ui.colors.danger,
                     }}
                   >
@@ -429,7 +435,9 @@ export default function TaskAssignmentRow({
                   disabled={saving}
                   style={{
                     ...buttonBase,
-                    padding: "8px 12px",
+                    padding: "8px 0",
+                    width: 90,
+                    textAlign: "center",
                     background: ui.colors.primarySoft,
                     border: "1px solid #bfdbfe",
                     color: ui.colors.primary,

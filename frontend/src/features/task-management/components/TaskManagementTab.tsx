@@ -603,7 +603,7 @@ export default function TaskManagementTab({ projectId, isAdmin }: Props) {
                       style={{ padding: 6 }}
                     >
                       {dev.username}{" "}
-                      {dev.isAiAgent ? "🤖 (AI Agent)" : "👨‍💻 (Developer)"}
+                      {dev.isAiAgent ? "(AI Agent)" : ""}
                     </option>
                   ))}
                 </select>

@@ -409,9 +409,9 @@ function AttemptRow({
             style={{ width: "100%", borderRadius: 8, border: "1px solid #ddd", padding: "8px 10px", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
           />
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            {isPending && <ActionBtn label="✅ Accept" color="#22c55e" onClick={doAccept} busy={acting} />}
-            <ActionBtn label="🔁 Reassign" color="#6c47ff" onClick={doReassign} busy={acting} />
-            {isPending && <ActionBtn label="❌ Reject" color="#ef4444" onClick={doReject} busy={acting} />}
+            {isPending && <ActionBtn label="Accept" color="#22c55e" onClick={doAccept} busy={acting} />}
+            <ActionBtn label="Reassign" color="#6c47ff" onClick={doReassign} busy={acting} />
+            {isPending && <ActionBtn label="Reject" color="#ef4444" onClick={doReject} busy={acting} />}
           </div>
           {actionMsg && (
             <div style={{ marginTop: 8, fontSize: 13, fontWeight: 600, color: actionMsg.startsWith("Error") || actionMsg.startsWith("⚠") ? "#a00" : "#2d6a0f" }}>
@@ -635,7 +635,7 @@ function GitHubPRSection({ projectId, prs, loading, connected, onRefresh }: {
       if (raw.toLowerCase().includes("merge conflict")) {
         setMergeMsg("❌ This PR has merge conflicts. Ask the developer to resolve them on their branch and push again before merging.");
       } else {
-        setMergeMsg(`❌ ${raw}`);
+        setMergeMsg(`${raw}`);
       }
     } finally {
       setMerging(false);
@@ -730,9 +730,9 @@ function GitHubPRSection({ projectId, prs, loading, connected, onRefresh }: {
                               onClick={() => handleCheckScore(selectedPr)}
                               disabled={checkingScore || merging}
                               style={{
-                                fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "1px solid #1677ff",
-                                background: checkingScore ? "#e6f0ff" : "#fff",
-                                color: "#1677ff", fontWeight: 700,
+                                fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "none",
+                                background: (checkingScore || merging) ? "#ccc" : "#1677ff",
+                                color: "#fff", fontWeight: 700,
                                 cursor: (checkingScore || merging) ? "not-allowed" : "pointer",
                               }}
                             >
@@ -748,7 +748,7 @@ function GitHubPRSection({ projectId, prs, loading, connected, onRefresh }: {
                                 cursor: (merging || checkingScore) ? "not-allowed" : "pointer",
                               }}
                             >
-                              {merging ? "Running pipeline…" : "Accept & Merge"}
+                              {merging ? "Running…" : "Accept & Merge"}
                             </button>
                           </>
                         )}
@@ -763,13 +763,13 @@ function GitHubPRSection({ projectId, prs, loading, connected, onRefresh }: {
                       color: scoreResult.passes ? "#16a34a" : "#8a5a00",
                       border: `1px solid ${scoreResult.passes ? "#bbf7d0" : "#ffe58f"}`,
                     }}>
-                      {scoreResult.passes ? "✅" : "⚠️"} Similarity Score: <strong>{scoreResult.similarityPct}%</strong> — Threshold: {scoreResult.thresholdPct}% — {scoreResult.passes ? "Passes" : "Below threshold"}
+                      {scoreResult.passes ? "✅" : "⚠️"} Similarity Score: <strong>{scoreResult.similarityPct}%</strong> — {scoreResult.passes ? "Passes" : "Below threshold"}
                     </div>
                   )}
 
                   {scoreError && (
                     <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>
-                      ❌ {scoreError}
+                      {scoreError}
                     </div>
                   )}
 

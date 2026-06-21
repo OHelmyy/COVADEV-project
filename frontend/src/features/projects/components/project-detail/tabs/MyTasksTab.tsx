@@ -808,10 +808,10 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
                                       <span style={{ fontSize: 20 }}>{r.passes ? "✅" : "⚠️"}</span>
                                       <div>
                                         <div style={{ fontWeight: 800, fontSize: 14, color: r.passes ? "#15803d" : "#dc2626" }}>
-                                          {r.passes ? "Looks good — above threshold!" : "Below threshold — consider improving."}
+                                          {r.passes ? "Looks good — above threshold!" : "Score too low — consider improving."}
                                         </div>
                                         <div style={{ fontSize: 12, color: r.passes ? "#166534" : "#991b1b", marginTop: 3 }}>
-                                          Similarity: <strong>{r.similarityPct}%</strong> &nbsp;/&nbsp; Threshold: <strong>{r.thresholdPct}%</strong>
+                                          Similarity: <strong>{r.similarityPct}%</strong>
                                         </div>
                                       </div>
                                     </div>
@@ -820,7 +820,7 @@ export default function MyTasksTab({ projectId, githubRepoUrl }: Props) {
                               })()}
 
                               {previewError[t.assignmentId] && (
-                                <div style={{ marginTop: 10, fontSize: 12, color: ui.colors.danger, fontWeight: 700 }}>❌ {previewError[t.assignmentId]}</div>
+                                <div style={{ marginTop: 10, fontSize: 12, color: ui.colors.danger, fontWeight: 700 }}>{previewError[t.assignmentId]}</div>
                               )}
                             </div>
                           )}
